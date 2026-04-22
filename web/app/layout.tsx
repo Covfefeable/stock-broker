@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AppSplash } from "@/components/app-splash";
 import { AppProviders } from "./providers";
 import "./globals.css";
 
@@ -15,9 +16,29 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body>
-        <AppProviders>{children}</AppProviders>
+        <div
+          id="initial-splash"
+          style={{
+            alignItems: "center",
+            background: "#0f172a",
+            color: "#e5e7eb",
+            display: "flex",
+            fontFamily: "system-ui, sans-serif",
+            inset: 0,
+            justifyContent: "center",
+            position: "fixed",
+            zIndex: 9998,
+          }}
+        >
+          <div style={{ opacity: 0.86, textAlign: "center" }}>
+            <div style={{ color: "#6366f1", fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Genesis</div>
+            <div style={{ color: "#8d99ae", fontSize: 13 }}>正在加载工作台</div>
+          </div>
+        </div>
+        <AppProviders>
+          <AppSplash>{children}</AppSplash>
+        </AppProviders>
       </body>
     </html>
   );
 }
-

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BarChartOutlined,
   DatabaseOutlined,
   NodeIndexOutlined,
   RobotOutlined,
@@ -167,15 +166,14 @@ export default function Home() {
         </div>
         <Space>
           <Button>新建策略</Button>
-          <Button icon={<BarChartOutlined />}>运行回测</Button>
           <Button type="primary">创建 AI Agent 任务</Button>
         </Space>
       </section>
 
-      <Row gutter={[20, 20]}>
+      <Row gutter={[20, 20]} className="equal-height-row">
         {metrics.map((metric) => (
           <Col xs={24} md={12} xl={6} key={metric.title}>
-            <Card className="metric-card">
+            <Card className="metric-card dashboard-card">
               <div className="metric-card-head">
                 <Text>{metric.title}</Text>
                 <span className="metric-icon">{metric.icon}</span>
@@ -187,9 +185,9 @@ export default function Home() {
         ))}
       </Row>
 
-      <Row gutter={[20, 20]} className="dashboard-main-row">
+      <Row gutter={[20, 20]} className="dashboard-main-row equal-height-row">
         <Col xs={24} xl={16}>
-          <Card className="ranking-panel ranking-panel-main" title="策略排行榜">
+          <Card className="dashboard-card ranking-panel ranking-panel-main" title="策略排行榜">
             <Table
               columns={rankingColumns}
               dataSource={rankingRows}
@@ -202,11 +200,11 @@ export default function Home() {
 
         <Col xs={24} xl={8}>
           <Card
-            className="agent-panel"
+            className="dashboard-card agent-panel"
             title="AI Agent 运行状态"
             extra={<Button type="link">查看全部</Button>}
           >
-            <Space direction="vertical" size={22} className="full-width">
+            <Space orientation="vertical" size={22} className="full-width">
               {agentTasks.map((task) => (
                 <div className="agent-task" key={task.name}>
                   <div className="agent-task-title">
@@ -225,9 +223,13 @@ export default function Home() {
         </Col>
       </Row>
 
-      <Row gutter={[20, 20]} className="dashboard-secondary-row">
+      <Row gutter={[20, 20]} className="dashboard-secondary-row equal-height-row">
         <Col xs={24} xl={8}>
-          <Card title="数据同步状态" extra={<Button type="link">进入数据中心</Button>}>
+          <Card
+            className="dashboard-card"
+            title="数据同步状态"
+            extra={<Button type="link">进入数据中心</Button>}
+          >
             <div className="status-list">
               {["日线行情", "股票基础信息", "指数行情", "复权因子"].map((item) => (
                 <div key={item}>
@@ -244,7 +246,7 @@ export default function Home() {
         </Col>
 
         <Col xs={24} xl={8}>
-          <Card title="最近回测">
+          <Card className="dashboard-card" title="最近回测">
             <div className="compact-table">
               {recentBacktests.map(([name, annual, drawdown, sharpe, status]) => (
                 <div className="compact-row" key={name}>
@@ -264,8 +266,8 @@ export default function Home() {
         </Col>
 
         <Col xs={24} xl={8}>
-          <Card title="策略校验提醒">
-            <Space direction="vertical" size={14} className="full-width">
+          <Card className="dashboard-card" title="策略校验提醒">
+            <Space orientation="vertical" size={14} className="full-width">
               <div className="warning-item">
                 <Tag color="orange">复杂度</Tag>
                 <Text>AI 趋势策略 v12 复杂度评分过高，可能过拟合</Text>
