@@ -1,0 +1,15 @@
+.env
+.env.local
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.pytest_cache/
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+docker/volumes/
+.pnpm-store/
+
