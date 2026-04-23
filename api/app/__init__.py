@@ -2,6 +2,7 @@ from flask import Flask
 
 from app.config import get_config
 from app.extensions import cors, db, migrate
+from app.models import User
 from app.routes import register_routes
 
 
@@ -16,4 +17,3 @@ def create_app(config_name: str | None = None) -> Flask:
     register_routes(app)
 
     return app
-

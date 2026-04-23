@@ -16,9 +16,11 @@ import {
 } from "@ant-design/icons";
 import { Avatar, Button, Layout, Menu, Space, Switch, Typography } from "antd";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useThemeMode } from "@/app/providers";
+import { AuthGuard } from "@/components/auth-guard";
+import { clearAccessToken, type AuthUser } from "@/lib/auth";
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -35,55 +37,74 @@ const navItems = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { mode, toggleMode } = useThemeMode();
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const isDark = mode === "dark";
   const selectedKey = navItems.some((item) => item.key === pathname) ? pathname : "/";
 
   return (
-    <Layout className={`app-shell app-shell-${mode}`}>
-      <Sider className="sidebar" width={248} collapsed={collapsed} collapsedWidth={80} trigger={null}>
-        <div className="brand-block">
-          <span className="brand-mark">
-            <FundProjectionScreenOutlined />
-          </span>
-          <div className="brand-copy">
-            <strong>Genesis</strong>
-            <small>AI 量化策略平台</small>
-          </div>
-        </div>
-        <Menu
-          className="side-menu"
-          items={navItems}
-          mode="inline"
-          selectedKeys={[selectedKey]}
-        />
-      </Sider>
+    <AuthGuard>
+      {(user) => (
+        <Layout className={`app-shell app-shell-${mode}`}>
+          <Sider className="sidebar" width={248} collapsed={collapsed} collapsedWidth={80} trigger={null}>
+            <div className="brand-block">
+              <span className="brand-mark">
+                <FundProjectionScreenOutlined />
+              </span>
+              <div className="brand-copy">
+                <strong>Genesis</strong>
+                <small>AI 量化策略平台</small>
+              </div>
+            </div>
+            <Menu
+              className="side-menu"
+              items={navItems}
+              mode="inline"
+              selectedKeys={[selectedKey]}
+            />
+          </Sider>
 
-      <Layout className="workspace">
-        <Header className="topbar">
-          <div className="topbar-left">
-            <Button
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={() => setCollapsed((current) => !current)}
-              shape="circle"
-              title={collapsed ? "展开侧边栏" : "收起侧边栏"}
-              type="text"
-            />
-          </div>
-          <Space size={18} className="topbar-meta">
-            <Switch
-              checked={isDark}
-              checkedChildren={<MoonOutlined />}
-              unCheckedChildren={<SunOutlined />}
-              onChange={toggleMode}
-              title="切换明暗模式"
-            />
-            <Button icon={<BellOutlined />} shape="circle" type="text" />
-            <Avatar className="avatar">研</Avatar>
-          </Space>
-        </Header>
-        <Content className="content-area">{children}</Content>
-      </Layout>
-    </Layout>
+          <Layout className="workspace">
+            <Header className="topbar">
+              <div className="topbar-left">
+                <Button
+                  icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                  onClick={() => setCollapsed((current) => !current)}
+                  shape="circle"
+                  title={collapsed ? "展开侧边栏" : "收起侧边栏"}
+                  type="text"
+                />
+              </div>
+              <Space size={18} className="topbar-meta">
+                <Switch
+                  checked={isDark}
+                  checkedChildren={<MoonOutlined />}
+                  unCheckedChildren={<SunOutlined />}
+                  onChange={toggleMode}
+                  title="切换明暗模式"
+                />
+                <Button icon={<BellOutlined />} shape="circle" type="text" />
+                <span className="topbar-user-name">{user.username}</span>
+                <Avatar className="avatar">{getInitial(user)}</Avatar>
+                <Button
+                  onClick={() => {
+                    clearAccessToken();
+                    router.replace("/login");
+                  }}
+                  type="text"
+                >
+                  退出
+                </Button>
+              </Space>
+            </Header>
+            <Content className="content-area">{children}</Content>
+          </Layout>
+        </Layout>
+      )}
+    </AuthGuard>
   );
+}
+
+function getInitial(user: AuthUser) {
+  return user.username.trim().slice(0, 1).toUpperCase() || "U";
 }

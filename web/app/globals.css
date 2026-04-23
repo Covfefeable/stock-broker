@@ -248,7 +248,14 @@ select {
 }
 
 .topbar-meta {
+  align-items: center;
   color: var(--text-muted);
+}
+
+.topbar-user-name {
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .avatar {
@@ -262,6 +269,13 @@ select {
     var(--app-bg);
   min-height: calc(100vh - 60px);
   padding: 24px;
+}
+
+.auth-guard-loading {
+  align-items: center;
+  display: flex;
+  height: calc(100vh - 60px);
+  justify-content: center;
 }
 
 .dashboard-heading {
@@ -723,5 +737,147 @@ select {
   .app-splash-leaving {
     animation: none;
     transition: none;
+  }
+}
+
+.login-page {
+  align-items: stretch;
+  background:
+    radial-gradient(circle at 72% 18%, rgba(99, 102, 241, 0.18), transparent 28%),
+    #0f172a;
+  color: var(--dark-text);
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(420px, 0.85fr);
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.login-hero {
+  border: 1px solid rgba(39, 52, 77, 0.8);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: 32px;
+  position: relative;
+}
+
+.login-hero::before {
+  background-image:
+    radial-gradient(circle, rgba(141, 153, 174, 0.18) 1px, transparent 1px),
+    linear-gradient(rgba(99, 102, 241, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 102, 241, 0.07) 1px, transparent 1px);
+  background-size: 18px 18px, 72px 72px, 72px 72px;
+  content: "";
+  inset: 0;
+  opacity: 0.52;
+  position: absolute;
+}
+
+.login-brand,
+.login-copy,
+.login-metrics {
+  position: relative;
+  z-index: 1;
+}
+
+.login-brand {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.login-brand-mark {
+  background: var(--primary);
+  border-radius: 8px;
+  color: #fff;
+  display: grid;
+  font-size: 20px;
+  height: 44px;
+  place-items: center;
+  width: 44px;
+}
+
+.login-brand strong,
+.login-copy h1,
+.login-panel h2 {
+  color: #fff;
+  display: block;
+  font-family: "General Sans", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+.login-brand .ant-typography,
+.login-copy .ant-typography,
+.login-panel .ant-typography {
+  color: var(--dark-muted);
+}
+
+.login-copy {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  max-width: 720px;
+}
+
+.login-copy h1 {
+  font-size: 64px;
+  line-height: 1;
+  margin: 10px 0 20px;
+}
+
+.login-copy > .ant-typography:last-child {
+  display: block;
+  font-size: 16px;
+  line-height: 1.8;
+  max-width: 620px;
+}
+
+.login-panel {
+  align-self: center;
+  background: rgba(23, 32, 51, 0.94);
+  border: 1px solid var(--dark-border);
+  border-radius: 12px;
+  justify-self: center;
+  max-width: 460px;
+  padding: 32px;
+  width: 100%;
+}
+
+.login-panel-head {
+  margin-bottom: 28px;
+}
+
+.login-panel h2 {
+  font-size: 32px;
+  margin: 0 0 8px;
+}
+
+.login-panel .ant-form-item-label > label {
+  color: var(--dark-text);
+}
+
+.login-form-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin: -4px 0 20px;
+}
+
+.login-footer-link {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+@media (max-width: 980px) {
+  .login-page {
+    grid-template-columns: 1fr;
+  }
+
+  .login-hero {
+    min-height: 520px;
   }
 }

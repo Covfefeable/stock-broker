@@ -9,6 +9,7 @@ dependencies = [
   "flask-migrate>=4.1.0",
   "flask-sqlalchemy>=3.1.1",
   "gunicorn>=23.0.0",
+  "pyjwt>=2.10.1",
   "psycopg[binary]>=3.2.0",
   "redis>=5.2.0",
   "gevent>=24.11.1",

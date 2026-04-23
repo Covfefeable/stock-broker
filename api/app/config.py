@@ -15,6 +15,8 @@ class BaseConfig:
         for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
         if origin.strip()
     ]
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
+    JWT_ACCESS_TOKEN_EXPIRES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", "604800"))
     JSON_SORT_KEYS = False
 
 
@@ -31,4 +33,3 @@ def get_config(config_name: str | None = None) -> type[BaseConfig]:
     if name == "production":
         return ProductionConfig
     return DevelopmentConfig
-
