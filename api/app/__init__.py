@@ -2,7 +2,7 @@ from flask import Flask
 
 from app.config import get_config
 from app.extensions import cors, db, migrate
-from app.models import Country, EventLog, Exchange, Setting, Stock, User
+from app.models import Country, EventLog, Exchange, IndexAsset, Setting, Stock, User
 from app.routes import register_routes
 
 

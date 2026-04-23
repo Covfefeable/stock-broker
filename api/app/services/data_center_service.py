@@ -11,6 +11,7 @@ from app.extensions import db
 from app.models.country import Country
 from app.models.event_log import EventLog
 from app.models.exchange import Exchange
+from app.models.index_asset import IndexAsset
 from app.models.stock import Stock
 from app.models.user import User
 from app.services.settings_service import get_or_create_settings
@@ -19,10 +20,13 @@ CANGHAI_COUNTRY_URL = "https://www.tsanghi.com/api/fin/index/country"
 CANGHAI_EXCHANGE_URL = "https://www.tsanghi.com/api/fin/stock/exchange"
 def canghai_stock_url(exchange_code: str) -> str:
     return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/list"
+def canghai_index_url(country_code: str) -> str:
+    return f"https://www.tsanghi.com/api/fin/index/{country_code}/list"
 
 SYNC_ITEM_COUNTRY_LIST = "country_list"
 SYNC_ITEM_EXCHANGE_LIST = "exchange_list"
 SYNC_ITEM_STOCK_LIST = "stock_list"
+SYNC_ITEM_INDEX_LIST = "index_list"
 
 
 class DataSyncError(ValueError):
@@ -36,6 +40,8 @@ def sync_item_label(sync_item: str) -> str:
         return "交易所清单"
     if sync_item == SYNC_ITEM_STOCK_LIST:
         return "股票清单"
+    if sync_item == SYNC_ITEM_INDEX_LIST:
+        return "指数清单"
     return sync_item
 
 
@@ -77,6 +83,25 @@ def sync_stock_list(user: User, exchange_code: str) -> dict:
         base_url=canghai_stock_url(normalized_exchange_code),
         success_message=f"股票清单同步成功（{normalized_exchange_code}）",
         upsert_func=lambda rows: upsert_stocks(rows, normalized_exchange_code),
+    )
+
+
+def sync_index_list(user: User, country_code: str) -> dict:
+    normalized_country_code = country_code.strip().upper()
+    if not normalized_country_code:
+        raise DataSyncError("指数清单同步需要先选择国家/地区。")
+
+    country = Country.query.filter_by(country_code=normalized_country_code).first()
+    if not country:
+        raise DataSyncError(f"未找到国家/地区 {normalized_country_code}，请先完成国家/地区清单同步。")
+
+    return sync_with_token_guard(
+        user=user,
+        sync_item=SYNC_ITEM_INDEX_LIST,
+        event_name="sync_index_list",
+        base_url=canghai_index_url(normalized_country_code),
+        success_message=f"指数清单同步成功（{normalized_country_code}）",
+        upsert_func=lambda rows: upsert_index_assets(rows, normalized_country_code),
     )
 
 
@@ -231,6 +256,21 @@ def list_exchange_options(limit: int = 500) -> list[dict]:
     ]
 
 
+def list_country_options(limit: int = 500) -> list[dict]:
+    rows = (
+        Country.query.order_by(Country.country_code.asc(), Country.id.asc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "label": f"{row.country_code} - {row.country_name}",
+            "value": row.country_code,
+        }
+        for row in rows
+    ]
+
+
 def get_user_token(user: User) -> str:
     settings = get_or_create_settings(user)
     token = (settings.canghai_api_key or "").strip()
@@ -337,6 +377,29 @@ def upsert_stocks(rows: list[dict], exchange_code: str) -> int:
         record.country_id = country.id if country else None
         record.country_code = country_code
         record.currency_code = normalize_optional_text(item.get("currency_code"))
+        affected += 1
+
+    db.session.commit()
+    return affected
+
+
+def upsert_index_assets(rows: list[dict], country_code: str) -> int:
+    affected = 0
+    country = Country.query.filter_by(country_code=country_code).first()
+
+    for item in rows:
+        ticker = str(item.get("ticker") or "").strip()
+        name = str(item.get("name") or "").strip()
+        if not ticker or not name:
+            continue
+
+        record = IndexAsset.query.filter_by(country_code=country_code, ticker=ticker).first()
+        if not record:
+            record = IndexAsset(country_code=country_code, ticker=ticker)
+            db.session.add(record)
+
+        record.name = name
+        record.country_id = country.id if country else None
         affected += 1
 
     db.session.commit()

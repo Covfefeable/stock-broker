@@ -44,6 +44,11 @@ type ExchangeOption = {
   value: string;
 };
 
+type CountryOption = {
+  label: string;
+  value: string;
+};
+
 type EventLogItem = {
   id: number;
   time: string | null;
@@ -107,6 +112,10 @@ const syncItemOptions: SyncItemOption[] = [
     label: "股票清单",
     value: "stock_list",
   },
+  {
+    label: "指数清单",
+    value: "index_list",
+  },
 ];
 
 const overviewCards = [
@@ -146,6 +155,7 @@ const syncTasks = [
   ["国家/地区清单", "可手动同步", "沧海数据", "基础字典表", "success"],
   ["交易所清单", "可手动同步", "沧海数据", "联动国家表", "success"],
   ["股票清单", "按交易所同步", "沧海数据", "联动交易所与国家表", "success"],
+  ["指数清单", "按国家同步", "沧海数据", "联动国家表", "success"],
   ["A 股日线行情", "已完成", "2026-04-22 18:18", "5,214 只股票", "success"],
   ["港股日线行情", "已完成", "2026-04-22 18:46", "2,812 只股票", "success"],
   ["美股日线行情", "已完成", "2026-04-22 21:12", "4,820 只股票", "success"],
@@ -214,9 +224,11 @@ export default function DataCenterPage() {
   const [syncing, setSyncing] = useState(false);
   const [logLoading, setLogLoading] = useState(true);
   const [exchangeOptions, setExchangeOptions] = useState<ExchangeOption[]>([]);
+  const [countryOptions, setCountryOptions] = useState<CountryOption[]>([]);
   const [exchangeLoading, setExchangeLoading] = useState(false);
+  const [countryLoading, setCountryLoading] = useState(false);
   const [eventLogs, setEventLogs] = useState<LogRow[]>([]);
-  const [form] = Form.useForm<{ syncItem: string; exchangeCode?: string }>();
+  const [form] = Form.useForm<{ syncItem: string; exchangeCode?: string; countryCode?: string }>();
 
   const loadLogs = useCallback(async () => {
     setLogLoading(true);
@@ -250,6 +262,23 @@ export default function DataCenterPage() {
     };
 
     void loadExchangeOptions();
+  }, [messageApi]);
+
+  useEffect(() => {
+    const loadCountryOptions = async () => {
+      setCountryLoading(true);
+      try {
+        const token = getAccessToken();
+        const response = await apiGet<{ items: CountryOption[] }>("/data-center/country-options", token);
+        setCountryOptions(response.items);
+      } catch (error) {
+        messageApi.error(error instanceof Error ? error.message : "加载国家/地区选项失败");
+      } finally {
+        setCountryLoading(false);
+      }
+    };
+
+    void loadCountryOptions();
   }, [messageApi]);
 
   const logColumns: ColumnsType<LogRow> = useMemo(
@@ -286,7 +315,11 @@ export default function DataCenterPage() {
         result: { syncItemLabel: string; recordsAffected: number };
       }>(
         "/data-center/sync",
-        { syncItem: values.syncItem, exchangeCode: values.exchangeCode },
+        {
+          syncItem: values.syncItem,
+          exchangeCode: values.exchangeCode,
+          countryCode: values.countryCode,
+        },
         token,
       );
       messageApi.success(
@@ -348,31 +381,35 @@ export default function DataCenterPage() {
             extra={<Button type="link" onClick={() => void loadLogs()}>刷新日志</Button>}
           >
             <div className="sync-timeline">
-              {syncTasks.map(([name, status, time, amount, badgeStatus]) => (
-                <div className="sync-task" key={name}>
-                  <Badge status={badgeStatus as "success" | "warning"} />
+              {logLoading ? (
+                <div className="sync-task">
+                  <Badge status="processing" />
                   <div>
-                    <strong>{name}</strong>
-                    <Text>
-                      {status} · {time} · {amount}
-                    </Text>
+                    <strong>正在加载日志</strong>
+                    <Text>请稍候...</Text>
                   </div>
                 </div>
-              ))}
-            </div>
-            <div className="calendar-audit-bar">
-              <div>
-                <CheckCircleOutlined className="positive-text" />
-                <span>多市场官方交易日历已验证</span>
-              </div>
-              <div>
-                <SafetyCertificateOutlined className="positive-text" />
-                <span>严格数据模式已开启</span>
-              </div>
-              <div>
-                <ClockCircleOutlined />
-                <span>下次自动同步：2026-04-25 18:00</span>
-              </div>
+              ) : eventLogs.length > 0 ? (
+                eventLogs.map((log) => (
+                  <div className="sync-task" key={log.key}>
+                    <Badge status={log.status === "成功" ? "success" : log.status === "运行中" ? "processing" : "error"} />
+                    <div>
+                      <strong>{log.task}</strong>
+                      <Text>
+                        {log.time} · {log.dataset} · {log.message}
+                      </Text>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="sync-task">
+                  <Badge status="default" />
+                  <div>
+                    <strong>暂无同步日志</strong>
+                    <Text>完成首次同步后，这里会显示最新执行记录。</Text>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
         </Col>
@@ -452,18 +489,6 @@ export default function DataCenterPage() {
         />
       </Card>
 
-      <Card className="dashboard-card data-log-card" title="最近同步日志">
-        <Table
-          columns={logColumns}
-          dataSource={eventLogs}
-          loading={logLoading}
-          locale={{ emptyText: "暂无同步日志" }}
-          pagination={false}
-          size="middle"
-          scroll={{ x: 980 }}
-        />
-      </Card>
-
       <Modal
         title="同步数据"
         open={modalOpen}
@@ -493,6 +518,9 @@ export default function DataCenterPage() {
                 if (value !== "stock_list") {
                   form.setFieldValue("exchangeCode", undefined);
                 }
+                if (value !== "index_list") {
+                  form.setFieldValue("countryCode", undefined);
+                }
               }}
             />
           </Form.Item>
@@ -518,6 +546,28 @@ export default function DataCenterPage() {
               ) : null
             }
           </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, next) => prev.syncItem !== next.syncItem}
+          >
+            {({ getFieldValue }) =>
+              getFieldValue("syncItem") === "index_list" ? (
+                <Form.Item
+                  label="国家/地区"
+                  name="countryCode"
+                  rules={[{ required: true, message: "请选择国家/地区" }]}
+                >
+                  <Select
+                    showSearch
+                    loading={countryLoading}
+                    options={countryOptions}
+                    placeholder="请选择国家/地区"
+                    optionFilterProp="label"
+                  />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
         </Form>
       </Modal>
     </AppShell>
@@ -535,6 +585,8 @@ function mapEventLogRow(item: EventLogItem): LogRow {
           ? "交易所同步"
           : item.eventName === "sync_stock_list"
             ? "股票清单同步"
+            : item.eventName === "sync_index_list"
+              ? "指数清单同步"
           : item.eventName,
     dataset:
       item.target === "country_list"
@@ -543,6 +595,8 @@ function mapEventLogRow(item: EventLogItem): LogRow {
           ? "交易所清单"
           : item.target === "stock_list"
             ? "股票清单"
+            : item.target === "index_list"
+              ? "指数清单"
           : item.target || "-",
     trigger: "手动",
     cost: item.durationMs ? `${item.durationMs} ms` : "-",
