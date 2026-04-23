@@ -16,6 +16,7 @@ from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
 from app.models.user import User
 from app.services.settings_service import get_or_create_settings
+from app.services.task_center_service import publish_task_event
 
 CANGHAI_COUNTRY_URL = "https://www.tsanghi.com/api/fin/index/country"
 CANGHAI_EXCHANGE_URL = "https://www.tsanghi.com/api/fin/stock/exchange"
@@ -875,6 +876,7 @@ def log_event(
     )
     db.session.add(log)
     db.session.commit()
+    publish_task_event(log)
     return log
 
 

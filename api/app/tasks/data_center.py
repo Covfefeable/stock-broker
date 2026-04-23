@@ -4,6 +4,12 @@ from app.extensions import celery_app, db
 from app.models.user import User
 from app.services.data_center_service import (
     DataSyncError,
+    SYNC_ITEM_COUNTRY_LIST,
+    SYNC_ITEM_EXCHANGE_LIST,
+    SYNC_ITEM_INDEX_LIST,
+    SYNC_ITEM_STOCK_DAILY_HISTORY,
+    SYNC_ITEM_STOCK_LIST,
+    log_event,
     sync_country_list,
     sync_exchange_list,
     sync_index_list,
@@ -34,6 +40,7 @@ def sync_data_center_item(
 ) -> dict:
     user = _get_user(user_id)
     task_id = current_task.request.id if current_task else None
+    _log_task_running(user, task_id, sync_item)
 
     if sync_item == "country_list":
         return sync_country_list(user, task_id=task_id)
@@ -60,4 +67,43 @@ def sync_data_center_item(
 def batch_sync_stock_daily_history_task(*, user_id: int) -> dict:
     user = _get_user(user_id)
     task_id = current_task.request.id if current_task else None
+    log_event(
+        user=user,
+        task_id=task_id,
+        event_type="data_sync_batch",
+        event_name="batch_sync_stock_daily_history",
+        source="worker",
+        target=SYNC_ITEM_STOCK_DAILY_HISTORY,
+        status="running",
+        level="info",
+        message="批量同步股票日线任务开始执行。",
+    )
     return batch_sync_stock_daily_history(user, task_id=task_id)
+
+
+def _log_task_running(user: User, task_id: str | None, sync_item: str) -> None:
+    event_name_map = {
+        SYNC_ITEM_COUNTRY_LIST: "sync_country_list",
+        SYNC_ITEM_EXCHANGE_LIST: "sync_exchange_list",
+        SYNC_ITEM_STOCK_LIST: "sync_stock_list",
+        SYNC_ITEM_INDEX_LIST: "sync_index_list",
+        SYNC_ITEM_STOCK_DAILY_HISTORY: "sync_stock_daily_history",
+    }
+    label_map = {
+        SYNC_ITEM_COUNTRY_LIST: "国家/地区清单",
+        SYNC_ITEM_EXCHANGE_LIST: "交易所清单",
+        SYNC_ITEM_STOCK_LIST: "股票清单",
+        SYNC_ITEM_INDEX_LIST: "指数清单",
+        SYNC_ITEM_STOCK_DAILY_HISTORY: "股票历史日线",
+    }
+    log_event(
+        user=user,
+        task_id=task_id,
+        event_type="data_sync",
+        event_name=event_name_map.get(sync_item, sync_item),
+        source="worker",
+        target=sync_item,
+        status="running",
+        level="info",
+        message=f"{label_map.get(sync_item, sync_item)}任务开始执行。",
+    )
