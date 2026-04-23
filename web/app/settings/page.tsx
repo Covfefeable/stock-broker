@@ -10,34 +10,24 @@ import {
 import {
   Button,
   Divider,
-  Form,
   Input,
   Menu,
   Space,
+  Spin,
   Switch,
   Table,
   Typography,
+  message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { getAccessToken } from "@/lib/auth";
+import { apiGet, apiRequest } from "@/lib/api";
 
 const { Text, Title } = Typography;
 
-const sectionNav = [
-  { key: "data-sources", icon: <DatabaseOutlined />, label: "数据源配置" },
-  { key: "ai", icon: <RobotOutlined />, label: "AI 配置" },
-  { key: "notice", icon: <BellOutlined />, label: "通知" },
-  { key: "account", icon: <LockOutlined />, label: "账号偏好" },
-];
-
-const presetDataSources = [
-  { key: "tushare", name: "Tushare", markets: "A 股行情 / 基础信息" },
-  { key: "akshare", name: "AkShare", markets: "A 股 / 港股 / 指数补充" },
-  { key: "polygon", name: "Polygon", markets: "美股行情" },
-  { key: "hkex", name: "HKEX 文件源", markets: "港股基础数据" },
-  { key: "financial", name: "财务数据源", markets: "全球财务因子" },
-];
+type SectionKey = "data-sources" | "ai" | "notice" | "account";
 
 type AiModelRow = {
   key: string;
@@ -47,52 +37,88 @@ type AiModelRow = {
   apiKey: string;
 };
 
-const initialAiModelRows: AiModelRow[] = [
-  {
-    key: "openai",
-    name: "OpenAI",
-    model: "gpt-4.1",
-    baseUrl: "https://api.openai.com/v1",
-    apiKey: "",
-  },
-];
+type SettingsPayload = {
+  dataSource: {
+    canghaiApiKey: string;
+  };
+  ai: {
+    models: Array<{
+      name: string;
+      model: string;
+      baseUrl: string;
+      apiKey: string;
+    }>;
+  };
+  notifications: {
+    dataSync: boolean;
+    agentGoal: boolean;
+    backtest: boolean;
+  };
+  account: {
+    keepSignedIn: boolean;
+  };
+};
 
-export default function SettingsPage() {
-  const [aiModels, setAiModels] = useState<AiModelRow[]>(initialAiModelRows);
-  const [notificationSettings, setNotificationSettings] = useState({
+type SettingsState = Omit<SettingsPayload, "ai"> & {
+  ai: {
+    models: AiModelRow[];
+  };
+};
+
+const defaultSettings: SettingsState = {
+  dataSource: {
+    canghaiApiKey: "",
+  },
+  ai: {
+    models: [
+      {
+        key: "model-default-0",
+        name: "OpenAI",
+        model: "gpt-4.1",
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: "",
+      },
+    ],
+  },
+  notifications: {
     dataSync: false,
     agentGoal: false,
     backtest: false,
-  });
+  },
+  account: {
+    keepSignedIn: true,
+  },
+};
 
-  const updateNotificationSetting = async (
-    key: keyof typeof notificationSettings,
-    checked: boolean,
-  ) => {
-    if (!checked) {
-      setNotificationSettings((current) => ({ ...current, [key]: false }));
-      return;
-    }
+const sectionNav = [
+  { key: "data-sources", icon: <DatabaseOutlined />, label: "数据源配置" },
+  { key: "ai", icon: <RobotOutlined />, label: "AI 配置" },
+  { key: "notice", icon: <BellOutlined />, label: "通知" },
+  { key: "account", icon: <LockOutlined />, label: "账号偏好" },
+] satisfies Array<{ key: SectionKey; icon: React.ReactNode; label: string }>;
 
-    if (!("Notification" in window)) {
-      setNotificationSettings((current) => ({ ...current, [key]: false }));
-      return;
-    }
+export default function SettingsPage() {
+  const [messageApi, contextHolder] = message.useMessage();
+  const [selectedSection, setSelectedSection] = useState<SectionKey>("data-sources");
+  const [settings, setSettings] = useState<SettingsState>(defaultSettings);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-    let permission = window.Notification.permission;
-    if (permission === "default") {
-      permission = await window.Notification.requestPermission();
-    }
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const token = getAccessToken();
+      const response = await apiGet<{ settings: SettingsPayload }>("/settings/me", token);
+        setSettings(mergeSettings(response.settings));
+      } catch (error) {
+        messageApi.error(error instanceof Error ? error.message : "加载系统设置失败");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    setNotificationSettings((current) => ({
-      ...current,
-      [key]: permission === "granted",
-    }));
-  };
-
-  const updateAiModel = (key: string, field: keyof Omit<AiModelRow, "key">, value: string) => {
-    setAiModels((rows) => rows.map((row) => (row.key === key ? { ...row, [field]: value } : row)));
-  };
+    void loadSettings();
+  }, [messageApi]);
 
   const aiModelColumns = useMemo<ColumnsType<AiModelRow>>(
     () => [
@@ -136,7 +162,7 @@ export default function SettingsPage() {
           <Input.Password
             value={value}
             onChange={(event) => updateAiModel(record.key, "apiKey", event.target.value)}
-            placeholder="sk-..."
+            placeholder="请输入 API Key"
           />
         ),
       },
@@ -147,27 +173,114 @@ export default function SettingsPage() {
           <Button
             type="link"
             danger
-            disabled={aiModels.length <= 1}
-            onClick={() => setAiModels((rows) => rows.filter((row) => row.key !== record.key))}
+            disabled={settings.ai.models.length <= 1}
+            onClick={() =>
+              setSettings((current) => ({
+                ...current,
+                ai: {
+                  models: current.ai.models.filter((row) => row.key !== record.key),
+                },
+              }))
+            }
           >
             删除
           </Button>
         ),
       },
     ],
-    [aiModels.length],
+    [settings.ai.models.length],
   );
+
+  const updateAiModel = (key: string, field: keyof Omit<AiModelRow, "key">, value: string) => {
+    setSettings((current) => ({
+      ...current,
+      ai: {
+        models: current.ai.models.map((row) => (row.key === key ? { ...row, [field]: value } : row)),
+      },
+    }));
+  };
+
+  const updateNotificationSetting = async (
+    key: keyof SettingsPayload["notifications"],
+    checked: boolean,
+  ) => {
+    if (!checked) {
+      setSettings((current) => ({
+        ...current,
+        notifications: {
+          ...current.notifications,
+          [key]: false,
+        },
+      }));
+      return;
+    }
+
+    if (!("Notification" in window)) {
+      messageApi.warning("当前浏览器不支持桌面通知");
+      return;
+    }
+
+    let permission = window.Notification.permission;
+    if (permission === "default") {
+      permission = await window.Notification.requestPermission();
+    }
+
+    if (permission !== "granted") {
+      messageApi.warning("浏览器通知权限未开启");
+      return;
+    }
+
+    setSettings((current) => ({
+      ...current,
+      notifications: {
+        ...current.notifications,
+        [key]: true,
+      },
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const token = getAccessToken();
+      const payload = serializeSettings(settings);
+      const response = await apiRequest<{ settings: SettingsPayload }>("/settings/me", {
+        method: "PUT",
+        body: payload,
+        token,
+      });
+      setSettings(mergeSettings(response.settings));
+      messageApi.success("系统设置已保存");
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "保存系统设置失败");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <AppShell>
+      {contextHolder}
       <section className="dashboard-heading">
         <div>
           <Title level={1}>系统设置</Title>
-          <Text className="page-description">配置预设数据源密钥、通知和账号偏好。</Text>
+          <Text className="page-description">配置沧海数据密钥、AI 模型、通知和账号偏好。</Text>
         </div>
         <Space>
-          <Button>恢复默认</Button>
-          <Button type="primary" icon={<SaveOutlined />}>保存设置</Button>
+          <Button
+            onClick={() => setSettings(defaultSettings)}
+            disabled={loading || saving}
+          >
+            恢复默认
+          </Button>
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            loading={saving}
+            onClick={() => void handleSave()}
+          >
+            保存设置
+          </Button>
         </Space>
       </section>
 
@@ -175,9 +288,10 @@ export default function SettingsPage() {
         <aside className="settings-nav">
           <Menu
             mode="inline"
-            selectedKeys={["data-sources"]}
+            selectedKeys={[selectedSection]}
             items={sectionNav}
             onClick={({ key }) => {
+              setSelectedSection(key as SectionKey);
               document.getElementById(`settings-${key}`)?.scrollIntoView({
                 behavior: "smooth",
                 block: "start",
@@ -187,95 +301,128 @@ export default function SettingsPage() {
         </aside>
 
         <main className="settings-content">
-          <SettingsSection
-            description="配置系统内置数据源的访问密钥。数据源列表由平台预设，不允许在此自定义新增。"
-            icon={<DatabaseOutlined />}
-            id="data-sources"
-            title="数据源配置"
-          >
-            <Form layout="vertical">
-              <div className="data-source-config-list">
-                {presetDataSources.map((source) => (
-                  <div className="data-source-config-item" key={source.key}>
+          {loading ? (
+            <div className="settings-loading">
+              <Spin size="large" />
+            </div>
+          ) : (
+            <>
+              <SettingsSection
+                description="当前仅支持预设的沧海数据接入，请在此配置对应的访问密钥。"
+                icon={<DatabaseOutlined />}
+                id="data-sources"
+                title="数据源配置"
+              >
+                <div className="data-source-config-list">
+                  <div className="data-source-config-item">
                     <div>
-                      <strong>{source.name}</strong>
-                      <Text>{source.markets}</Text>
+                      <strong>沧海数据</strong>
+                      <Text>当前仅支持该预设数据源接入</Text>
                     </div>
-                    <Form.Item name={[source.key, "apiKey"]} label="API Key">
-                      <Input.Password placeholder="请输入 API Key" />
-                    </Form.Item>
+                    <div>
+                      <label className="settings-field-label">API Key</label>
+                      <Input.Password
+                        value={settings.dataSource.canghaiApiKey}
+                        onChange={(event) =>
+                          setSettings((current) => ({
+                            ...current,
+                            dataSource: {
+                              canghaiApiKey: event.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="请输入 API Key"
+                      />
+                    </div>
                   </div>
-                ))}
-              </div>
-            </Form>
-          </SettingsSection>
+                </div>
+              </SettingsSection>
 
-          <SettingsSection
-            description="配置一个或多个 OpenAI 兼容模型，用于策略生成、回测结果分析和 Agent 自动迭代。"
-            icon={<RobotOutlined />}
-            id="ai"
-            title="AI 配置"
-          >
-            <Table
-              columns={aiModelColumns}
-              dataSource={aiModels}
-              pagination={false}
-              rowKey="key"
-              scroll={{ x: 980 }}
-            />
-            <Button
-              className="settings-table-action"
-              onClick={() =>
-                setAiModels((rows) => [
-                  ...rows,
-                  {
-                    key: `model-${Date.now()}`,
-                    name: "",
-                    model: "",
-                    baseUrl: "",
-                    apiKey: "",
-                  },
-                ])
-              }
-            >
-              添加模型
-            </Button>
-          </SettingsSection>
+              <SettingsSection
+                description="配置一个或多个 OpenAI 兼容模型，用于策略生成、回测结果分析和 Agent 自动迭代。"
+                icon={<RobotOutlined />}
+                id="ai"
+                title="AI 配置"
+              >
+                <Table
+                  columns={aiModelColumns}
+                  dataSource={settings.ai.models}
+                  pagination={false}
+                  rowKey="key"
+                  scroll={{ x: 980 }}
+                />
+                <Button
+                  className="settings-table-action"
+                  onClick={() =>
+                    setSettings((current) => ({
+                      ...current,
+                      ai: {
+                        models: [
+                          ...current.ai.models,
+                          {
+                            key: `model-${Date.now()}`,
+                            name: "",
+                            model: "",
+                            baseUrl: "",
+                            apiKey: "",
+                          },
+                        ],
+                      },
+                    }))
+                  }
+                >
+                  添加模型
+                </Button>
+              </SettingsSection>
 
-          <SettingsSection
-            description="以下事件会通过浏览器桌面通知推送。"
-            icon={<BellOutlined />}
-            id="notice"
-            title="通知设置"
-          >
-            <SettingSwitch
-              checked={notificationSettings.dataSync}
-              description="同步失败、部分成功或质量问题升级时，通过浏览器桌面通知提醒。"
-              onChange={(checked) => updateNotificationSetting("dataSync", checked)}
-              title="数据同步异常"
-            />
-            <SettingSwitch
-              checked={notificationSettings.agentGoal}
-              description="找到满足目标的策略时，通过浏览器桌面通知提醒。"
-              onChange={(checked) => updateNotificationSetting("agentGoal", checked)}
-              title="Agent 达标提醒"
-            />
-            <SettingSwitch
-              checked={notificationSettings.backtest}
-              description="耗时回测完成后，通过浏览器桌面通知提醒。"
-              onChange={(checked) => updateNotificationSetting("backtest", checked)}
-              title="回测完成提醒"
-            />
-          </SettingsSection>
+              <SettingsSection
+                description="以下事件会通过浏览器桌面通知推送。"
+                icon={<BellOutlined />}
+                id="notice"
+                title="通知设置"
+              >
+                <SettingSwitch
+                  checked={settings.notifications.dataSync}
+                  description="同步失败、部分成功或质量问题升级时，通过浏览器桌面通知提醒。"
+                  onChange={(checked) => void updateNotificationSetting("dataSync", checked)}
+                  title="数据同步异常"
+                />
+                <SettingSwitch
+                  checked={settings.notifications.agentGoal}
+                  description="找到满足目标的策略时，通过浏览器桌面通知提醒。"
+                  onChange={(checked) => void updateNotificationSetting("agentGoal", checked)}
+                  title="Agent 达标提醒"
+                />
+                <SettingSwitch
+                  checked={settings.notifications.backtest}
+                  description="耗时回测完成后，通过浏览器桌面通知提醒。"
+                  onChange={(checked) => void updateNotificationSetting("backtest", checked)}
+                  title="回测完成提醒"
+                />
+              </SettingsSection>
 
-          <SettingsSection
-            description="控制当前账号的会话和显示偏好。"
-            icon={<LockOutlined />}
-            id="account"
-            title="账号偏好"
-          >
-            <SettingSwitch checked description="关闭浏览器后保持当前登录状态。" title="保持登录状态" />
-          </SettingsSection>
+              <SettingsSection
+                description="控制当前账号的会话和显示偏好。"
+                icon={<LockOutlined />}
+                id="account"
+                title="账号偏好"
+              >
+                <SettingSwitch
+                  checked={settings.account.keepSignedIn}
+                  description="关闭浏览器后保持当前登录状态。"
+                  onChange={(checked) =>
+                    setSettings((current) => ({
+                      ...current,
+                      account: {
+                        keepSignedIn: checked,
+                      },
+                    }))
+                  }
+                  title="保持登录状态"
+                />
+              </SettingsSection>
+            </>
+          )}
         </main>
       </div>
     </AppShell>
@@ -316,9 +463,9 @@ function SettingSwitch({
   onChange,
   title,
 }: {
-  checked?: boolean;
+  checked: boolean;
   description: string;
-  onChange?: (checked: boolean) => void;
+  onChange: (checked: boolean) => void;
   title: string;
 }) {
   return (
@@ -330,4 +477,54 @@ function SettingSwitch({
       <Switch checked={checked} onChange={onChange} />
     </div>
   );
+}
+
+function mergeSettings(payload?: Partial<SettingsPayload>): SettingsState {
+  const models = payload?.ai?.models?.length
+    ? payload.ai.models.map((row, index) => ({
+        key: `model-${index}-${row.name || row.model || "item"}`,
+        name: row.name ?? "",
+        model: row.model ?? "",
+        baseUrl: row.baseUrl ?? "",
+        apiKey: row.apiKey ?? "",
+      }))
+    : defaultSettings.ai.models.map((row, index) => ({
+        ...row,
+        key: row.key || `model-default-${index}`,
+      }));
+
+  return {
+    dataSource: {
+      canghaiApiKey: payload?.dataSource?.canghaiApiKey ?? defaultSettings.dataSource.canghaiApiKey,
+    },
+    ai: {
+      models,
+    },
+    notifications: {
+      dataSync: payload?.notifications?.dataSync ?? defaultSettings.notifications.dataSync,
+      agentGoal: payload?.notifications?.agentGoal ?? defaultSettings.notifications.agentGoal,
+      backtest: payload?.notifications?.backtest ?? defaultSettings.notifications.backtest,
+    },
+    account: {
+      keepSignedIn: payload?.account?.keepSignedIn ?? defaultSettings.account.keepSignedIn,
+    },
+  };
+}
+
+function serializeSettings(settings: SettingsPayload) {
+  return {
+    dataSource: {
+      canghaiApiKey: settings.dataSource.canghaiApiKey,
+    },
+    ai: {
+      models: settings.ai.models.map(({ name, model, baseUrl, apiKey }) => ({
+        name,
+        model,
+        baseUrl,
+        apiKey,
+      })),
+    },
+    notifications: settings.notifications,
+    account: settings.account,
+  };
 }

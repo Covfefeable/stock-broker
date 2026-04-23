@@ -24,6 +24,13 @@ class User(db.Model):
     )
     last_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    settings = db.relationship(
+        "Setting",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -33,4 +40,3 @@ class User(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
         }
-

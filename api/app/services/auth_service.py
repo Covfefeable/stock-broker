@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from app.extensions import db
+from app.models.setting import Setting
 from app.models.user import User
 from app.utils.jwt import create_access_token
 from app.utils.security import hash_password, is_valid_email, verify_password
@@ -29,6 +30,8 @@ def register_user(email: str, username: str, password: str) -> tuple[User, str]:
         password_hash=hash_password(password),
     )
     db.session.add(user)
+    db.session.flush()
+    db.session.add(Setting(user=user))
     db.session.commit()
 
     token = create_access_token(user.id, user.email)
@@ -49,4 +52,3 @@ def authenticate_user(email: str, password: str) -> tuple[User, str]:
 
     token = create_access_token(user.id, user.email)
     return user, token
-

@@ -613,6 +613,13 @@ select {
   padding: 24px 28px 6px;
 }
 
+.settings-loading {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 320px;
+}
+
 .settings-section-head {
   display: grid;
   gap: 8px;
@@ -699,6 +706,14 @@ select {
 
 .data-source-config-item .ant-typography {
   color: var(--text-muted);
+}
+
+.settings-field-label {
+  color: var(--text-main);
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
 }
 
 .data-source-config-item .ant-form-item {
