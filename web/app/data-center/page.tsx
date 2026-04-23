@@ -1,11 +1,9 @@
 "use client";
 
 import {
-  ApiOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   DatabaseOutlined,
-  FileSearchOutlined,
   SafetyCertificateOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
@@ -15,7 +13,9 @@ import {
   Card,
   Col,
   DatePicker,
+  Form,
   Input,
+  Modal,
   Progress,
   Row,
   Select,
@@ -23,12 +23,36 @@ import {
   Table,
   Tag,
   Typography,
+  message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { getAccessToken } from "@/lib/auth";
+import { apiGet, apiPost } from "@/lib/api";
 
 const { RangePicker } = DatePicker;
 const { Text, Title } = Typography;
+
+type SyncItemOption = {
+  label: string;
+  value: string;
+};
+
+type EventLogItem = {
+  id: number;
+  time: string | null;
+  eventType: string;
+  eventName: string;
+  source: string | null;
+  target: string | null;
+  status: string;
+  level: string;
+  message: string;
+  httpStatus: number | null;
+  recordsAffected: number | null;
+  durationMs: number | null;
+};
 
 type IssueRow = {
   key: string;
@@ -61,8 +85,20 @@ type LogRow = {
   dataset: string;
   trigger: string;
   cost: string;
-  status: "成功" | "部分成功" | "失败" | "运行中";
+  status: "成功" | "失败" | "运行中";
+  message: string;
 };
+
+const syncItemOptions: SyncItemOption[] = [
+  {
+    label: "国家/地区清单",
+    value: "country_list",
+  },
+  {
+    label: "交易所清单",
+    value: "exchange_list",
+  },
+];
 
 const overviewCards = [
   {
@@ -81,12 +117,11 @@ const overviewCards = [
     icon: <ClockCircleOutlined />,
   },
   {
-    title: "指数数据",
-    value: "342",
-    suffix: "个",
-    description: "可用指数",
-    status: "已同步",
-    icon: <ApiOutlined />,
+    title: "国家/地区",
+    value: "待同步",
+    description: "用于市场、时区和延迟信息",
+    status: "已接入国家/地区与交易所字典同步",
+    icon: <SafetyCertificateOutlined />,
   },
   {
     title: "数据质量",
@@ -94,25 +129,20 @@ const overviewCards = [
     suffix: "%",
     description: "完整率",
     status: "发现 14 个轻微问题",
-    icon: <SafetyCertificateOutlined />,
+    icon: <CheckCircleOutlined />,
   },
 ];
 
 const syncTasks = [
+  ["国家/地区清单", "可手动同步", "沧海数据", "基础字典表", "success"],
+  ["交易所清单", "可手动同步", "沧海数据", "联动国家表", "success"],
   ["A 股日线行情", "已完成", "2026-04-22 18:18", "5,214 只股票", "success"],
   ["港股日线行情", "已完成", "2026-04-22 18:46", "2,812 只股票", "success"],
   ["美股日线行情", "已完成", "2026-04-22 21:12", "4,820 只股票", "success"],
-  ["全球指数行情", "已完成", "2026-04-22 21:20", "342 个指数", "success"],
   ["财务因子", "部分完成", "2026-04-22 21:35", "10,984 只股票", "warning"],
-];
+] as const;
 
-const dataSources = [
-  { name: "Tushare", status: "正常", calls: "今日调用 8,420" },
-  { name: "AkShare", status: "正常", calls: "今日调用 1,280" },
-  { name: "Polygon", status: "正常", calls: "今日调用 18,640" },
-  { name: "HKEX 文件源", status: "正常", calls: "今日调用 3" },
-  { name: "财务数据源", status: "警告", calls: "今日调用 2,416" },
-];
+const dataSources = [{ name: "沧海数据", status: "正常", calls: "今日调用次数由上游接口统计" }];
 
 const completeness: Array<[string, number]> = [
   ["A 股日线行情", 99.2],
@@ -138,14 +168,6 @@ const prices: PriceRow[] = [
   { key: "5", code: "MSFT", name: "Microsoft", date: "2026-04-22", open: "416.80", high: "421.50", low: "415.90", close: "420.70", volume: "19,630,000", amount: "82.6 亿 USD", change: "+0.98%", status: "正常" },
 ];
 
-const logs: LogRow[] = [
-  { key: "1", time: "2026-04-22 21:40", task: "美股公司行动同步", dataset: "复权因子", trigger: "自动", cost: "3 分 12 秒", status: "成功" },
-  { key: "2", time: "2026-04-22 21:35", task: "全球财务因子同步", dataset: "财务因子", trigger: "自动", cost: "12 分 48 秒", status: "部分成功" },
-  { key: "3", time: "2026-04-22 21:20", task: "全球指数行情同步", dataset: "指数行情", trigger: "自动", cost: "1 分 06 秒", status: "成功" },
-  { key: "4", time: "2026-04-22 18:46", task: "港股日线同步", dataset: "港股日线行情", trigger: "自动", cost: "6 分 34 秒", status: "成功" },
-  { key: "5", time: "2026-04-22 18:18", task: "A 股日线同步", dataset: "A 股日线行情", trigger: "自动", cost: "8 分 34 秒", status: "成功" },
-];
-
 const issueColumns: ColumnsType<IssueRow> = [
   { title: "问题类型", dataIndex: "issueType" },
   { title: "数据集", dataIndex: "dataset" },
@@ -158,14 +180,11 @@ const issueColumns: ColumnsType<IssueRow> = [
     ),
   },
   { title: "状态", dataIndex: "status" },
-  {
-    title: "操作",
-    render: () => <Button type="link" size="small">查看</Button>,
-  },
+  { title: "操作", render: () => <Button type="link" size="small">查看</Button> },
 ];
 
 const priceColumns: ColumnsType<PriceRow> = [
-  { title: "股票代码", dataIndex: "code", fixed: "left", width: 100 },
+  { title: "股票代码", dataIndex: "code", fixed: "left", width: 110 },
   { title: "股票名称", dataIndex: "name", fixed: "left", width: 120 },
   { title: "日期", dataIndex: "date", width: 120 },
   { title: "开盘价", dataIndex: "open" },
@@ -179,36 +198,92 @@ const priceColumns: ColumnsType<PriceRow> = [
   { title: "操作", fixed: "right", width: 100, render: () => <Button type="link" size="small">详情</Button> },
 ];
 
-const logColumns: ColumnsType<LogRow> = [
-  { title: "时间", dataIndex: "time", width: 160 },
-  { title: "任务名称", dataIndex: "task" },
-  { title: "数据集", dataIndex: "dataset" },
-  { title: "触发方式", dataIndex: "trigger" },
-  { title: "耗时", dataIndex: "cost" },
-  {
-    title: "状态",
-    dataIndex: "status",
-    render: (value: LogRow["status"]) => (
-      <Tag color={value === "成功" ? "green" : value === "部分成功" ? "orange" : value === "运行中" ? "blue" : "red"}>{value}</Tag>
-    ),
-  },
-  { title: "详情", render: () => <Button type="link" size="small">查看</Button> },
-];
-
 export default function DataCenterPage() {
+  const [messageApi, contextHolder] = message.useMessage();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [logLoading, setLogLoading] = useState(true);
+  const [eventLogs, setEventLogs] = useState<LogRow[]>([]);
+  const [form] = Form.useForm<{ syncItem: string }>();
+
+  const loadLogs = useCallback(async () => {
+    setLogLoading(true);
+    try {
+      const token = getAccessToken();
+      const response = await apiGet<{ items: EventLogItem[] }>("/data-center/event-logs", token);
+      setEventLogs(response.items.map(mapEventLogRow));
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "加载同步日志失败");
+    } finally {
+      setLogLoading(false);
+    }
+  }, [messageApi]);
+
+  useEffect(() => {
+    void loadLogs();
+  }, [loadLogs]);
+
+  const logColumns: ColumnsType<LogRow> = useMemo(
+    () => [
+      { title: "时间", dataIndex: "time", width: 180 },
+      { title: "任务名称", dataIndex: "task", width: 180 },
+      { title: "同步项", dataIndex: "dataset", width: 140 },
+      { title: "触发方式", dataIndex: "trigger", width: 100 },
+      { title: "耗时", dataIndex: "cost", width: 110 },
+      {
+        title: "状态",
+        dataIndex: "status",
+        width: 100,
+        render: (value: LogRow["status"]) => (
+          <Tag color={value === "成功" ? "green" : value === "运行中" ? "blue" : "red"}>{value}</Tag>
+        ),
+      },
+      {
+        title: "说明",
+        dataIndex: "message",
+        ellipsis: true,
+      },
+    ],
+    [],
+  );
+
+  const handleSync = async () => {
+    const values = await form.validateFields();
+    setSyncing(true);
+    try {
+      const token = getAccessToken();
+      const response = await apiPost<{
+        message: string;
+        result: { syncItemLabel: string; recordsAffected: number };
+      }>("/data-center/sync", { syncItem: values.syncItem }, token);
+      messageApi.success(
+        `${response.message}，共处理 ${response.result.recordsAffected} 条记录`,
+      );
+      setModalOpen(false);
+      form.resetFields();
+      await loadLogs();
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "同步失败");
+      await loadLogs();
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <AppShell>
+      {contextHolder}
       <section className="dashboard-heading">
         <div>
           <Title level={1}>数据中心</Title>
           <Text className="page-description">
-            管理 A 股、港股、美股等多市场行情、指数、基础信息与财务因子数据，监控同步状态、交易日历一致性和数据质量。
+            管理 A 股、港股、美股等多市场行情、基础信息与财务因子数据，监控同步状态、交易日历一致性和数据质量。
           </Text>
         </div>
         <Space>
-          <Button icon={<SyncOutlined />}>手动同步</Button>
-          <Button icon={<ApiOutlined />}>添加数据源</Button>
-          <Button type="primary" icon={<FileSearchOutlined />}>数据质量检查</Button>
+          <Button type="primary" icon={<SyncOutlined />} onClick={() => setModalOpen(true)}>
+            同步数据
+          </Button>
         </Space>
       </section>
 
@@ -221,9 +296,12 @@ export default function DataCenterPage() {
                 <span className="metric-icon">{item.icon}</span>
               </div>
               <strong className={item.title === "数据质量" ? "positive-text" : ""}>
-                {item.value}{item.suffix ?? ""}
+                {item.value}
+                {item.suffix ?? ""}
               </strong>
-              <Text className="metric-hint">{item.description}，{item.status}</Text>
+              <Text className="metric-hint">
+                {item.description}，{item.status}
+              </Text>
             </Card>
           </Col>
         ))}
@@ -234,7 +312,7 @@ export default function DataCenterPage() {
           <Card
             className="dashboard-card data-sync-panel"
             title="数据同步概览"
-            extra={<Button type="link">查看同步日志</Button>}
+            extra={<Button type="link" onClick={() => void loadLogs()}>刷新日志</Button>}
           >
             <div className="sync-timeline">
               {syncTasks.map(([name, status, time, amount, badgeStatus]) => (
@@ -242,7 +320,9 @@ export default function DataCenterPage() {
                   <Badge status={badgeStatus as "success" | "warning"} />
                   <div>
                     <strong>{name}</strong>
-                    <Text>{status} · {time} · {amount}</Text>
+                    <Text>
+                      {status} · {time} · {amount}
+                    </Text>
                   </div>
                 </div>
               ))}
@@ -258,18 +338,14 @@ export default function DataCenterPage() {
               </div>
               <div>
                 <ClockCircleOutlined />
-                <span>下次自动同步：2026-04-23 18:00</span>
+                <span>下次自动同步：2026-04-25 18:00</span>
               </div>
             </div>
           </Card>
         </Col>
 
         <Col xs={24} xl={9}>
-          <Card
-            className="dashboard-card"
-            title="数据源状态"
-            extra={<Button type="link">管理数据源</Button>}
-          >
+          <Card className="dashboard-card" title="数据源状态">
             <div className="source-list">
               {dataSources.map((source) => (
                 <div className="source-item source-item-simple" key={source.name}>
@@ -297,7 +373,7 @@ export default function DataCenterPage() {
                     <Text>{name}</Text>
                     <strong>{percent}%</strong>
                   </div>
-                  <Progress percent={percent as number} showInfo={false} status={percent < 96 ? "exception" : "success"} />
+                  <Progress percent={percent} showInfo={false} status={percent < 96 ? "exception" : "success"} />
                 </div>
               ))}
             </Space>
@@ -313,18 +389,24 @@ export default function DataCenterPage() {
       <Card className="dashboard-card data-browser-card" title="行情数据浏览器">
         <div className="data-filter-row">
           <Input.Search placeholder="输入股票代码或名称" allowClear />
-          <Select defaultValue="all" options={[
-            { label: "全部市场", value: "all" },
-            { label: "A 股", value: "cn" },
-            { label: "港股", value: "hk" },
-            { label: "美股", value: "us" },
-          ]} />
-          <Select defaultValue="daily" options={[
-            { label: "日线行情", value: "daily" },
-            { label: "基础信息", value: "basic" },
-            { label: "财务因子", value: "financial" },
-            { label: "复权因子", value: "adjust" },
-          ]} />
+          <Select
+            defaultValue="all"
+            options={[
+              { label: "全部市场", value: "all" },
+              { label: "A 股", value: "cn" },
+              { label: "港股", value: "hk" },
+              { label: "美股", value: "us" },
+            ]}
+          />
+          <Select
+            defaultValue="daily"
+            options={[
+              { label: "日线行情", value: "daily" },
+              { label: "基础信息", value: "basic" },
+              { label: "财务因子", value: "financial" },
+              { label: "复权因子", value: "adjust" },
+            ]}
+          />
           <RangePicker />
           <Button type="primary">查询</Button>
         </div>
@@ -340,12 +422,86 @@ export default function DataCenterPage() {
       <Card className="dashboard-card data-log-card" title="最近同步日志">
         <Table
           columns={logColumns}
-          dataSource={logs}
+          dataSource={eventLogs}
+          loading={logLoading}
+          locale={{ emptyText: "暂无同步日志" }}
           pagination={false}
           size="middle"
-          scroll={{ x: 880 }}
+          scroll={{ x: 980 }}
         />
       </Card>
+
+      <Modal
+        title="同步数据"
+        open={modalOpen}
+        okText="开始同步"
+        cancelText="取消"
+        confirmLoading={syncing}
+        onOk={() => void handleSync()}
+        onCancel={() => {
+          if (!syncing) {
+            setModalOpen(false);
+          }
+        }}
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ syncItem: "country_list" }}
+        >
+          <Form.Item
+            label="同步项"
+            name="syncItem"
+            rules={[{ required: true, message: "请选择同步项" }]}
+          >
+            <Select options={syncItemOptions} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </AppShell>
   );
+}
+
+function mapEventLogRow(item: EventLogItem): LogRow {
+  return {
+    key: String(item.id),
+    time: formatDisplayTime(item.time),
+    task:
+      item.eventName === "sync_country_list"
+        ? "国家/地区同步"
+        : item.eventName === "sync_exchange_list"
+          ? "交易所同步"
+          : item.eventName,
+    dataset:
+      item.target === "country_list"
+        ? "国家/地区清单"
+        : item.target === "exchange_list"
+          ? "交易所清单"
+          : item.target || "-",
+    trigger: "手动",
+    cost: item.durationMs ? `${item.durationMs} ms` : "-",
+    status: item.status === "success" ? "成功" : item.status === "running" ? "运行中" : "失败",
+    message: item.message,
+  };
+}
+
+function formatDisplayTime(value: string | null): string {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
 }
