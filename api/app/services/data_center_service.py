@@ -11,13 +11,18 @@ from app.extensions import db
 from app.models.country import Country
 from app.models.event_log import EventLog
 from app.models.exchange import Exchange
+from app.models.stock import Stock
 from app.models.user import User
 from app.services.settings_service import get_or_create_settings
 
 CANGHAI_COUNTRY_URL = "https://www.tsanghi.com/api/fin/index/country"
 CANGHAI_EXCHANGE_URL = "https://www.tsanghi.com/api/fin/stock/exchange"
+def canghai_stock_url(exchange_code: str) -> str:
+    return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/list"
+
 SYNC_ITEM_COUNTRY_LIST = "country_list"
 SYNC_ITEM_EXCHANGE_LIST = "exchange_list"
+SYNC_ITEM_STOCK_LIST = "stock_list"
 
 
 class DataSyncError(ValueError):
@@ -29,6 +34,8 @@ def sync_item_label(sync_item: str) -> str:
         return "国家/地区清单"
     if sync_item == SYNC_ITEM_EXCHANGE_LIST:
         return "交易所清单"
+    if sync_item == SYNC_ITEM_STOCK_LIST:
+        return "股票清单"
     return sync_item
 
 
@@ -51,6 +58,25 @@ def sync_exchange_list(user: User) -> dict:
         base_url=CANGHAI_EXCHANGE_URL,
         success_message="交易所清单同步成功",
         upsert_func=upsert_exchanges,
+    )
+
+
+def sync_stock_list(user: User, exchange_code: str) -> dict:
+    normalized_exchange_code = exchange_code.strip().upper()
+    if not normalized_exchange_code:
+        raise DataSyncError("股票清单同步需要先选择交易所。")
+
+    exchange = Exchange.query.filter_by(exchange_code=normalized_exchange_code).first()
+    if not exchange:
+        raise DataSyncError(f"未找到交易所 {normalized_exchange_code}，请先完成交易所清单同步。")
+
+    return sync_with_token_guard(
+        user=user,
+        sync_item=SYNC_ITEM_STOCK_LIST,
+        event_name="sync_stock_list",
+        base_url=canghai_stock_url(normalized_exchange_code),
+        success_message=f"股票清单同步成功（{normalized_exchange_code}）",
+        upsert_func=lambda rows: upsert_stocks(rows, normalized_exchange_code),
     )
 
 
@@ -190,6 +216,21 @@ def list_recent_event_logs(limit: int = 20) -> list[dict]:
     return [row.to_dict() for row in rows]
 
 
+def list_exchange_options(limit: int = 500) -> list[dict]:
+    rows = (
+        Exchange.query.order_by(Exchange.exchange_code.asc(), Exchange.id.asc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "label": f"{row.exchange_code} - {row.exchange_name_short or row.exchange_name}",
+            "value": row.exchange_code,
+        }
+        for row in rows
+    ]
+
+
 def get_user_token(user: User) -> str:
     settings = get_or_create_settings(user)
     token = (settings.canghai_api_key or "").strip()
@@ -264,6 +305,38 @@ def upsert_exchanges(rows: list[dict]) -> int:
         record.timezone = normalize_optional_text(item.get("timezone"))
         record.delay = normalize_optional_text(item.get("delay"))
         record.notes = normalize_optional_text(item.get("notes"))
+        affected += 1
+
+    db.session.commit()
+    return affected
+
+
+def upsert_stocks(rows: list[dict], exchange_code: str) -> int:
+    affected = 0
+    exchange = Exchange.query.filter_by(exchange_code=exchange_code).first()
+    country_rows = db.session.execute(select(Country)).scalars().all()
+    country_by_code = {row.country_code: row for row in country_rows}
+
+    for item in rows:
+        ticker = str(item.get("ticker") or "").strip()
+        name = str(item.get("name") or "").strip()
+        if not ticker or not name:
+            continue
+
+        record = Stock.query.filter_by(exchange_code=exchange_code, ticker=ticker).first()
+        if not record:
+            record = Stock(exchange_code=exchange_code, ticker=ticker)
+            db.session.add(record)
+
+        country_code = normalize_optional_text(item.get("country_code"))
+        country = country_by_code.get(country_code) if country_code else None
+
+        record.name = name
+        record.is_active = str(item.get("is_active") or "0").strip() == "1"
+        record.exchange_id = exchange.id if exchange else None
+        record.country_id = country.id if country else None
+        record.country_code = country_code
+        record.currency_code = normalize_optional_text(item.get("currency_code"))
         affected += 1
 
     db.session.commit()

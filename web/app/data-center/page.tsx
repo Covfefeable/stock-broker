@@ -39,6 +39,11 @@ type SyncItemOption = {
   value: string;
 };
 
+type ExchangeOption = {
+  label: string;
+  value: string;
+};
+
 type EventLogItem = {
   id: number;
   time: string | null;
@@ -98,6 +103,10 @@ const syncItemOptions: SyncItemOption[] = [
     label: "交易所清单",
     value: "exchange_list",
   },
+  {
+    label: "股票清单",
+    value: "stock_list",
+  },
 ];
 
 const overviewCards = [
@@ -136,6 +145,7 @@ const overviewCards = [
 const syncTasks = [
   ["国家/地区清单", "可手动同步", "沧海数据", "基础字典表", "success"],
   ["交易所清单", "可手动同步", "沧海数据", "联动国家表", "success"],
+  ["股票清单", "按交易所同步", "沧海数据", "联动交易所与国家表", "success"],
   ["A 股日线行情", "已完成", "2026-04-22 18:18", "5,214 只股票", "success"],
   ["港股日线行情", "已完成", "2026-04-22 18:46", "2,812 只股票", "success"],
   ["美股日线行情", "已完成", "2026-04-22 21:12", "4,820 只股票", "success"],
@@ -203,8 +213,10 @@ export default function DataCenterPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [logLoading, setLogLoading] = useState(true);
+  const [exchangeOptions, setExchangeOptions] = useState<ExchangeOption[]>([]);
+  const [exchangeLoading, setExchangeLoading] = useState(false);
   const [eventLogs, setEventLogs] = useState<LogRow[]>([]);
-  const [form] = Form.useForm<{ syncItem: string }>();
+  const [form] = Form.useForm<{ syncItem: string; exchangeCode?: string }>();
 
   const loadLogs = useCallback(async () => {
     setLogLoading(true);
@@ -222,6 +234,23 @@ export default function DataCenterPage() {
   useEffect(() => {
     void loadLogs();
   }, [loadLogs]);
+
+  useEffect(() => {
+    const loadExchangeOptions = async () => {
+      setExchangeLoading(true);
+      try {
+        const token = getAccessToken();
+        const response = await apiGet<{ items: ExchangeOption[] }>("/data-center/exchange-options", token);
+        setExchangeOptions(response.items);
+      } catch (error) {
+        messageApi.error(error instanceof Error ? error.message : "加载交易所选项失败");
+      } finally {
+        setExchangeLoading(false);
+      }
+    };
+
+    void loadExchangeOptions();
+  }, [messageApi]);
 
   const logColumns: ColumnsType<LogRow> = useMemo(
     () => [
@@ -255,7 +284,11 @@ export default function DataCenterPage() {
       const response = await apiPost<{
         message: string;
         result: { syncItemLabel: string; recordsAffected: number };
-      }>("/data-center/sync", { syncItem: values.syncItem }, token);
+      }>(
+        "/data-center/sync",
+        { syncItem: values.syncItem, exchangeCode: values.exchangeCode },
+        token,
+      );
       messageApi.success(
         `${response.message}，共处理 ${response.result.recordsAffected} 条记录`,
       );
@@ -454,7 +487,36 @@ export default function DataCenterPage() {
             name="syncItem"
             rules={[{ required: true, message: "请选择同步项" }]}
           >
-            <Select options={syncItemOptions} />
+            <Select
+              options={syncItemOptions}
+              onChange={(value) => {
+                if (value !== "stock_list") {
+                  form.setFieldValue("exchangeCode", undefined);
+                }
+              }}
+            />
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, next) => prev.syncItem !== next.syncItem}
+          >
+            {({ getFieldValue }) =>
+              getFieldValue("syncItem") === "stock_list" ? (
+                <Form.Item
+                  label="交易所"
+                  name="exchangeCode"
+                  rules={[{ required: true, message: "请选择交易所" }]}
+                >
+                  <Select
+                    showSearch
+                    loading={exchangeLoading}
+                    options={exchangeOptions}
+                    placeholder="请选择交易所"
+                    optionFilterProp="label"
+                  />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
         </Form>
       </Modal>
@@ -471,12 +533,16 @@ function mapEventLogRow(item: EventLogItem): LogRow {
         ? "国家/地区同步"
         : item.eventName === "sync_exchange_list"
           ? "交易所同步"
+          : item.eventName === "sync_stock_list"
+            ? "股票清单同步"
           : item.eventName,
     dataset:
       item.target === "country_list"
         ? "国家/地区清单"
         : item.target === "exchange_list"
           ? "交易所清单"
+          : item.target === "stock_list"
+            ? "股票清单"
           : item.target || "-",
     trigger: "手动",
     cost: item.durationMs ? `${item.durationMs} ms` : "-",
