@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Spin } from "antd";
+import { AppLoader } from "@/components/app-loader";
 import { clearAccessToken, getAccessToken, type AuthUser } from "@/lib/auth";
 import { apiGet } from "@/lib/api";
 
@@ -51,11 +51,10 @@ export function AuthGuard({ children }: AuthGuardProps) {
   if (loading || !user) {
     return (
       <div className="auth-guard-loading">
-        <Spin size="large" />
+        <AppLoader message="正在校验登录状态" />
       </div>
     );
   }
 
   return <>{children(user)}</>;
 }
-

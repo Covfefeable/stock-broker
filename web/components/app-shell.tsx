@@ -20,6 +20,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useThemeMode } from "@/app/providers";
 import { AuthGuard } from "@/components/auth-guard";
+import { TaskCenter } from "@/components/task-center";
 import { clearAccessToken, type AuthUser } from "@/lib/auth";
 
 const { Header, Sider, Content } = Layout;
@@ -98,6 +99,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Space>
             </Header>
             <Content className="content-area">{children}</Content>
+            <TaskCenter />
           </Layout>
         </Layout>
       )}

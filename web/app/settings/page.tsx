@@ -13,7 +13,6 @@ import {
   Input,
   Menu,
   Space,
-  Spin,
   Switch,
   Table,
   Typography,
@@ -21,6 +20,7 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useState } from "react";
+import { AppLoader } from "@/components/app-loader";
 import { AppShell } from "@/components/app-shell";
 import { getAccessToken } from "@/lib/auth";
 import { apiGet, apiRequest } from "@/lib/api";
@@ -303,7 +303,7 @@ export default function SettingsPage() {
         <main className="settings-content">
           {loading ? (
             <div className="settings-loading">
-              <Spin size="large" />
+              <AppLoader message="正在加载系统设置" />
             </div>
           ) : (
             <>

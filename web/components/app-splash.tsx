@@ -1,8 +1,7 @@
 "use client";
 
-import Lottie from "lottie-react";
 import { useEffect, useState } from "react";
-import loadingAnimation from "@/lib/lottie/loading.json";
+import { AppLoader } from "@/components/app-loader";
 
 const MIN_VISIBLE_MS = 720;
 const FADE_MS = 320;
@@ -43,18 +42,7 @@ export function AppSplash({ children }: { children: React.ReactNode }) {
       {children}
       {visible ? (
         <div className={`app-splash ${leaving ? "app-splash-leaving" : ""}`}>
-          <div className="app-splash-panel">
-            <Lottie
-              animationData={loadingAnimation}
-              autoplay
-              loop={true}
-              className="app-splash-lottie"
-            />
-            <div className="app-splash-copy">
-              <strong>Genesis</strong>
-              <span>正在准备量化策略工作台</span>
-            </div>
-          </div>
+          <AppLoader message="正在准备量化策略工作台" compact />
         </div>
       ) : null}
     </>

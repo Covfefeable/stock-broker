@@ -70,7 +70,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
           },
         }}
       >
-        {children}
+        <div className={`theme-root ${isDark ? "theme-dark" : "theme-light"}`}>{children}</div>
       </ConfigProvider>
     </ThemeModeContext.Provider>
   );
