@@ -10,6 +10,7 @@ class EventLog(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     event_type = db.Column(db.String(64), nullable=False, index=True)
     event_name = db.Column(db.String(128), nullable=False)
+    task_id = db.Column(db.String(128), nullable=True, index=True)
     source = db.Column(db.String(64), nullable=True)
     target = db.Column(db.String(64), nullable=True)
     status = db.Column(db.String(32), nullable=False, index=True)
@@ -34,6 +35,7 @@ class EventLog(db.Model):
             "time": self.created_at.isoformat() if self.created_at else None,
             "eventType": self.event_type,
             "eventName": self.event_name,
+            "taskId": self.task_id,
             "source": self.source,
             "target": self.target,
             "status": self.status,

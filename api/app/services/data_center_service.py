@@ -1,11 +1,11 @@
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from time import perf_counter
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.extensions import db
 from app.models.country import Country
@@ -13,24 +13,121 @@ from app.models.event_log import EventLog
 from app.models.exchange import Exchange
 from app.models.index_asset import IndexAsset
 from app.models.stock import Stock
+from app.models.stock_daily_bar import StockDailyBar
 from app.models.user import User
 from app.services.settings_service import get_or_create_settings
 
 CANGHAI_COUNTRY_URL = "https://www.tsanghi.com/api/fin/index/country"
 CANGHAI_EXCHANGE_URL = "https://www.tsanghi.com/api/fin/stock/exchange"
-def canghai_stock_url(exchange_code: str) -> str:
-    return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/list"
-def canghai_index_url(country_code: str) -> str:
-    return f"https://www.tsanghi.com/api/fin/index/{country_code}/list"
 
 SYNC_ITEM_COUNTRY_LIST = "country_list"
 SYNC_ITEM_EXCHANGE_LIST = "exchange_list"
 SYNC_ITEM_STOCK_LIST = "stock_list"
 SYNC_ITEM_INDEX_LIST = "index_list"
+SYNC_ITEM_STOCK_DAILY_HISTORY = "stock_daily_history"
+
+DATE_MODE_AUTO_FILL = "auto_fill"
+DATE_MODE_CUSTOM = "custom"
+
+
+def canghai_stock_url(exchange_code: str) -> str:
+    return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/list"
+
+
+def canghai_index_url(country_code: str) -> str:
+    return f"https://www.tsanghi.com/api/fin/index/{country_code}/list"
+
+
+def canghai_stock_daily_url(exchange_code: str) -> str:
+    return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/daily"
 
 
 class DataSyncError(ValueError):
     pass
+
+
+def get_data_center_overview_metrics() -> dict:
+    stocks_count = Stock.query.count()
+    stock_daily_count = StockDailyBar.query.count()
+    exchange_count = Exchange.query.count()
+    synced_stocks_count = (
+        db.session.query(func.count())
+        .select_from(
+            db.session.query(
+                StockDailyBar.exchange_code,
+                StockDailyBar.ticker,
+            )
+            .distinct()
+            .subquery()
+        )
+        .scalar()
+        or 0
+    )
+
+    latest_trade_date = db.session.query(func.max(StockDailyBar.trade_date)).scalar()
+    exchange_coverage = list_exchange_stock_coverage()
+
+    return {
+        "stocksCount": stocks_count,
+        "stockDailyBarsCount": stock_daily_count,
+        "exchangeCount": exchange_count,
+        "syncedStocksCount": synced_stocks_count,
+        "latestTradeDate": latest_trade_date.isoformat() if latest_trade_date else None,
+        "exchangeCoverage": exchange_coverage,
+    }
+
+
+def list_exchange_stock_coverage() -> list[dict]:
+    exchange_rows = Exchange.query.order_by(Exchange.exchange_name.asc(), Exchange.exchange_code.asc()).all()
+    if not exchange_rows:
+        return []
+
+    total_by_exchange_rows = (
+        db.session.query(
+            Stock.exchange_code,
+            func.count(Stock.id),
+        )
+        .filter(Stock.exchange_code.isnot(None))
+        .group_by(Stock.exchange_code)
+        .all()
+    )
+    total_by_exchange = {exchange_code: total for exchange_code, total in total_by_exchange_rows}
+
+    actual_by_exchange_rows = (
+        db.session.query(
+            Stock.exchange_code,
+            func.count(func.distinct(Stock.id)),
+        )
+        .join(
+            StockDailyBar,
+            (Stock.exchange_code == StockDailyBar.exchange_code)
+            & (Stock.ticker == StockDailyBar.ticker),
+        )
+        .filter(Stock.exchange_code.isnot(None))
+        .group_by(Stock.exchange_code)
+        .all()
+    )
+    actual_by_exchange = {exchange_code: total for exchange_code, total in actual_by_exchange_rows}
+
+    items: list[dict] = []
+    for exchange in exchange_rows:
+        total = int(total_by_exchange.get(exchange.exchange_code) or 0)
+        if total <= 0:
+            continue
+
+        actual = int(actual_by_exchange.get(exchange.exchange_code) or 0)
+        percent = round((actual / total) * 100, 2) if total > 0 else 0.0
+        items.append(
+            {
+                "exchangeCode": exchange.exchange_code,
+                "exchangeName": exchange.exchange_name_short or exchange.exchange_name,
+                "actual": actual,
+                "expected": total,
+                "percent": percent,
+            }
+        )
+
+    return items
 
 
 def sync_item_label(sync_item: str) -> str:
@@ -42,12 +139,15 @@ def sync_item_label(sync_item: str) -> str:
         return "股票清单"
     if sync_item == SYNC_ITEM_INDEX_LIST:
         return "指数清单"
+    if sync_item == SYNC_ITEM_STOCK_DAILY_HISTORY:
+        return "股票历史日线"
     return sync_item
 
 
-def sync_country_list(user: User) -> dict:
+def sync_country_list(user: User, *, task_id: str | None = None) -> dict:
     return sync_with_token_guard(
         user=user,
+        task_id=task_id,
         sync_item=SYNC_ITEM_COUNTRY_LIST,
         event_name="sync_country_list",
         base_url=CANGHAI_COUNTRY_URL,
@@ -56,9 +156,10 @@ def sync_country_list(user: User) -> dict:
     )
 
 
-def sync_exchange_list(user: User) -> dict:
+def sync_exchange_list(user: User, *, task_id: str | None = None) -> dict:
     return sync_with_token_guard(
         user=user,
+        task_id=task_id,
         sync_item=SYNC_ITEM_EXCHANGE_LIST,
         event_name="sync_exchange_list",
         base_url=CANGHAI_EXCHANGE_URL,
@@ -67,10 +168,10 @@ def sync_exchange_list(user: User) -> dict:
     )
 
 
-def sync_stock_list(user: User, exchange_code: str) -> dict:
+def sync_stock_list(user: User, exchange_code: str, *, task_id: str | None = None) -> dict:
     normalized_exchange_code = exchange_code.strip().upper()
     if not normalized_exchange_code:
-        raise DataSyncError("股票清单同步需要先选择交易所。")
+        raise DataSyncError("股票清单同步前请先选择交易所。")
 
     exchange = Exchange.query.filter_by(exchange_code=normalized_exchange_code).first()
     if not exchange:
@@ -78,6 +179,7 @@ def sync_stock_list(user: User, exchange_code: str) -> dict:
 
     return sync_with_token_guard(
         user=user,
+        task_id=task_id,
         sync_item=SYNC_ITEM_STOCK_LIST,
         event_name="sync_stock_list",
         base_url=canghai_stock_url(normalized_exchange_code),
@@ -86,10 +188,10 @@ def sync_stock_list(user: User, exchange_code: str) -> dict:
     )
 
 
-def sync_index_list(user: User, country_code: str) -> dict:
+def sync_index_list(user: User, country_code: str, *, task_id: str | None = None) -> dict:
     normalized_country_code = country_code.strip().upper()
     if not normalized_country_code:
-        raise DataSyncError("指数清单同步需要先选择国家/地区。")
+        raise DataSyncError("指数清单同步前请先选择国家/地区。")
 
     country = Country.query.filter_by(country_code=normalized_country_code).first()
     if not country:
@@ -97,6 +199,7 @@ def sync_index_list(user: User, country_code: str) -> dict:
 
     return sync_with_token_guard(
         user=user,
+        task_id=task_id,
         sync_item=SYNC_ITEM_INDEX_LIST,
         event_name="sync_index_list",
         base_url=canghai_index_url(normalized_country_code),
@@ -105,14 +208,215 @@ def sync_index_list(user: User, country_code: str) -> dict:
     )
 
 
+def sync_stock_daily_history(
+    user: User,
+    exchange_code: str,
+    ticker: str,
+    date_mode: str = DATE_MODE_AUTO_FILL,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    *,
+    log_result: bool = True,
+    task_id: str | None = None,
+) -> dict:
+    normalized_exchange_code = exchange_code.strip().upper()
+    normalized_ticker = ticker.strip().upper()
+    if not normalized_exchange_code:
+        raise DataSyncError("股票历史日线同步前请先选择交易所。")
+    if not normalized_ticker:
+        raise DataSyncError("股票历史日线同步前请先选择股票。")
+
+    stock = Stock.query.filter_by(
+        exchange_code=normalized_exchange_code,
+        ticker=normalized_ticker,
+    ).first()
+    if not stock:
+        raise DataSyncError(
+            f"未找到股票 {normalized_exchange_code}/{normalized_ticker}，请先完成股票清单同步。"
+        )
+
+    extra_params = {"ticker": normalized_ticker, "order": "1"}
+    if date_mode == DATE_MODE_CUSTOM:
+        if start_date:
+            extra_params["start_date"] = start_date
+        if end_date:
+            extra_params["end_date"] = end_date
+    else:
+        latest_trade_date = get_latest_stock_daily_date(stock)
+        if latest_trade_date:
+            extra_params["start_date"] = (latest_trade_date + timedelta(days=1)).isoformat()
+
+    return sync_with_token_guard(
+        user=user,
+        task_id=task_id,
+        sync_item=SYNC_ITEM_STOCK_DAILY_HISTORY,
+        event_name="sync_stock_daily_history",
+        base_url=canghai_stock_daily_url(normalized_exchange_code),
+        success_message=f"股票历史日线同步成功（{normalized_exchange_code}/{normalized_ticker}）",
+        upsert_func=lambda rows: upsert_stock_daily_bars(rows, stock),
+        extra_params=extra_params,
+        log_result=log_result,
+    )
+
+
+def batch_sync_stock_daily_history(user: User, *, task_id: str | None = None) -> dict:
+    synced_stock_keys = (
+        db.session.query(
+            StockDailyBar.exchange_code.label("exchange_code"),
+            StockDailyBar.ticker.label("ticker"),
+        )
+        .distinct()
+        .subquery()
+    )
+
+    stocks_with_latest = (
+        db.session.query(
+            Stock,
+            func.max(StockDailyBar.trade_date).label("latest_trade_date"),
+        )
+        .join(
+            synced_stock_keys,
+            (Stock.exchange_code == synced_stock_keys.c.exchange_code)
+            & (Stock.ticker == synced_stock_keys.c.ticker),
+        )
+        .join(
+            StockDailyBar,
+            (Stock.exchange_code == StockDailyBar.exchange_code)
+            & (Stock.ticker == StockDailyBar.ticker),
+        )
+        .group_by(Stock.id)
+        .order_by(Stock.exchange_code.asc(), Stock.ticker.asc(), Stock.id.asc())
+        .all()
+    )
+    if not stocks_with_latest:
+        raise DataSyncError("当前没有已同步过历史日线的股票，无法执行批量补全。")
+
+    exchange_latest_rows = (
+        db.session.query(
+            StockDailyBar.exchange_code,
+            func.max(StockDailyBar.trade_date).label("latest_trade_date"),
+        )
+        .group_by(StockDailyBar.exchange_code)
+        .all()
+    )
+    exchange_latest_map = {
+        exchange_code: latest_trade_date
+        for exchange_code, latest_trade_date in exchange_latest_rows
+        if exchange_code and latest_trade_date
+    }
+
+    pending_stocks: list[tuple[Stock, date, date]] = []
+    for stock, latest_trade_date in stocks_with_latest:
+        exchange_latest_date = exchange_latest_map.get(stock.exchange_code)
+        if not latest_trade_date or not exchange_latest_date:
+            continue
+        if latest_trade_date < exchange_latest_date:
+            pending_stocks.append((stock, latest_trade_date, exchange_latest_date))
+
+    if not pending_stocks:
+        log_event(
+            user=user,
+            task_id=task_id,
+            event_type="data_sync_batch",
+            event_name="batch_sync_stock_daily_history",
+            source="canghai",
+            target=SYNC_ITEM_STOCK_DAILY_HISTORY,
+            status="success",
+            level="info",
+            message=f"批量自动补全完成，共扫描 {len(stocks_with_latest)} 只股票，均已追平数据库中的交易所最新日期，无需发起远程请求。",
+            records_affected=0,
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+            duration_ms=0,
+        )
+        return {
+            "status": "success",
+            "totalStocks": len(stocks_with_latest),
+            "successCount": 0,
+            "failedCount": 0,
+            "skippedCount": len(stocks_with_latest),
+            "recordsAffected": 0,
+            "durationMs": 0,
+        }
+
+    started_at = datetime.now(timezone.utc)
+    started_perf = perf_counter()
+    total = len(stocks_with_latest)
+    success_count = 0
+    failed_count = 0
+    total_records = 0
+    skipped_count = total - len(pending_stocks)
+    failed_examples: list[str] = []
+
+    for stock, latest_trade_date, exchange_latest_date in pending_stocks:
+        try:
+            result = sync_stock_daily_history(
+                user=user,
+                exchange_code=stock.exchange_code,
+                ticker=stock.ticker,
+                date_mode=DATE_MODE_CUSTOM,
+                start_date=(latest_trade_date + timedelta(days=1)).isoformat(),
+                end_date=exchange_latest_date.isoformat(),
+                log_result=False,
+                task_id=task_id,
+            )
+            success_count += 1
+            records_affected = int(result.get("recordsAffected") or 0)
+            total_records += records_affected
+        except DataSyncError as exc:
+            failed_count += 1
+            if len(failed_examples) < 5:
+                failed_examples.append(f"{stock.exchange_code}/{stock.ticker}: {exc}")
+
+    finished_at = datetime.now(timezone.utc)
+    duration_ms = int((perf_counter() - started_perf) * 1000)
+
+    message = (
+        f"批量自动补全完成，共扫描 {total} 只股票，发起补全 {len(pending_stocks)} 只，成功 {success_count}，"
+        f"失败 {failed_count}，其中 {skipped_count} 只股票已追平数据库最新日期，"
+        f"新增或更新 {total_records} 条日线记录。"
+    )
+    if failed_examples:
+        message = f"{message} 失败示例：{'；'.join(failed_examples)}"
+
+    log_event(
+        user=user,
+        task_id=task_id,
+        event_type="data_sync_batch",
+        event_name="batch_sync_stock_daily_history",
+        source="canghai",
+        target=SYNC_ITEM_STOCK_DAILY_HISTORY,
+        status="success" if failed_count == 0 else "partial_success",
+        level="info" if failed_count == 0 else "warning",
+        message=message,
+        records_affected=total_records,
+        started_at=started_at,
+        finished_at=finished_at,
+        duration_ms=duration_ms,
+    )
+
+    return {
+        "status": "success" if failed_count == 0 else "partial_success",
+        "totalStocks": total,
+        "successCount": success_count,
+        "failedCount": failed_count,
+        "skippedCount": skipped_count,
+        "recordsAffected": total_records,
+        "durationMs": duration_ms,
+    }
+
+
 def sync_with_token_guard(
     *,
     user: User,
+    task_id: str | None = None,
     sync_item: str,
     event_name: str,
     base_url: str,
     success_message: str,
     upsert_func,
+    extra_params: dict[str, str] | None = None,
+    log_result: bool = True,
 ) -> dict:
     started_at = datetime.now(timezone.utc)
     started_perf = perf_counter()
@@ -122,6 +426,7 @@ def sync_with_token_guard(
     except DataSyncError as exc:
         raise_and_log_sync_error(
             user=user,
+            task_id=task_id,
             sync_item=sync_item,
             event_name=event_name,
             started_at=started_at,
@@ -131,22 +436,26 @@ def sync_with_token_guard(
 
     return sync_from_canghai(
         user=user,
+        task_id=task_id,
         sync_item=sync_item,
-        request_url=build_canghai_url(base_url, token),
+        request_url=build_canghai_url(base_url, token, extra_params=extra_params),
         event_name=event_name,
         success_message=success_message,
         upsert_func=upsert_func,
+        log_result=log_result,
     )
 
 
 def sync_from_canghai(
     *,
     user: User,
+    task_id: str | None = None,
     sync_item: str,
     request_url: str,
     event_name: str,
     success_message: str,
     upsert_func,
+    log_result: bool = True,
 ) -> dict:
     started_at = datetime.now(timezone.utc)
     started_perf = perf_counter()
@@ -161,6 +470,7 @@ def sync_from_canghai(
             message = f"{message} {body[:240]}"
         raise_and_log_sync_error(
             user=user,
+            task_id=task_id,
             sync_item=sync_item,
             event_name=event_name,
             started_at=started_at,
@@ -171,6 +481,7 @@ def sync_from_canghai(
     except URLError as exc:
         raise_and_log_sync_error(
             user=user,
+            task_id=task_id,
             sync_item=sync_item,
             event_name=event_name,
             started_at=started_at,
@@ -182,6 +493,7 @@ def sync_from_canghai(
     if code != 200:
         raise_and_log_sync_error(
             user=user,
+            task_id=task_id,
             sync_item=sync_item,
             event_name=event_name,
             started_at=started_at,
@@ -194,6 +506,7 @@ def sync_from_canghai(
     if not isinstance(rows, list):
         raise_and_log_sync_error(
             user=user,
+            task_id=task_id,
             sync_item=sync_item,
             event_name=event_name,
             started_at=started_at,
@@ -206,21 +519,23 @@ def sync_from_canghai(
     finished_at = datetime.now(timezone.utc)
     duration_ms = int((perf_counter() - started_perf) * 1000)
 
-    log_event(
-        user=user,
-        event_type="data_sync",
-        event_name=event_name,
-        source="canghai",
-        target=sync_item,
-        status="success",
-        level="info",
-        message=f"{success_message}，共处理 {records_affected} 条记录。",
-        http_status=http_status,
-        records_affected=records_affected,
-        started_at=started_at,
-        finished_at=finished_at,
-        duration_ms=duration_ms,
-    )
+    if log_result:
+        log_event(
+            user=user,
+            task_id=task_id,
+            event_type="data_sync",
+            event_name=event_name,
+            source="canghai",
+            target=sync_item,
+            status="success",
+            level="info",
+            message=f"{success_message}，共处理 {records_affected} 条记录。",
+            http_status=http_status,
+            records_affected=records_affected,
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_ms=duration_ms,
+        )
 
     return {
         "syncItem": sync_item,
@@ -256,6 +571,73 @@ def list_exchange_options(limit: int = 500) -> list[dict]:
     ]
 
 
+def list_stock_options(exchange_code: str, limit: int = 500) -> list[dict]:
+    normalized_exchange_code = exchange_code.strip().upper()
+    if not normalized_exchange_code:
+        return []
+
+    latest_date_subquery = (
+        db.session.query(
+            StockDailyBar.exchange_code.label("exchange_code"),
+            StockDailyBar.ticker.label("ticker"),
+            func.max(StockDailyBar.trade_date).label("latest_date"),
+        )
+        .filter(StockDailyBar.exchange_code == normalized_exchange_code)
+        .group_by(StockDailyBar.exchange_code, StockDailyBar.ticker)
+        .subquery()
+    )
+
+    rows = (
+        db.session.query(Stock, latest_date_subquery.c.latest_date)
+        .outerjoin(
+            latest_date_subquery,
+            (Stock.exchange_code == latest_date_subquery.c.exchange_code)
+            & (Stock.ticker == latest_date_subquery.c.ticker),
+        )
+        .filter(Stock.exchange_code == normalized_exchange_code)
+        .order_by(Stock.ticker.asc(), Stock.id.asc())
+        .limit(limit)
+        .all()
+    )
+
+    items: list[dict] = []
+    for stock, latest_date in rows:
+        latest_date_text = latest_date.isoformat() if latest_date else None
+        label = f"{stock.ticker} - {stock.name}"
+        if latest_date_text:
+            label = f"{label}（同步至 {latest_date_text}）"
+        items.append(
+            {
+                "label": label,
+                "value": stock.ticker,
+                "latestDate": latest_date_text,
+            }
+        )
+    return items
+
+
+def get_stock_daily_coverage(exchange_code: str, ticker: str) -> dict:
+    normalized_exchange_code = exchange_code.strip().upper()
+    normalized_ticker = ticker.strip().upper()
+    if not normalized_exchange_code or not normalized_ticker:
+        return {"existingDates": [], "latestDate": None, "count": 0}
+
+    rows = (
+        StockDailyBar.query.filter_by(
+            exchange_code=normalized_exchange_code,
+            ticker=normalized_ticker,
+        )
+        .order_by(StockDailyBar.trade_date.asc(), StockDailyBar.id.asc())
+        .all()
+    )
+    dates = [row.trade_date.isoformat() for row in rows if row.trade_date]
+    return {
+        "existingDates": dates,
+        "latestDate": dates[-1] if dates else None,
+        "count": len(dates),
+    }
+
+
 def list_country_options(limit: int = 500) -> list[dict]:
     rows = (
         Country.query.order_by(Country.country_code.asc(), Country.id.asc())
@@ -276,17 +658,21 @@ def get_user_token(user: User) -> str:
     token = (settings.canghai_api_key or "").strip()
     if token:
         return token
-
     raise DataSyncError("未配置沧海数据 API Key，无法执行同步。")
 
 
-def build_canghai_url(base_url: str, token: str) -> str:
+def build_canghai_url(base_url: str, token: str, extra_params: dict[str, str] | None = None) -> str:
     params = {"token": token, "fmt": "json"}
+    if extra_params:
+        params.update({key: value for key, value in extra_params.items() if value})
     return f"{base_url}?{urlencode(params)}"
 
 
 def fetch_json(url: str) -> dict:
-    request = Request(url, headers={"Accept": "application/json", "User-Agent": "stock-broker/0.1"})
+    request = Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": "stock-broker/0.1"},
+    )
     with urlopen(request, timeout=30) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -406,6 +792,49 @@ def upsert_index_assets(rows: list[dict], country_code: str) -> int:
     return affected
 
 
+def upsert_stock_daily_bars(rows: list[dict], stock: Stock) -> int:
+    affected = 0
+    for item in rows:
+        ticker = str(item.get("ticker") or "").strip().upper()
+        trade_date_raw = str(item.get("date") or "").strip()
+        if not ticker or ticker != stock.ticker or not trade_date_raw:
+            continue
+
+        trade_date = date.fromisoformat(trade_date_raw)
+        record = StockDailyBar.query.filter_by(
+            exchange_code=stock.exchange_code,
+            ticker=stock.ticker,
+            trade_date=trade_date,
+        ).first()
+        if not record:
+            record = StockDailyBar(
+                exchange_code=stock.exchange_code,
+                ticker=stock.ticker,
+                trade_date=trade_date,
+            )
+            db.session.add(record)
+
+        record.stock_id = stock.id
+        record.open = item.get("open")
+        record.high = item.get("high")
+        record.low = item.get("low")
+        record.close = item.get("close")
+        record.volume = int(item["volume"]) if item.get("volume") is not None else None
+        affected += 1
+
+    db.session.commit()
+    return affected
+
+
+def get_latest_stock_daily_date(stock: Stock) -> date | None:
+    latest = (
+        StockDailyBar.query.filter_by(exchange_code=stock.exchange_code, ticker=stock.ticker)
+        .order_by(StockDailyBar.trade_date.desc(), StockDailyBar.id.desc())
+        .first()
+    )
+    return latest.trade_date if latest and latest.trade_date else None
+
+
 def normalize_optional_text(value: object) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
@@ -414,6 +843,7 @@ def normalize_optional_text(value: object) -> str | None:
 def log_event(
     *,
     user: User | None,
+    task_id: str | None = None,
     event_type: str,
     event_name: str,
     source: str | None,
@@ -429,6 +859,7 @@ def log_event(
 ) -> EventLog:
     log = EventLog(
         user=user,
+        task_id=task_id,
         event_type=event_type,
         event_name=event_name,
         source=source,
@@ -450,6 +881,7 @@ def log_event(
 def raise_and_log_sync_error(
     *,
     user: User,
+    task_id: str | None = None,
     sync_item: str,
     event_name: str,
     started_at: datetime,
@@ -461,6 +893,7 @@ def raise_and_log_sync_error(
     duration_ms = int((perf_counter() - started_perf) * 1000)
     log_event(
         user=user,
+        task_id=task_id,
         event_type="data_sync",
         event_name=event_name,
         source="canghai",
