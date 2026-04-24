@@ -7,14 +7,17 @@ from app.services.data_center_service import (
     DATE_MODE_AUTO_FILL,
     SYNC_ITEM_COUNTRY_LIST,
     SYNC_ITEM_EXCHANGE_LIST,
+    SYNC_ITEM_INDEX_DAILY_HISTORY,
     SYNC_ITEM_INDEX_LIST,
     SYNC_ITEM_STOCK_DAILY_HISTORY,
     SYNC_ITEM_STOCK_LIST,
     get_data_center_overview_metrics,
     get_data_source_status_snapshot,
+    get_index_daily_coverage,
     get_stock_daily_coverage,
     list_country_options,
     list_exchange_options,
+    list_index_options,
     list_recent_event_logs,
     list_stock_options,
     log_event,
@@ -62,12 +65,27 @@ def stock_options():
     return {"items": list_stock_options(exchange_code=exchange_code, limit=500)}
 
 
+@data_center_bp.get("/data-center/index-options")
+@auth_required
+def index_options():
+    country_code = str(request.args.get("countryCode") or "").strip()
+    return {"items": list_index_options(country_code=country_code, limit=500)}
+
+
 @data_center_bp.get("/data-center/stock-daily-coverage")
 @auth_required
 def stock_daily_coverage():
     exchange_code = str(request.args.get("exchangeCode") or "").strip()
     ticker = str(request.args.get("ticker") or "").strip()
     return {"coverage": get_stock_daily_coverage(exchange_code, ticker)}
+
+
+@data_center_bp.get("/data-center/index-daily-coverage")
+@auth_required
+def index_daily_coverage():
+    country_code = str(request.args.get("countryCode") or "").strip()
+    ticker = str(request.args.get("ticker") or "").strip()
+    return {"coverage": get_index_daily_coverage(country_code, ticker)}
 
 
 @data_center_bp.get("/tasks/<task_id>")
@@ -114,6 +132,7 @@ def sync_data():
         SYNC_ITEM_STOCK_LIST,
         SYNC_ITEM_INDEX_LIST,
         SYNC_ITEM_STOCK_DAILY_HISTORY,
+        SYNC_ITEM_INDEX_DAILY_HISTORY,
     }:
         return {"message": f"暂不支持同步项：{sync_item_label(sync_item or 'unknown')}"}, 400
 

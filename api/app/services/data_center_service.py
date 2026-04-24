@@ -13,6 +13,7 @@ from app.models.data_source_status import DataSourceStatus
 from app.models.event_log import EventLog
 from app.models.exchange import Exchange
 from app.models.index_asset import IndexAsset
+from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
 from app.models.user import User
@@ -30,6 +31,7 @@ SYNC_ITEM_EXCHANGE_LIST = "exchange_list"
 SYNC_ITEM_STOCK_LIST = "stock_list"
 SYNC_ITEM_INDEX_LIST = "index_list"
 SYNC_ITEM_STOCK_DAILY_HISTORY = "stock_daily_history"
+SYNC_ITEM_INDEX_DAILY_HISTORY = "index_daily_history"
 
 DATE_MODE_AUTO_FILL = "auto_fill"
 DATE_MODE_CUSTOM = "custom"
@@ -45,6 +47,10 @@ def canghai_index_url(country_code: str) -> str:
 
 def canghai_stock_daily_url(exchange_code: str) -> str:
     return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/daily"
+
+
+def canghai_index_daily_url(country_code: str) -> str:
+    return f"https://www.tsanghi.com/api/fin/index/{country_code}/daily"
 
 
 class DataSyncError(ValueError):
@@ -217,6 +223,8 @@ def sync_item_label(sync_item: str) -> str:
         return "指数清单"
     if sync_item == SYNC_ITEM_STOCK_DAILY_HISTORY:
         return "股票历史日线"
+    if sync_item == SYNC_ITEM_INDEX_DAILY_HISTORY:
+        return "指数历史日线"
     return sync_item
 
 
@@ -335,6 +343,58 @@ def sync_stock_daily_history(
         extra_params=extra_params,
         log_result=log_result,
     )
+
+
+def sync_index_daily_history(
+    user: User,
+    country_code: str,
+    ticker: str,
+    date_mode: str = DATE_MODE_AUTO_FILL,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    *,
+    log_result: bool = True,
+    task_id: str | None = None,
+) -> dict:
+    normalized_country_code = country_code.strip().upper()
+    normalized_ticker = ticker.strip().upper()
+    if not normalized_country_code:
+        raise DataSyncError("同步指数历史日线前请先选择国家/地区。")
+    if not normalized_ticker:
+        raise DataSyncError("同步指数历史日线前请先选择指数。")
+
+    index_asset = IndexAsset.query.filter_by(
+        country_code=normalized_country_code,
+        ticker=normalized_ticker,
+    ).first()
+    if not index_asset:
+        raise DataSyncError(
+            f"未找到指数 {normalized_country_code}/{normalized_ticker}，请先完成指数清单同步。"
+        )
+
+    extra_params = {"ticker": normalized_ticker, "order": "1"}
+    if date_mode == DATE_MODE_CUSTOM:
+        if start_date:
+            extra_params["start_date"] = start_date
+        if end_date:
+            extra_params["end_date"] = end_date
+    else:
+        latest_trade_date = get_latest_index_daily_date(index_asset)
+        if latest_trade_date:
+            extra_params["start_date"] = (latest_trade_date + timedelta(days=1)).isoformat()
+
+    return sync_with_token_guard(
+        user=user,
+        task_id=task_id,
+        sync_item=SYNC_ITEM_INDEX_DAILY_HISTORY,
+        event_name="sync_index_daily_history",
+        base_url=canghai_index_daily_url(normalized_country_code),
+        success_message=f"指数历史日线同步成功（{normalized_country_code}/{normalized_ticker}）。",
+        upsert_func=lambda rows: upsert_index_daily_bars(rows, index_asset),
+        extra_params=extra_params,
+        log_result=log_result,
+    )
+
 
 def batch_sync_stock_daily_history(user: User, *, task_id: str | None = None) -> dict:
     synced_stock_keys = (
@@ -597,6 +657,7 @@ def sync_from_canghai(
     duration_ms = int((perf_counter() - started_perf) * 1000)
 
     if log_result:
+        clean_success_message = success_message.rstrip("。.!?；; ")
         log_event(
             user=user,
             task_id=task_id,
@@ -606,7 +667,7 @@ def sync_from_canghai(
             target=sync_item,
             status="success",
             level="info",
-            message=f"{success_message}，共处理 {records_affected} 条记录。",
+            message=f"{clean_success_message}，共处理 {records_affected} 条记录。",
             http_status=http_status,
             records_affected=records_affected,
             started_at=started_at,
@@ -694,6 +755,51 @@ def list_stock_options(exchange_code: str, limit: int = 500) -> list[dict]:
     return items
 
 
+def list_index_options(country_code: str, limit: int = 500) -> list[dict]:
+    normalized_country_code = country_code.strip().upper()
+    if not normalized_country_code:
+        return []
+
+    latest_date_subquery = (
+        db.session.query(
+            IndexDailyBar.country_code.label("country_code"),
+            IndexDailyBar.ticker.label("ticker"),
+            func.max(IndexDailyBar.trade_date).label("latest_date"),
+        )
+        .filter(IndexDailyBar.country_code == normalized_country_code)
+        .group_by(IndexDailyBar.country_code, IndexDailyBar.ticker)
+        .subquery()
+    )
+
+    rows = (
+        db.session.query(IndexAsset, latest_date_subquery.c.latest_date)
+        .outerjoin(
+            latest_date_subquery,
+            (IndexAsset.country_code == latest_date_subquery.c.country_code)
+            & (IndexAsset.ticker == latest_date_subquery.c.ticker),
+        )
+        .filter(IndexAsset.country_code == normalized_country_code)
+        .order_by(IndexAsset.ticker.asc(), IndexAsset.id.asc())
+        .limit(limit)
+        .all()
+    )
+
+    items: list[dict] = []
+    for index_asset, latest_date in rows:
+        latest_date_text = latest_date.isoformat() if latest_date else None
+        label = f"{index_asset.ticker} - {index_asset.name}"
+        if latest_date_text:
+            label = f"{label}（同步至 {latest_date_text}）"
+        items.append(
+            {
+                "label": label,
+                "value": index_asset.ticker,
+                "latestDate": latest_date_text,
+            }
+        )
+    return items
+
+
 def get_stock_daily_coverage(exchange_code: str, ticker: str) -> dict:
     normalized_exchange_code = exchange_code.strip().upper()
     normalized_ticker = ticker.strip().upper()
@@ -706,6 +812,28 @@ def get_stock_daily_coverage(exchange_code: str, ticker: str) -> dict:
             ticker=normalized_ticker,
         )
         .order_by(StockDailyBar.trade_date.asc(), StockDailyBar.id.asc())
+        .all()
+    )
+    dates = [row.trade_date.isoformat() for row in rows if row.trade_date]
+    return {
+        "existingDates": dates,
+        "latestDate": dates[-1] if dates else None,
+        "count": len(dates),
+    }
+
+
+def get_index_daily_coverage(country_code: str, ticker: str) -> dict:
+    normalized_country_code = country_code.strip().upper()
+    normalized_ticker = ticker.strip().upper()
+    if not normalized_country_code or not normalized_ticker:
+        return {"existingDates": [], "latestDate": None, "count": 0}
+
+    rows = (
+        IndexDailyBar.query.filter_by(
+            country_code=normalized_country_code,
+            ticker=normalized_ticker,
+        )
+        .order_by(IndexDailyBar.trade_date.asc(), IndexDailyBar.id.asc())
         .all()
     )
     dates = [row.trade_date.isoformat() for row in rows if row.trade_date]
@@ -904,10 +1032,53 @@ def upsert_stock_daily_bars(rows: list[dict], stock: Stock) -> int:
     return affected
 
 
+def upsert_index_daily_bars(rows: list[dict], index_asset: IndexAsset) -> int:
+    affected = 0
+    for item in rows:
+        ticker = str(item.get("ticker") or "").strip().upper()
+        trade_date_raw = str(item.get("date") or "").strip()
+        if not ticker or ticker != index_asset.ticker or not trade_date_raw:
+            continue
+
+        trade_date = date.fromisoformat(trade_date_raw)
+        record = IndexDailyBar.query.filter_by(
+            country_code=index_asset.country_code,
+            ticker=index_asset.ticker,
+            trade_date=trade_date,
+        ).first()
+        if not record:
+            record = IndexDailyBar(
+                country_code=index_asset.country_code,
+                ticker=index_asset.ticker,
+                trade_date=trade_date,
+            )
+            db.session.add(record)
+
+        record.index_asset_id = index_asset.id
+        record.open = item.get("open")
+        record.high = item.get("high")
+        record.low = item.get("low")
+        record.close = item.get("close")
+        record.volume = int(item["volume"]) if item.get("volume") is not None else None
+        affected += 1
+
+    db.session.commit()
+    return affected
+
+
 def get_latest_stock_daily_date(stock: Stock) -> date | None:
     latest = (
         StockDailyBar.query.filter_by(exchange_code=stock.exchange_code, ticker=stock.ticker)
         .order_by(StockDailyBar.trade_date.desc(), StockDailyBar.id.desc())
+        .first()
+    )
+    return latest.trade_date if latest and latest.trade_date else None
+
+
+def get_latest_index_daily_date(index_asset: IndexAsset) -> date | None:
+    latest = (
+        IndexDailyBar.query.filter_by(country_code=index_asset.country_code, ticker=index_asset.ticker)
+        .order_by(IndexDailyBar.trade_date.desc(), IndexDailyBar.id.desc())
         .first()
     )
     return latest.trade_date if latest and latest.trade_date else None

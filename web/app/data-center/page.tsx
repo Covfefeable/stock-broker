@@ -1,9 +1,8 @@
 "use client";
 
-import { Col, Form, Row, message } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Col, Form, Row, message } from "antd";
 import { AppShell } from "@/components/app-shell";
-import { issues, prices } from "@/components/data-center/constants";
 import { DataBrowserCard } from "@/components/data-center/DataBrowserCard";
 import { DataCenterHeader } from "@/components/data-center/DataCenterHeader";
 import { DataQualityIssuesCard } from "@/components/data-center/DataQualityIssuesCard";
@@ -12,11 +11,14 @@ import { MetricCardsRow } from "@/components/data-center/MetricCardsRow";
 import { SourceStatusCard } from "@/components/data-center/SourceStatusCard";
 import { SyncDataModal } from "@/components/data-center/SyncDataModal";
 import { SyncOverviewCard } from "@/components/data-center/SyncOverviewCard";
+import { issues, prices } from "@/components/data-center/constants";
 import type {
   CountryOption,
   DataSourceStatusItem,
   EventLogItem,
   ExchangeOption,
+  IndexDailyCoverage,
+  IndexOption,
   OverviewMetrics,
   StockDailyCoverage,
   StockOption,
@@ -27,6 +29,9 @@ import type {
 import { defaultMetrics, mapEventLogRow } from "@/components/data-center/utils";
 import { getAccessToken } from "@/lib/auth";
 import { apiGet, apiPost } from "@/lib/api";
+
+const emptyStockCoverage: StockDailyCoverage = { existingDates: [], latestDate: null, count: 0 };
+const emptyIndexCoverage: IndexDailyCoverage = { existingDates: [], latestDate: null, count: 0 };
 
 export default function DataCenterPage() {
   const [messageApi, contextHolder] = message.useMessage();
@@ -48,11 +53,9 @@ export default function DataCenterPage() {
   const [exchangeOptions, setExchangeOptions] = useState<ExchangeOption[]>([]);
   const [countryOptions, setCountryOptions] = useState<CountryOption[]>([]);
   const [stockOptions, setStockOptions] = useState<StockOption[]>([]);
-  const [dailyCoverage, setDailyCoverage] = useState<StockDailyCoverage>({
-    existingDates: [],
-    latestDate: null,
-    count: 0,
-  });
+  const [indexOptions, setIndexOptions] = useState<IndexOption[]>([]);
+  const [stockDailyCoverage, setStockDailyCoverage] = useState<StockDailyCoverage>(emptyStockCoverage);
+  const [indexDailyCoverage, setIndexDailyCoverage] = useState<IndexDailyCoverage>(emptyIndexCoverage);
   const [eventLogs, setEventLogs] = useState<TimelineLogRow[]>([]);
 
   const exchangeCoverage = useMemo(
@@ -149,10 +152,34 @@ export default function DataCenterPage() {
     [messageApi],
   );
 
+  const loadIndexOptions = useCallback(
+    async (countryCode: string) => {
+      if (!countryCode) {
+        setIndexOptions([]);
+        return;
+      }
+
+      setStockLoading(true);
+      try {
+        const token = getAccessToken();
+        const response = await apiGet<{ items: IndexOption[] }>(
+          `/data-center/index-options?countryCode=${encodeURIComponent(countryCode)}`,
+          token,
+        );
+        setIndexOptions(response.items);
+      } catch (error) {
+        messageApi.error(error instanceof Error ? error.message : "加载指数选项失败");
+      } finally {
+        setStockLoading(false);
+      }
+    },
+    [messageApi],
+  );
+
   const loadStockDailyCoverage = useCallback(
     async (exchangeCode: string, ticker: string) => {
       if (!exchangeCode || !ticker) {
-        setDailyCoverage({ existingDates: [], latestDate: null, count: 0 });
+        setStockDailyCoverage(emptyStockCoverage);
         return;
       }
 
@@ -163,9 +190,33 @@ export default function DataCenterPage() {
           `/data-center/stock-daily-coverage?exchangeCode=${encodeURIComponent(exchangeCode)}&ticker=${encodeURIComponent(ticker)}`,
           token,
         );
-        setDailyCoverage(response.coverage);
+        setStockDailyCoverage(response.coverage);
       } catch (error) {
-        messageApi.error(error instanceof Error ? error.message : "加载历史日线覆盖情况失败");
+        messageApi.error(error instanceof Error ? error.message : "加载股票历史日线覆盖情况失败");
+      } finally {
+        setCoverageLoading(false);
+      }
+    },
+    [messageApi],
+  );
+
+  const loadIndexDailyCoverage = useCallback(
+    async (countryCode: string, ticker: string) => {
+      if (!countryCode || !ticker) {
+        setIndexDailyCoverage(emptyIndexCoverage);
+        return;
+      }
+
+      setCoverageLoading(true);
+      try {
+        const token = getAccessToken();
+        const response = await apiGet<{ coverage: IndexDailyCoverage }>(
+          `/data-center/index-daily-coverage?countryCode=${encodeURIComponent(countryCode)}&ticker=${encodeURIComponent(ticker)}`,
+          token,
+        );
+        setIndexDailyCoverage(response.coverage);
+      } catch (error) {
+        messageApi.error(error instanceof Error ? error.message : "加载指数历史日线覆盖情况失败");
       } finally {
         setCoverageLoading(false);
       }
@@ -183,13 +234,25 @@ export default function DataCenterPage() {
     ]);
   }, [loadCountryOptions, loadExchangeOptions, loadLogs, loadOverview, loadSourceStatus]);
 
-  const resetDailyHistoryFields = useCallback(() => {
+  const resetDailyFields = useCallback(() => {
     form.setFieldValue("ticker", undefined);
     form.setFieldValue("dateMode", "auto_fill");
     form.setFieldValue("dateRange", undefined);
-    setDailyCoverage({ existingDates: [], latestDate: null, count: 0 });
-    setStockOptions([]);
+    setStockDailyCoverage(emptyStockCoverage);
+    setIndexDailyCoverage(emptyIndexCoverage);
   }, [form]);
+
+  const resetStockDailyFields = useCallback(() => {
+    form.setFieldValue("exchangeCode", undefined);
+    setStockOptions([]);
+    resetDailyFields();
+  }, [form, resetDailyFields]);
+
+  const resetIndexDailyFields = useCallback(() => {
+    form.setFieldValue("countryCode", undefined);
+    setIndexOptions([]);
+    resetDailyFields();
+  }, [form, resetDailyFields]);
 
   const handleSyncSubmit = useCallback(async () => {
     const values = await form.validateFields();
@@ -212,8 +275,10 @@ export default function DataCenterPage() {
 
       setModalOpen(false);
       form.resetFields();
-      setDailyCoverage({ existingDates: [], latestDate: null, count: 0 });
       setStockOptions([]);
+      setIndexOptions([]);
+      setStockDailyCoverage(emptyStockCoverage);
+      setIndexDailyCoverage(emptyIndexCoverage);
       messageApi.success(`${response.message}，任务 ID：${response.taskId}`);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
@@ -226,11 +291,7 @@ export default function DataCenterPage() {
     setBatchSyncing(true);
     try {
       const token = getAccessToken();
-      const response = await apiPost<SyncEnqueueResponse>(
-        "/data-center/sync/stocks/batch-auto-fill",
-        {},
-        token,
-      );
+      const response = await apiPost<SyncEnqueueResponse>("/data-center/sync/stocks/batch-auto-fill", {}, token);
       messageApi.success(`${response.message}，任务 ID：${response.taskId}`);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "批量同步失败");
@@ -244,30 +305,58 @@ export default function DataCenterPage() {
       if (value !== "stock_list" && value !== "stock_daily_history") {
         form.setFieldValue("exchangeCode", undefined);
       }
-      if (value !== "index_list") {
+      if (value !== "index_list" && value !== "index_daily_history") {
         form.setFieldValue("countryCode", undefined);
       }
       if (value !== "stock_daily_history") {
-        resetDailyHistoryFields();
+        setStockOptions([]);
+        setStockDailyCoverage(emptyStockCoverage);
+      }
+      if (value !== "index_daily_history") {
+        setIndexOptions([]);
+        setIndexDailyCoverage(emptyIndexCoverage);
+      }
+      if (value !== "stock_daily_history" && value !== "index_daily_history") {
+        form.setFieldValue("ticker", undefined);
+        form.setFieldValue("dateMode", "auto_fill");
+        form.setFieldValue("dateRange", undefined);
       }
     },
-    [form, resetDailyHistoryFields],
+    [form],
   );
 
   const handleDailyExchangeChange = useCallback(
     (value: string) => {
       form.setFieldValue("ticker", undefined);
-      setDailyCoverage({ existingDates: [], latestDate: null, count: 0 });
+      form.setFieldValue("dateRange", undefined);
+      setStockDailyCoverage(emptyStockCoverage);
       void loadStockOptions(value);
     },
     [form, loadStockOptions],
   );
 
-  const handleTickerChange = useCallback(
+  const handleDailyCountryChange = useCallback(
+    (value: string) => {
+      form.setFieldValue("ticker", undefined);
+      form.setFieldValue("dateRange", undefined);
+      setIndexDailyCoverage(emptyIndexCoverage);
+      void loadIndexOptions(value);
+    },
+    [form, loadIndexOptions],
+  );
+
+  const handleStockTickerChange = useCallback(
     (value: string, exchangeCode: string) => {
       void loadStockDailyCoverage(exchangeCode, value);
     },
     [loadStockDailyCoverage],
+  );
+
+  const handleIndexTickerChange = useCallback(
+    (value: string, countryCode: string) => {
+      void loadIndexDailyCoverage(countryCode, value);
+    },
+    [loadIndexDailyCoverage],
   );
 
   return (
@@ -297,10 +386,7 @@ export default function DataCenterPage() {
 
       <Row gutter={[20, 20]} className="dashboard-secondary-row equal-height-row">
         <Col xs={24} xl={10}>
-          <ExchangeCoverageCard
-            latestTradeDate={metrics.latestTradeDate}
-            exchangeCoverage={exchangeCoverage}
-          />
+          <ExchangeCoverageCard latestTradeDate={metrics.latestTradeDate} exchangeCoverage={exchangeCoverage} />
         </Col>
         <Col xs={24} xl={14}>
           <DataQualityIssuesCard issues={issues} />
@@ -320,7 +406,9 @@ export default function DataCenterPage() {
         exchangeOptions={exchangeOptions}
         countryOptions={countryOptions}
         stockOptions={stockOptions}
-        dailyCoverage={dailyCoverage}
+        indexOptions={indexOptions}
+        stockDailyCoverage={stockDailyCoverage}
+        indexDailyCoverage={indexDailyCoverage}
         onSubmit={() => void handleSyncSubmit()}
         onCancel={() => {
           if (!syncing) {
@@ -329,7 +417,9 @@ export default function DataCenterPage() {
         }}
         onSyncItemChange={handleSyncItemChange}
         onExchangeChange={handleDailyExchangeChange}
-        onTickerChange={handleTickerChange}
+        onCountryChange={handleDailyCountryChange}
+        onStockTickerChange={handleStockTickerChange}
+        onIndexTickerChange={handleIndexTickerChange}
       />
     </AppShell>
   );

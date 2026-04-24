@@ -68,4 +68,5 @@ export const syncItemOptions: Array<{ label: string; value: SyncFormValues["sync
   { label: "股票清单", value: "stock_list" },
   { label: "指数清单", value: "index_list" },
   { label: "股票历史日线", value: "stock_daily_history" },
+  { label: "指数历史日线", value: "index_daily_history" },
 ];

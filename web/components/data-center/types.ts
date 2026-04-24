@@ -1,8 +1,15 @@
 export type ExchangeOption = { label: string; value: string };
 export type CountryOption = { label: string; value: string };
 export type StockOption = { label: string; value: string; latestDate?: string | null };
+export type IndexOption = { label: string; value: string; latestDate?: string | null };
 
 export type StockDailyCoverage = {
+  existingDates: string[];
+  latestDate: string | null;
+  count: number;
+};
+
+export type IndexDailyCoverage = {
   existingDates: string[];
   latestDate: string | null;
   count: number;
@@ -74,7 +81,13 @@ export type TimelineLogRow = {
 };
 
 export type SyncFormValues = {
-  syncItem: "country_list" | "exchange_list" | "stock_list" | "index_list" | "stock_daily_history";
+  syncItem:
+    | "country_list"
+    | "exchange_list"
+    | "stock_list"
+    | "index_list"
+    | "stock_daily_history"
+    | "index_daily_history";
   exchangeCode?: string;
   countryCode?: string;
   ticker?: string;
