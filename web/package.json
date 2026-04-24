@@ -12,6 +12,7 @@
   "dependencies": {
     "@ant-design/icons": "^6.1.1",
     "antd": "^6.3.6",
+    "echarts": "^6.0.0",
     "lottie-react": "^2.4.1",
     "next": "^15.0.0",
     "react": "^19.0.0",

@@ -5,17 +5,12 @@ import { formatInteger, formatPercent } from "@/components/data-center/utils";
 const { Text } = Typography;
 
 type Props = {
-  latestTradeDate: string | null;
   exchangeCoverage: ExchangeCoverageRow[];
 };
 
-export function ExchangeCoverageCard({ latestTradeDate, exchangeCoverage }: Props) {
+export function ExchangeCoverageCard({ exchangeCoverage }: Props) {
   return (
-    <Card
-      className="dashboard-card"
-      title="交易所覆盖率"
-      extra={latestTradeDate ? <Text type="secondary">最新日线日期：{latestTradeDate}</Text> : undefined}
-    >
+    <Card className="dashboard-card" title="交易所覆盖率">
       <Space orientation="vertical" size={16} className="full-width">
         {exchangeCoverage.length > 0 ? (
           exchangeCoverage.map((item) => (

@@ -1,4 +1,4 @@
-export type ExchangeOption = { label: string; value: string };
+export type ExchangeOption = { label: string; value: string; countryCode?: string | null };
 export type CountryOption = { label: string; value: string };
 export type StockOption = { label: string; value: string; latestDate?: string | null };
 export type IndexOption = { label: string; value: string; latestDate?: string | null };
@@ -110,6 +110,25 @@ export type TaskStatusResponse = {
     syncItemLabel?: string;
   };
   error?: string;
+};
+
+export type BrowserBar = {
+  date: string | null;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+};
+
+export type BrowserMeta = {
+  type: "stock" | "index";
+  name: string;
+  ticker: string;
+  exchangeCode?: string | null;
+  countryCode?: string | null;
+  latestDate: string | null;
+  count: number;
 };
 
 export type SyncEnqueueResponse = {

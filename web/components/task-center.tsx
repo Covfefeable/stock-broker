@@ -7,11 +7,12 @@ import {
   RobotOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Button, Drawer, Empty, Progress, Segmented, Space, Tag, Typography } from "antd";
+import { Button, Drawer, Empty, Progress, Segmented, Space, Tag, Typography, notification } from "antd";
 import Lottie from "lottie-react";
 import type { LottieRefCurrentProps } from "lottie-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import sphereAnimation from "@/lib/lottie/sphere.json";
+import { normalizeDisplayText } from "@/components/data-center/utils";
 import { getAccessToken } from "@/lib/auth";
 import { apiGet } from "@/lib/api";
 
@@ -83,10 +84,12 @@ const statusMeta: Record<TaskStatus, { label: string; color: string; icon: React
 };
 
 export function TaskCenter() {
+  const [notificationApi, notificationHolder] = notification.useNotification();
   const [open, setOpen] = useState(false);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [filter, setFilter] = useState<TaskFilter>("active");
   const lottieRef = useRef<LottieRefCurrentProps>(null);
+  const statusRef = useRef<Record<string, TaskStatus>>({});
 
   const activeTasks = useMemo(
     () => tasks.filter((task) => task.status === "queued" || task.status === "running"),
@@ -135,6 +138,7 @@ export function TaskCenter() {
         const response = await apiGet<TaskSnapshotResponse>("/task-center/tasks", token);
         if (!cancelled) {
           setTasks(sortTasks(response.items));
+          statusRef.current = Object.fromEntries(response.items.map((item) => [item.taskId, item.status]));
         }
       } catch {
         if (!cancelled) {
@@ -157,11 +161,25 @@ export function TaskCenter() {
           const message = JSON.parse(event.data) as TaskSocketMessage;
           if (message.type === "snapshot") {
             setTasks(sortTasks(message.payload.tasks));
+            statusRef.current = Object.fromEntries(message.payload.tasks.map((item) => [item.taskId, item.status]));
             return;
           }
 
           if (message.type === "task.updated") {
+            const previousStatus = statusRef.current[message.payload.taskId];
+            statusRef.current[message.payload.taskId] = message.payload.status;
             setTasks((current) => mergeTask(current, message.payload));
+            if (previousStatus !== message.payload.status && message.payload.status !== "queued") {
+              notificationApi.open({
+                key: message.payload.taskId,
+                message: message.payload.name,
+                description: normalizeDisplayText(
+                  message.payload.progressText || statusMeta[message.payload.status].label,
+                ),
+                placement: "topRight",
+                duration: 3,
+              });
+            }
             return;
           }
 
@@ -199,6 +217,7 @@ export function TaskCenter() {
 
   return (
     <>
+      {notificationHolder}
       <div className="task-center-fab-wrap">
         <button
           className="task-center-fab"
@@ -316,7 +335,9 @@ function TaskCard({ task }: { task: TaskItem }) {
         <Progress percent={percent} size="small" showInfo={false} strokeColor="#6366f1" />
       ) : null}
 
-      {task.progressText ? <Text className="task-center-progress-text">{task.progressText}</Text> : null}
+      {task.progressText ? (
+        <Text className="task-center-progress-text">{normalizeDisplayText(task.progressText)}</Text>
+      ) : null}
 
       {task.recordsAffected !== undefined && task.recordsAffected !== null ? (
         <Text className="task-center-progress-text">处理记录：{task.recordsAffected}</Text>
@@ -327,7 +348,7 @@ function TaskCard({ task }: { task: TaskItem }) {
           task.logs.map((log, index) => (
             <div key={`${task.taskId}-${index}`} className="task-center-log-item">
               <span className="task-center-log-dot" />
-              <span>{log}</span>
+              <span>{normalizeDisplayText(log)}</span>
             </div>
           ))
         ) : (

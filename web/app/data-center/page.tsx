@@ -5,13 +5,12 @@ import { Col, Form, Row, message } from "antd";
 import { AppShell } from "@/components/app-shell";
 import { DataBrowserCard } from "@/components/data-center/DataBrowserCard";
 import { DataCenterHeader } from "@/components/data-center/DataCenterHeader";
-import { DataQualityIssuesCard } from "@/components/data-center/DataQualityIssuesCard";
+import { DataDictionaryCard } from "@/components/data-center/DataDictionaryCard";
 import { ExchangeCoverageCard } from "@/components/data-center/ExchangeCoverageCard";
 import { MetricCardsRow } from "@/components/data-center/MetricCardsRow";
 import { SourceStatusCard } from "@/components/data-center/SourceStatusCard";
 import { SyncDataModal } from "@/components/data-center/SyncDataModal";
 import { SyncOverviewCard } from "@/components/data-center/SyncOverviewCard";
-import { issues, prices } from "@/components/data-center/constants";
 import type {
   CountryOption,
   DataSourceStatusItem,
@@ -371,6 +370,8 @@ export default function DataCenterPage() {
 
       <MetricCardsRow metrics={metrics} loading={overviewLoading} />
 
+      <DataBrowserCard countryOptions={countryOptions} exchangeOptions={exchangeOptions} />
+
       <Row gutter={[20, 20]} className="dashboard-main-row equal-height-row">
         <Col xs={24} xl={15}>
           <SyncOverviewCard
@@ -386,14 +387,17 @@ export default function DataCenterPage() {
 
       <Row gutter={[20, 20]} className="dashboard-secondary-row equal-height-row">
         <Col xs={24} xl={10}>
-          <ExchangeCoverageCard latestTradeDate={metrics.latestTradeDate} exchangeCoverage={exchangeCoverage} />
+          <ExchangeCoverageCard exchangeCoverage={exchangeCoverage} />
         </Col>
         <Col xs={24} xl={14}>
-          <DataQualityIssuesCard issues={issues} />
+          <DataDictionaryCard
+            countryCount={countryOptions.length}
+            exchangeCount={metrics.exchangeCount}
+            stocksCount={metrics.stocksCount}
+            syncedStocksCount={metrics.syncedStocksCount}
+          />
         </Col>
       </Row>
-
-      <DataBrowserCard prices={prices} />
 
       <SyncDataModal
         open={modalOpen}

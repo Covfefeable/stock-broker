@@ -56,7 +56,7 @@ export function mapEventLogRow(item: EventLogItem): TimelineLogRow {
           : item.status === "partial_success" || item.status === "queued"
             ? "部分成功"
             : "失败",
-    message: item.message,
+    message: normalizeDisplayText(item.message),
   };
 }
 
@@ -82,4 +82,14 @@ export function formatInteger(value: number): string {
 
 export function formatPercent(value: number): string {
   return value.toFixed(2);
+}
+
+export function normalizeDisplayText(value: string): string {
+  return value
+    .replaceAll("index_daily_history", "指数历史日线")
+    .replaceAll("stock_daily_history", "股票历史日线")
+    .replaceAll("country_list", "国家/地区清单")
+    .replaceAll("exchange_list", "交易所清单")
+    .replaceAll("stock_list", "股票清单")
+    .replaceAll("index_list", "指数清单");
 }

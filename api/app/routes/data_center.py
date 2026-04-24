@@ -14,7 +14,9 @@ from app.services.data_center_service import (
     get_data_center_overview_metrics,
     get_data_source_status_snapshot,
     get_index_daily_coverage,
+    get_index_browser_bars,
     get_stock_daily_coverage,
+    get_stock_browser_bars,
     list_country_options,
     list_exchange_options,
     list_index_options,
@@ -49,27 +51,27 @@ def source_status():
 @data_center_bp.get("/data-center/exchange-options")
 @auth_required
 def exchange_options():
-    return {"items": list_exchange_options(limit=500)}
+    return {"items": list_exchange_options()}
 
 
 @data_center_bp.get("/data-center/country-options")
 @auth_required
 def country_options():
-    return {"items": list_country_options(limit=500)}
+    return {"items": list_country_options()}
 
 
 @data_center_bp.get("/data-center/stock-options")
 @auth_required
 def stock_options():
     exchange_code = str(request.args.get("exchangeCode") or "").strip()
-    return {"items": list_stock_options(exchange_code=exchange_code, limit=500)}
+    return {"items": list_stock_options(exchange_code=exchange_code)}
 
 
 @data_center_bp.get("/data-center/index-options")
 @auth_required
 def index_options():
     country_code = str(request.args.get("countryCode") or "").strip()
-    return {"items": list_index_options(country_code=country_code, limit=500)}
+    return {"items": list_index_options(country_code=country_code)}
 
 
 @data_center_bp.get("/data-center/stock-daily-coverage")
@@ -86,6 +88,22 @@ def index_daily_coverage():
     country_code = str(request.args.get("countryCode") or "").strip()
     ticker = str(request.args.get("ticker") or "").strip()
     return {"coverage": get_index_daily_coverage(country_code, ticker)}
+
+
+@data_center_bp.get("/data-center/browser/stock-bars")
+@auth_required
+def stock_browser_bars():
+    exchange_code = str(request.args.get("exchangeCode") or "").strip()
+    ticker = str(request.args.get("ticker") or "").strip()
+    return get_stock_browser_bars(exchange_code, ticker)
+
+
+@data_center_bp.get("/data-center/browser/index-bars")
+@auth_required
+def index_browser_bars():
+    country_code = str(request.args.get("countryCode") or "").strip()
+    ticker = str(request.args.get("ticker") or "").strip()
+    return get_index_browser_bars(country_code, ticker)
 
 
 @data_center_bp.get("/tasks/<task_id>")
