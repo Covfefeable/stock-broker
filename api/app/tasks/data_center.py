@@ -11,6 +11,7 @@ from app.services.data_center_service import (
     SYNC_ITEM_INDEX_LIST,
     SYNC_ITEM_STOCK_DAILY_HISTORY,
     SYNC_ITEM_STOCK_LIST,
+    SYNC_ITEM_TRADING_CALENDAR,
     batch_sync_stock_daily_history,
     log_event,
     sync_country_list,
@@ -19,6 +20,7 @@ from app.services.data_center_service import (
     sync_index_list,
     sync_stock_daily_history,
     sync_stock_list,
+    sync_trading_calendar,
 )
 
 
@@ -54,6 +56,8 @@ def sync_data_center_item(
             return sync_stock_list(user, exchange_code or "", task_id=task_id)
         if sync_item == SYNC_ITEM_INDEX_LIST:
             return sync_index_list(user, country_code or "", task_id=task_id)
+        if sync_item == SYNC_ITEM_TRADING_CALENDAR:
+            return sync_trading_calendar(user, exchange_code or "", task_id=task_id)
         if sync_item == SYNC_ITEM_STOCK_DAILY_HISTORY:
             return sync_stock_daily_history(
                 user=user,
@@ -115,6 +119,7 @@ def _log_task_running(
         SYNC_ITEM_EXCHANGE_LIST: "sync_exchange_list",
         SYNC_ITEM_STOCK_LIST: "sync_stock_list",
         SYNC_ITEM_INDEX_LIST: "sync_index_list",
+        SYNC_ITEM_TRADING_CALENDAR: "sync_trading_calendar",
         SYNC_ITEM_STOCK_DAILY_HISTORY: "sync_stock_daily_history",
         SYNC_ITEM_INDEX_DAILY_HISTORY: "sync_index_daily_history",
     }
@@ -123,6 +128,7 @@ def _log_task_running(
         SYNC_ITEM_EXCHANGE_LIST: "交易所清单",
         SYNC_ITEM_STOCK_LIST: "股票清单",
         SYNC_ITEM_INDEX_LIST: "指数清单",
+        SYNC_ITEM_TRADING_CALENDAR: "交易日历",
         SYNC_ITEM_STOCK_DAILY_HISTORY: "股票历史日线",
         SYNC_ITEM_INDEX_DAILY_HISTORY: "指数历史日线",
     }
@@ -145,6 +151,7 @@ def _log_task_timeout(user: User, task_id: str | None, sync_item: str) -> None:
         SYNC_ITEM_EXCHANGE_LIST: "交易所清单",
         SYNC_ITEM_STOCK_LIST: "股票清单",
         SYNC_ITEM_INDEX_LIST: "指数清单",
+        SYNC_ITEM_TRADING_CALENDAR: "交易日历",
         SYNC_ITEM_STOCK_DAILY_HISTORY: "股票历史日线",
         SYNC_ITEM_INDEX_DAILY_HISTORY: "指数历史日线",
     }
@@ -153,6 +160,7 @@ def _log_task_timeout(user: User, task_id: str | None, sync_item: str) -> None:
         SYNC_ITEM_EXCHANGE_LIST: "sync_exchange_list",
         SYNC_ITEM_STOCK_LIST: "sync_stock_list",
         SYNC_ITEM_INDEX_LIST: "sync_index_list",
+        SYNC_ITEM_TRADING_CALENDAR: "sync_trading_calendar",
         SYNC_ITEM_STOCK_DAILY_HISTORY: "sync_stock_daily_history",
         SYNC_ITEM_INDEX_DAILY_HISTORY: "sync_index_daily_history",
     }

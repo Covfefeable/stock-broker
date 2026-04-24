@@ -2,6 +2,11 @@ export type ExchangeOption = { label: string; value: string; countryCode?: strin
 export type CountryOption = { label: string; value: string };
 export type StockOption = { label: string; value: string; latestDate?: string | null };
 export type IndexOption = { label: string; value: string; latestDate?: string | null };
+export type TradingCalendarDay = {
+  exchangeCode: string;
+  date: string;
+  status: 0 | 1;
+};
 
 export type StockDailyCoverage = {
   existingDates: string[];
@@ -86,6 +91,7 @@ export type SyncFormValues = {
     | "exchange_list"
     | "stock_list"
     | "index_list"
+    | "trading_calendar"
     | "stock_daily_history"
     | "index_daily_history";
   exchangeCode?: string;

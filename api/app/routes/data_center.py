@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from celery.exceptions import TimeoutError
 from flask import Blueprint, g, request
 
@@ -11,12 +13,14 @@ from app.services.data_center_service import (
     SYNC_ITEM_INDEX_LIST,
     SYNC_ITEM_STOCK_DAILY_HISTORY,
     SYNC_ITEM_STOCK_LIST,
+    SYNC_ITEM_TRADING_CALENDAR,
     get_data_center_overview_metrics,
     get_data_source_status_snapshot,
     get_index_daily_coverage,
     get_index_browser_bars,
     get_stock_daily_coverage,
     get_stock_browser_bars,
+    list_trading_calendar_entries,
     list_country_options,
     list_exchange_options,
     list_index_options,
@@ -72,6 +76,15 @@ def stock_options():
 def index_options():
     country_code = str(request.args.get("countryCode") or "").strip()
     return {"items": list_index_options(country_code=country_code)}
+
+
+@data_center_bp.get("/data-center/trading-calendar")
+@auth_required
+def trading_calendar():
+    exchange_code = str(request.args.get("exchangeCode") or "").strip()
+    year = int(str(request.args.get("year") or datetime.now().year))
+    month = int(str(request.args.get("month") or datetime.now().month))
+    return {"items": list_trading_calendar_entries(exchange_code=exchange_code, year=year, month=month)}
 
 
 @data_center_bp.get("/data-center/stock-daily-coverage")
@@ -149,6 +162,7 @@ def sync_data():
         SYNC_ITEM_EXCHANGE_LIST,
         SYNC_ITEM_STOCK_LIST,
         SYNC_ITEM_INDEX_LIST,
+        SYNC_ITEM_TRADING_CALENDAR,
         SYNC_ITEM_STOCK_DAILY_HISTORY,
         SYNC_ITEM_INDEX_DAILY_HISTORY,
     }:

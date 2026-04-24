@@ -74,7 +74,7 @@ export function SyncDataModal({
 
         <Form.Item noStyle shouldUpdate={(prev, next) => prev.syncItem !== next.syncItem}>
           {({ getFieldValue }) =>
-            getFieldValue("syncItem") === "stock_list" ? (
+            getFieldValue("syncItem") === "stock_list" || getFieldValue("syncItem") === "trading_calendar" ? (
               <Form.Item label="交易所" name="exchangeCode" rules={[{ required: true, message: "请选择交易所" }]}>
                 <Select
                   showSearch

@@ -1,4 +1,5 @@
 import json
+from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 from time import perf_counter
 from urllib.error import HTTPError, URLError
@@ -16,6 +17,7 @@ from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
+from app.models.trading_calendar_day import TradingCalendarDay
 from app.models.user import User
 from app.services.settings_service import get_or_create_settings
 from app.services.task_center_service import publish_task_event
@@ -30,12 +32,13 @@ SYNC_ITEM_COUNTRY_LIST = "country_list"
 SYNC_ITEM_EXCHANGE_LIST = "exchange_list"
 SYNC_ITEM_STOCK_LIST = "stock_list"
 SYNC_ITEM_INDEX_LIST = "index_list"
+SYNC_ITEM_TRADING_CALENDAR = "trading_calendar"
 SYNC_ITEM_STOCK_DAILY_HISTORY = "stock_daily_history"
 SYNC_ITEM_INDEX_DAILY_HISTORY = "index_daily_history"
 
 DATE_MODE_AUTO_FILL = "auto_fill"
 DATE_MODE_CUSTOM = "custom"
-DEFAULT_FULL_HISTORY_SYNC_START_DATE = "1900-01-01"
+DEFAULT_FULL_HISTORY_SYNC_START_DATE = "2000-01-01"
 
 
 def canghai_stock_url(exchange_code: str) -> str:
@@ -48,6 +51,10 @@ def canghai_index_url(country_code: str) -> str:
 
 def canghai_stock_daily_url(exchange_code: str) -> str:
     return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/daily"
+
+
+def canghai_trading_calendar_url(exchange_code: str) -> str:
+    return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/market/calendar"
 
 
 def canghai_index_daily_url(country_code: str) -> str:
@@ -222,6 +229,8 @@ def sync_item_label(sync_item: str) -> str:
         return "股票清单"
     if sync_item == SYNC_ITEM_INDEX_LIST:
         return "指数清单"
+    if sync_item == SYNC_ITEM_TRADING_CALENDAR:
+        return "交易日历"
     if sync_item == SYNC_ITEM_STOCK_DAILY_HISTORY:
         return "股票历史日线"
     if sync_item == SYNC_ITEM_INDEX_DAILY_HISTORY:
@@ -293,6 +302,36 @@ def sync_index_list(user: User, country_code: str, *, task_id: str | None = None
         base_url=canghai_index_url(normalized_country_code),
         success_message=f"指数清单同步成功（{normalized_country_code}）。",
         upsert_func=lambda rows: upsert_index_assets(rows, normalized_country_code),
+    )
+
+
+def sync_trading_calendar(user: User, exchange_code: str, *, task_id: str | None = None) -> dict:
+    normalized_exchange_code = exchange_code.strip().upper()
+    if not normalized_exchange_code:
+        raise DataSyncError("同步交易日历前请先选择交易所。")
+
+    exchange = Exchange.query.filter_by(exchange_code=normalized_exchange_code).first()
+    if not exchange:
+        raise DataSyncError(
+            f"未找到交易所 {normalized_exchange_code}，请先完成交易所清单同步。"
+        )
+
+    extra_params = {"status": "2", "order": "1"}
+    latest_trade_date = get_latest_trading_calendar_date(exchange)
+    if latest_trade_date:
+        extra_params["start_date"] = (latest_trade_date + timedelta(days=1)).isoformat()
+    else:
+        extra_params["start_date"] = DEFAULT_FULL_HISTORY_SYNC_START_DATE
+
+    return sync_with_token_guard(
+        user=user,
+        task_id=task_id,
+        sync_item=SYNC_ITEM_TRADING_CALENDAR,
+        event_name="sync_trading_calendar",
+        base_url=canghai_trading_calendar_url(normalized_exchange_code),
+        success_message=f"交易日历同步成功（{normalized_exchange_code}）。",
+        upsert_func=lambda rows: upsert_trading_calendar_days(rows, exchange),
+        extra_params=extra_params,
     )
 
 def sync_stock_daily_history(
@@ -919,6 +958,26 @@ def list_country_options() -> list[dict]:
     ]
 
 
+def list_trading_calendar_entries(exchange_code: str, year: int, month: int) -> list[dict]:
+    normalized_exchange_code = exchange_code.strip().upper()
+    if not normalized_exchange_code:
+        return []
+
+    month_start = date(year, month, 1)
+    month_end = date(year, month, monthrange(year, month)[1])
+
+    rows = (
+        TradingCalendarDay.query.filter(
+            TradingCalendarDay.exchange_code == normalized_exchange_code,
+            TradingCalendarDay.trade_date >= month_start,
+            TradingCalendarDay.trade_date <= month_end,
+        )
+        .order_by(TradingCalendarDay.trade_date.asc(), TradingCalendarDay.id.asc())
+        .all()
+    )
+    return [row.to_dict() for row in rows]
+
+
 def get_user_token(user: User) -> str:
     settings = get_or_create_settings(user)
     token = (settings.canghai_api_key or "").strip()
@@ -1126,6 +1185,34 @@ def upsert_index_daily_bars(rows: list[dict], index_asset: IndexAsset) -> int:
     return affected
 
 
+def upsert_trading_calendar_days(rows: list[dict], exchange: Exchange) -> int:
+    affected = 0
+    for item in rows:
+        exchange_code = str(item.get("exchange_code") or "").strip().upper()
+        trade_date_raw = str(item.get("date") or "").strip()
+        if not exchange_code or exchange_code != exchange.exchange_code or not trade_date_raw:
+            continue
+
+        trade_date = date.fromisoformat(trade_date_raw)
+        record = TradingCalendarDay.query.filter_by(
+            exchange_code=exchange.exchange_code,
+            trade_date=trade_date,
+        ).first()
+        if not record:
+            record = TradingCalendarDay(
+                exchange_code=exchange.exchange_code,
+                trade_date=trade_date,
+            )
+            db.session.add(record)
+
+        record.exchange_id = exchange.id
+        record.status = int(item.get("status") or 0)
+        affected += 1
+
+    db.session.commit()
+    return affected
+
+
 def get_latest_stock_daily_date(stock: Stock) -> date | None:
     latest = (
         StockDailyBar.query.filter_by(exchange_code=stock.exchange_code, ticker=stock.ticker)
@@ -1139,6 +1226,15 @@ def get_latest_index_daily_date(index_asset: IndexAsset) -> date | None:
     latest = (
         IndexDailyBar.query.filter_by(country_code=index_asset.country_code, ticker=index_asset.ticker)
         .order_by(IndexDailyBar.trade_date.desc(), IndexDailyBar.id.desc())
+        .first()
+    )
+    return latest.trade_date if latest and latest.trade_date else None
+
+
+def get_latest_trading_calendar_date(exchange: Exchange) -> date | None:
+    latest = (
+        TradingCalendarDay.query.filter_by(exchange_code=exchange.exchange_code)
+        .order_by(TradingCalendarDay.trade_date.desc(), TradingCalendarDay.id.desc())
         .first()
     )
     return latest.trade_date if latest and latest.trade_date else None

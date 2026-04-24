@@ -914,6 +914,85 @@ select {
   line-height: 1.4;
 }
 
+.trading-calendar-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.trading-calendar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.trading-calendar-select {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+.trading-calendar-summary {
+  margin-bottom: 4px;
+}
+
+.trading-calendar-card .ant-picker-calendar {
+  background: transparent;
+}
+
+.trading-calendar-card .ant-picker-panel {
+  background: transparent !important;
+}
+
+.trading-calendar-card .ant-picker-calendar-date {
+  background: transparent !important;
+  border-top: 0 !important;
+  height: 100%;
+}
+
+.trading-calendar-cell {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+  min-height: 76px;
+  padding: 8px;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.trading-calendar-cell-open {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.22);
+}
+
+.trading-calendar-cell-closed {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.16);
+}
+
+.trading-calendar-cell-other-month {
+  opacity: 0.45;
+}
+
+.trading-calendar-cell-date {
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.trading-calendar-cell-status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.trading-calendar-empty {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 320px;
+}
+
 .settings-layout {
   align-items: flex-start;
   display: grid;

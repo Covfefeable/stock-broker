@@ -105,6 +105,8 @@ def task_name_from_log(log: EventLog) -> str:
         return "股票清单同步"
     if event_name == "sync_index_list" or target == "index_list":
         return "指数清单同步"
+    if event_name == "sync_trading_calendar" or target == "trading_calendar":
+        return "交易日历同步"
     if event_name == "sync_index_daily_history" or target == "index_daily_history":
         return "指数历史日线同步"
     if event_name == "sync_stock_daily_history" or target == "stock_daily_history":

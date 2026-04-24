@@ -22,6 +22,8 @@ export function mapEventLogRow(item: EventLogItem): TimelineLogRow {
             ? "股票清单同步"
               : item.eventName === "sync_index_list"
                 ? "指数清单同步"
+                : item.eventName === "sync_trading_calendar"
+                  ? "交易日历同步"
                 : item.eventName === "sync_index_daily_history"
                   ? "指数历史日线同步"
                 : item.eventName === "sync_stock_daily_history"
@@ -42,6 +44,8 @@ export function mapEventLogRow(item: EventLogItem): TimelineLogRow {
             ? "股票清单"
             : item.target === "index_list"
               ? "指数清单"
+              : item.target === "trading_calendar"
+                ? "交易日历"
               : item.target === "index_daily_history"
                 ? "指数历史日线"
               : item.target === "stock_daily_history"
@@ -88,6 +92,7 @@ export function normalizeDisplayText(value: string): string {
   return value
     .replaceAll("index_daily_history", "指数历史日线")
     .replaceAll("stock_daily_history", "股票历史日线")
+    .replaceAll("trading_calendar", "交易日历")
     .replaceAll("country_list", "国家/地区清单")
     .replaceAll("exchange_list", "交易所清单")
     .replaceAll("stock_list", "股票清单")
