@@ -1,7 +1,7 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "PUT";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   token?: string | null;
 };
@@ -42,4 +42,12 @@ export async function apiGet<T>(path: string, token?: string | null): Promise<T>
 
 export async function apiPost<T>(path: string, body: unknown, token?: string | null): Promise<T> {
   return apiRequest<T>(path, { method: "POST", body, token });
+}
+
+export async function apiPut<T>(path: string, body: unknown, token?: string | null): Promise<T> {
+  return apiRequest<T>(path, { method: "PUT", body, token });
+}
+
+export async function apiDelete<T>(path: string, token?: string | null): Promise<T> {
+  return apiRequest<T>(path, { method: "DELETE", token });
 }

@@ -53,7 +53,8 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
           components: {
             Button: {
               borderRadius: 6,
-              controlHeight: 38,
+              controlHeight: 34,
+              controlHeightSM: 28,
             },
             Card: {
               borderRadiusLG: 8,

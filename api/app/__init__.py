@@ -2,7 +2,7 @@ from flask import Flask
 
 from app.config import get_config
 from app.extensions import celery_app, cors, db, init_celery, init_redis, migrate, sock
-from app.models import Country, EventLog, Exchange, IndexAsset, Setting, Stock, StockDailyBar, User
+from app.models import Country, EventLog, Exchange, IndexAsset, Setting, Stock, StockDailyBar, Strategy, User
 from app.routes import register_routes
 
 celery = celery_app

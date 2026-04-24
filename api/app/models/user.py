@@ -30,6 +30,12 @@ class User(db.Model):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    strategies = db.relationship(
+        "Strategy",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="desc(Strategy.updated_at)",
+    )
 
     def to_dict(self) -> dict:
         return {

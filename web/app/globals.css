@@ -883,7 +883,7 @@ select {
 }
 
 .data-browser-card {
-  height: 640px;
+  height: 690px;
 }
 
 .data-log-card {
@@ -1361,5 +1361,338 @@ select {
 
   .login-hero {
     min-height: 520px;
+  }
+}
+
+.strategy-page-card {
+  margin-top: 20px;
+}
+
+.strategy-page-card > .ant-card-body {
+  overflow: visible;
+}
+
+.strategy-filter-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.strategy-filter-keyword {
+  flex: 1 1 320px;
+  min-width: 240px;
+}
+
+.strategy-filter-select {
+  flex: 0 0 168px;
+  width: 168px;
+}
+
+.strategy-list-summary {
+  margin-bottom: 14px;
+}
+
+.strategy-form-card,
+.strategy-rule-placeholder-card {
+  margin-top: 20px;
+}
+
+.strategy-form-card > .ant-card-body,
+.strategy-rule-placeholder-card > .ant-card-body {
+  overflow: visible;
+}
+
+.strategy-form-grid {
+  display: grid;
+  gap: 18px 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.strategy-form-summary {
+  margin-top: 8px;
+}
+
+.strategy-rule-engine .ant-tabs-nav {
+  margin-bottom: 16px !important;
+}
+
+.strategy-rule-tabs .ant-tabs-tab {
+  font-weight: 700;
+}
+
+.strategy-rule-tabs .ant-tabs-tab.ant-tabs-tab-active {
+  background: rgba(99, 102, 241, 0.12);
+  border-radius: 8px 8px 0 0;
+}
+
+.strategy-rule-tabs .ant-tabs-ink-bar {
+  background: var(--primary) !important;
+  height: 3px !important;
+}
+
+.strategy-rule-card {
+  background: linear-gradient(180deg, rgba(27, 38, 59, 0.92), rgba(23, 32, 51, 0.96));
+  border-style: solid;
+  overflow: hidden;
+}
+
+.strategy-rule-group {
+  background: linear-gradient(180deg, rgba(27, 38, 59, 0.94), rgba(23, 32, 51, 0.96));
+  border: 1px solid rgba(99, 102, 241, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.strategy-rule-group + .strategy-rule-group {
+  margin-top: 12px;
+}
+
+.strategy-rule-group-depth-1,
+.strategy-rule-group-depth-2 {
+  margin-top: 12px;
+}
+
+.strategy-rule-group-body {
+  display: grid;
+  gap: 12px;
+}
+
+.strategy-rule-group-title {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.strategy-rule-group-title strong {
+  color: var(--text-main);
+  font-size: 15px;
+}
+
+.strategy-rule-group-title span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.strategy-rule-group-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.strategy-rule-logic-toggle .ant-radio-button-wrapper {
+  min-width: 98px;
+  padding-inline: 10px;
+  text-align: center;
+}
+
+.strategy-rule-group-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.strategy-rule-action-button {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-color: var(--panel-border) !important;
+}
+
+.strategy-condition-row {
+  align-items: end;
+  background: rgba(15, 23, 42, 0.24);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(160px, 1.2fr) 120px 120px minmax(160px, 1.2fr) 40px;
+  padding: 12px;
+}
+
+.strategy-condition-cell {
+  display: grid;
+  gap: 6px;
+}
+
+.strategy-condition-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.strategy-condition-field,
+.strategy-condition-value {
+  width: 100%;
+}
+
+.strategy-condition-operator {
+  width: 120px;
+}
+
+.strategy-condition-mode .ant-radio-button-wrapper {
+  min-width: 44px;
+  padding-inline: 10px;
+  text-align: center;
+}
+
+.strategy-condition-remove {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  padding-bottom: 2px;
+}
+
+.strategy-risk-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.strategy-risk-form {
+  display: grid;
+  gap: 14px;
+}
+
+.strategy-risk-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.strategy-risk-form label > span {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.strategy-dsl-preview {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
+}
+
+.strategy-dsl-main {
+  display: grid;
+  gap: 16px;
+}
+
+.strategy-rule-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.strategy-preview-card .ant-card-body {
+  display: grid;
+  gap: 16px;
+}
+
+.strategy-preview-metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.strategy-preview-metric-card {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.strategy-preview-metric-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.strategy-preview-metric-header > span {
+  color: rgba(191, 219, 254, 0.78);
+  font-size: 12px;
+}
+
+.strategy-preview-metric-help {
+  color: rgba(191, 219, 254, 0.55);
+  cursor: help;
+  font-size: 14px;
+}
+
+.strategy-preview-metric-values {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.strategy-preview-metric-values > div {
+  display: grid;
+  gap: 4px;
+}
+
+.strategy-preview-metric-values small {
+  color: rgba(148, 163, 184, 0.82);
+  font-size: 11px;
+}
+
+.strategy-preview-metric-values strong {
+  color: #f8fafc;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.strategy-preview-range {
+  border-top: 1px solid rgba(99, 102, 241, 0.12);
+  padding-top: 12px;
+}
+
+.strategy-preview-chart {
+  height: 220px;
+  width: 100%;
+}
+
+.strategy-preview-trades {
+  margin-top: 4px;
+}
+
+.strategy-preview-trades .ant-table-body {
+  scrollbar-width: thin;
+}
+
+.strategy-dsl-preview pre {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(99, 102, 241, 0.14);
+  border-radius: 8px;
+  color: #dbe4ff;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+  overflow: auto;
+  padding: 16px;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 980px) {
+  .strategy-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-condition-row {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-risk-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-dsl-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-preview-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-preview-metric-values {
+    grid-template-columns: 1fr;
   }
 }

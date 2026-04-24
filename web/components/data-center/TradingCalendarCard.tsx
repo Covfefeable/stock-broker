@@ -41,12 +41,6 @@ export function TradingCalendarCard({ countryOptions, exchangeOptions }: Props) 
   }, [countryCode, exchangeOptions]);
 
   useEffect(() => {
-    if (!countryCode && countryOptions.length > 0) {
-      setCountryCode(countryOptions[0].value);
-    }
-  }, [countryCode, countryOptions]);
-
-  useEffect(() => {
     if (!countryCode) {
       setExchangeCode(undefined);
       setItems([]);
@@ -59,8 +53,8 @@ export function TradingCalendarCard({ countryOptions, exchangeOptions }: Props) 
       return;
     }
 
-    if (!exchangeCode || !filteredExchangeOptions.some((item) => item.value === exchangeCode)) {
-      setExchangeCode(filteredExchangeOptions[0].value);
+    if (exchangeCode && !filteredExchangeOptions.some((item) => item.value === exchangeCode)) {
+      setExchangeCode(undefined);
       setItems([]);
     }
   }, [countryCode, exchangeCode, filteredExchangeOptions]);
