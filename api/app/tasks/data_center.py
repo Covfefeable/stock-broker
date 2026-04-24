@@ -13,6 +13,7 @@ from app.services.data_center_service import (
     SYNC_ITEM_STOCK_DAILY_HISTORY,
     SYNC_ITEM_STOCK_LIST,
     SYNC_ITEM_TRADING_CALENDAR,
+    batch_sync_stock_and_index_daily_history,
     batch_sync_stock_daily_history,
     log_event,
     sync_country_list,
@@ -117,6 +118,45 @@ def batch_sync_stock_daily_history_task(*, user_id: int) -> dict:
         raise DataSyncError("批量同步股票日线任务超时") from exc
     except Exception as exc:
         _log_task_failed(user, task_id, SYNC_ITEM_STOCK_DAILY_HISTORY, f"批量同步股票日线任务执行失败：{exc}", batch=True)
+        raise
+
+
+@celery_app.task(name="app.tasks.data_center.batch_sync_stock_and_index_daily_history")
+def batch_sync_stock_and_index_daily_history_task(*, user_id: int) -> dict:
+    user = _get_user(user_id)
+    task_id = current_task.request.id if current_task else None
+    log_event(
+        user=user,
+        task_id=task_id,
+        event_type="data_sync_batch",
+        event_name="batch_sync_stock_and_index_daily_history",
+        source="worker",
+        target=SYNC_ITEM_STOCK_DAILY_HISTORY,
+        status="running",
+        level="info",
+        message="批量同步股票/指数日线任务开始执行。",
+    )
+
+    try:
+        return batch_sync_stock_and_index_daily_history(user, task_id=task_id)
+    except DataSyncError as exc:
+        _log_task_failed(user, task_id, SYNC_ITEM_STOCK_DAILY_HISTORY, str(exc), batch=True)
+        raise
+    except SoftTimeLimitExceeded as exc:
+        log_event(
+            user=user,
+            task_id=task_id,
+            event_type="data_sync_batch",
+            event_name="batch_sync_stock_and_index_daily_history",
+            source="worker",
+            target=SYNC_ITEM_STOCK_DAILY_HISTORY,
+            status="failed",
+            level="error",
+            message="批量同步股票/指数日线任务执行超时。",
+        )
+        raise DataSyncError("批量同步股票/指数日线任务超时") from exc
+    except Exception as exc:
+        _log_task_failed(user, task_id, SYNC_ITEM_STOCK_DAILY_HISTORY, f"批量同步股票/指数日线任务执行失败：{exc}", batch=True)
         raise
 
 

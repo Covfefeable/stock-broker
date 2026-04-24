@@ -307,7 +307,7 @@ export default function DataCenterPage() {
     setBatchSyncing(true);
     try {
       const token = getAccessToken();
-      const response = await apiPost<SyncEnqueueResponse>("/data-center/sync/stocks/batch-auto-fill", {}, token);
+      const response = await apiPost<SyncEnqueueResponse>("/data-center/sync/assets/batch-auto-fill", {}, token);
       messageApi.success(`${response.message}，任务 ID：${response.taskId}`);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "批量同步失败");

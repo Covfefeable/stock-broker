@@ -4,7 +4,7 @@ export const defaultMetrics: OverviewMetrics = {
   stocksCount: 0,
   stockDailyBarsCount: 0,
   exchangeCount: 0,
-  syncedStocksCount: 0,
+  syncedAssetsCount: 0,
   latestTradeDate: null,
   exchangeCoverage: [],
 };

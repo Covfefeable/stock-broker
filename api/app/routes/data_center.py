@@ -29,7 +29,7 @@ from app.services.data_center_service import (
     log_event,
     sync_item_label,
 )
-from app.tasks.data_center import batch_sync_stock_daily_history_task, sync_data_center_item
+from app.tasks.data_center import batch_sync_stock_and_index_daily_history_task, sync_data_center_item
 
 data_center_bp = Blueprint("data_center", __name__)
 
@@ -199,23 +199,23 @@ def sync_data():
     }, 202
 
 
-@data_center_bp.post("/data-center/sync/stocks/batch-auto-fill")
+@data_center_bp.post("/data-center/sync/assets/batch-auto-fill")
 @auth_required
-def batch_sync_stocks():
-    task = batch_sync_stock_daily_history_task.apply_async(kwargs={"user_id": g.current_user.id})
+def batch_sync_assets():
+    task = batch_sync_stock_and_index_daily_history_task.apply_async(kwargs={"user_id": g.current_user.id})
     log_event(
         user=g.current_user,
         task_id=task.id,
         event_type="data_sync_batch",
-        event_name="enqueue_batch_sync_stock_daily_history",
+        event_name="enqueue_batch_sync_stock_and_index_daily_history",
         source="api",
         target=SYNC_ITEM_STOCK_DAILY_HISTORY,
         status="queued",
         level="info",
-        message="批量同步股票日线任务已提交，等待后台执行。",
+        message="批量同步股票/指数日线任务已提交，等待后台执行。",
     )
     return {
-        "message": "批量同步股票日线任务已提交",
+        "message": "批量同步股票/指数日线任务已提交",
         "taskId": task.id,
     }, 202
 

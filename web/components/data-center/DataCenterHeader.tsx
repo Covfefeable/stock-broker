@@ -19,9 +19,9 @@ export function DataCenterHeader({ batchSyncing, onBatchSync, onOpenSyncModal }:
         </Text>
       </div>
       <Space>
-        <Tooltip title="自动同步所有已添加股票自上一个同步日期以来的所有日线数据">
+        <Tooltip title="自动同步所有已添加股票和指数自上一个同步日期以来的所有日线数据">
           <Button loading={batchSyncing} onClick={onBatchSync}>
-            批量同步股票
+            批量同步股票/指数
           </Button>
         </Tooltip>
         <Button type="primary" icon={<SyncOutlined />} onClick={onOpenSyncModal}>

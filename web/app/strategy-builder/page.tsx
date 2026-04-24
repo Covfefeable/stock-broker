@@ -291,7 +291,7 @@ export default function StrategyBuilderPage() {
       {
         title: "操作",
         key: "action",
-        width: 170,
+        width: 220,
         render: (_value: unknown, record: StrategyRow) => (
           <Space size={4}>
             <Button size="small" type="link" href={`/strategy-builder/${record.id}`}>

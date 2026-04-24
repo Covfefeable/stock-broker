@@ -1,8 +1,9 @@
 "use client";
 
 import { DeleteOutlined, PlusOutlined, QuestionCircleOutlined } from "@ant-design/icons";
-import { Button, Card, Input, InputNumber, Radio, Select, Table, Tabs, Tag, Tooltip, Typography } from "antd";
+import { Button, Card, Input, InputNumber, Radio, Select, Switch, Table, Tabs, Tag, Tooltip, Typography } from "antd";
 import { useMemo } from "react";
+import type { ReactNode } from "react";
 import { StrategyPreviewChart } from "@/components/strategy-builder/strategy-preview-chart";
 import type {
   RiskBacktestConfig,
@@ -32,6 +33,8 @@ type RuleFieldOption = {
   label: string;
   value: RuleFieldValue;
   scopes: RuleScope[];
+  category: string;
+  help: string;
 };
 
 type PreviewMetricConfig = {
@@ -43,20 +46,40 @@ type PreviewMetricConfig = {
 };
 
 const FIELD_OPTIONS: RuleFieldOption[] = [
-  { label: "开盘价", value: "open", scopes: ["entry", "exit"] },
-  { label: "最高价", value: "high", scopes: ["entry", "exit"] },
-  { label: "最低价", value: "low", scopes: ["entry", "exit"] },
-  { label: "收盘价", value: "close", scopes: ["entry", "exit"] },
-  { label: "成交量", value: "volume", scopes: ["entry", "exit"] },
-  { label: "MA5", value: "ma5", scopes: ["entry", "exit"] },
-  { label: "MA20", value: "ma20", scopes: ["entry", "exit"] },
-  { label: "KDJ K", value: "kdj_k", scopes: ["entry", "exit"] },
-  { label: "KDJ D", value: "kdj_d", scopes: ["entry", "exit"] },
-  { label: "MACD DIF", value: "macd_dif", scopes: ["entry", "exit"] },
-  { label: "MACD DEA", value: "macd_dea", scopes: ["entry", "exit"] },
-  { label: "RSI14", value: "rsi14", scopes: ["entry", "exit"] },
-  { label: "持仓收益率", value: "position_return", scopes: ["exit"] },
-  { label: "持仓天数", value: "holding_days", scopes: ["exit"] },
+  { label: "开盘价", value: "open", scopes: ["entry", "exit"], category: "原始行情", help: "当日开盘成交价。" },
+  { label: "最高价", value: "high", scopes: ["entry", "exit"], category: "原始行情", help: "当日最高成交价。" },
+  { label: "最低价", value: "low", scopes: ["entry", "exit"], category: "原始行情", help: "当日最低成交价。" },
+  { label: "收盘价", value: "close", scopes: ["entry", "exit"], category: "原始行情", help: "当日收盘成交价。" },
+  { label: "成交量", value: "volume", scopes: ["entry", "exit"], category: "原始行情", help: "当日成交数量。" },
+  { label: "MA5", value: "ma5", scopes: ["entry", "exit"], category: "趋势因子", help: "最近 5 个交易日收盘价的简单移动平均。" },
+  { label: "MA10", value: "ma10", scopes: ["entry", "exit"], category: "趋势因子", help: "最近 10 个交易日收盘价的简单移动平均。" },
+  { label: "MA20", value: "ma20", scopes: ["entry", "exit"], category: "趋势因子", help: "最近 20 个交易日收盘价的简单移动平均。" },
+  { label: "MA60", value: "ma60", scopes: ["entry", "exit"], category: "趋势因子", help: "最近 60 个交易日收盘价的简单移动平均。" },
+  { label: "MA120", value: "ma120", scopes: ["entry", "exit"], category: "趋势因子", help: "最近 120 个交易日收盘价的简单移动平均。" },
+  { label: "RSI14", value: "rsi14", scopes: ["entry", "exit"], category: "动量因子", help: "14 日相对强弱指标，范围通常在 0 到 100。" },
+  { label: "MACD DIF", value: "macd_dif", scopes: ["entry", "exit"], category: "动量因子", help: "EMA12 与 EMA26 的差值，反映快慢趋势差。" },
+  { label: "MACD DEA", value: "macd_dea", scopes: ["entry", "exit"], category: "动量因子", help: "MACD DIF 的 9 周期 EMA。" },
+  { label: "KDJ K", value: "kdj_k", scopes: ["entry", "exit"], category: "动量因子", help: "KDJ 中较敏感的 K 值，反映短线位置变化。" },
+  { label: "KDJ D", value: "kdj_d", scopes: ["entry", "exit"], category: "动量因子", help: "KDJ 中更平滑的 D 值，常与 K 值配合看金叉死叉。" },
+  { label: "BIAS(MA20)", value: "bias_ma20", scopes: ["entry", "exit"], category: "趋势因子", help: "收盘价相对 MA20 的偏离率，口径为 close / MA20 - 1。" },
+  { label: "5日收益率", value: "return_5d", scopes: ["entry", "exit"], category: "动量因子", help: "相对 5 个交易日前收盘价的累计收益率，口径为 close / close[-5] - 1。" },
+  { label: "20日收益率", value: "return_20d", scopes: ["entry", "exit"], category: "动量因子", help: "相对 20 个交易日前收盘价的累计收益率，口径为 close / close[-20] - 1。" },
+  { label: "60日收益率", value: "return_60d", scopes: ["entry", "exit"], category: "动量因子", help: "相对 60 个交易日前收盘价的累计收益率，口径为 close / close[-60] - 1。" },
+  { label: "量比(5日)", value: "volume_ratio_5", scopes: ["entry", "exit"], category: "量价因子", help: "当日成交量相对 5 日平均成交量的倍数。" },
+  { label: "量比(20日)", value: "volume_ratio_20", scopes: ["entry", "exit"], category: "量价因子", help: "当日成交量相对 20 日平均成交量的倍数。" },
+  { label: "ATR14", value: "atr14", scopes: ["entry", "exit"], category: "波动因子", help: "14 日平均真实波幅，衡量价格波动强度。" },
+  { label: "20日波动率", value: "volatility_20d", scopes: ["entry", "exit"], category: "波动因子", help: "最近 20 个交易日日收益率标准差，不做年化。" },
+  { label: "20日区间位置", value: "close_pct_of_20d_range", scopes: ["entry", "exit"], category: "位置因子", help: "收盘价位于最近 20 日高低区间中的相对位置，范围通常在 0 到 1。" },
+  { label: "60日区间位置", value: "close_pct_of_60d_range", scopes: ["entry", "exit"], category: "位置因子", help: "收盘价位于最近 60 日高低区间中的相对位置，范围通常在 0 到 1。" },
+  { label: "距20日高点", value: "distance_to_20d_high", scopes: ["entry", "exit"], category: "位置因子", help: "收盘价相对最近 20 日最高价的偏离率，口径为 close / high20 - 1。" },
+  { label: "距20日低点", value: "distance_to_20d_low", scopes: ["entry", "exit"], category: "位置因子", help: "收盘价相对最近 20 日最低价的偏离率，口径为 close / low20 - 1。" },
+  { label: "实体占比", value: "body_pct", scopes: ["entry", "exit"], category: "K线形态", help: "K 线实体长度相对开盘价的比例，口径为 |close - open| / open。" },
+  { label: "上影线占比", value: "upper_shadow_pct", scopes: ["entry", "exit"], category: "K线形态", help: "上影线长度相对开盘价的比例。" },
+  { label: "下影线占比", value: "lower_shadow_pct", scopes: ["entry", "exit"], category: "K线形态", help: "下影线长度相对开盘价的比例。" },
+  { label: "向上跳空", value: "gap_up", scopes: ["entry", "exit"], category: "K线形态", help: "若当日开盘价高于前一日最高价则记为 1，否则为 0。" },
+  { label: "向下跳空", value: "gap_down", scopes: ["entry", "exit"], category: "K线形态", help: "若当日开盘价低于前一日最低价则记为 1，否则为 0。" },
+  { label: "持仓收益率", value: "position_return", scopes: ["exit"], category: "持仓状态", help: "当前收盘价相对持仓成本的收益率。" },
+  { label: "持仓天数", value: "holding_days", scopes: ["exit"], category: "持仓状态", help: "从首次建仓到当前 K 线为止已持有的交易日数量。" },
 ];
 
 const OPERATOR_OPTIONS: Array<{ label: string; value: RuleOperator }> = [
@@ -162,6 +185,7 @@ export function createDefaultStrategyDslConfig(): StrategyDslConfig {
       stopLoss: 0.08,
       takeProfit: 0.2,
       maxHoldingDays: 30,
+      forceCloseOnEnd: true,
       backtestStartDate: "2020-01-01",
       backtestEndDate: new Date().toISOString().slice(0, 10),
     },
@@ -239,6 +263,15 @@ export function RuleEngine({
                       <span>最大持仓天数</span>
                       <InputNumber min={1} value={value.risk.maxHoldingDays} onChange={(next) => updateRisk("maxHoldingDays", Number(next ?? 1))} />
                     </label>
+                    <label className="strategy-risk-switch-row">
+                      <span>
+                        强制期末平仓
+                        <Tooltip title="开启后，回测结束时若仍有持仓，会按最后一个交易日收盘价强制平仓并计入收益。">
+                          <QuestionCircleOutlined className="strategy-preview-metric-help" />
+                        </Tooltip>
+                      </span>
+                      <Switch checked={value.risk.forceCloseOnEnd !== false} onChange={(checked) => updateRisk("forceCloseOnEnd", checked)} />
+                    </label>
                   </div>
                 </Card>
 
@@ -299,7 +332,7 @@ export function RuleEngine({
                             <strong>{previewResult ? metric.strategyValue(previewResult) : "--"}</strong>
                           </div>
                           <div>
-                            <small>买入持有</small>
+                            <small>持续持有</small>
                             <strong>{previewResult ? metric.benchmarkValue(previewResult) : "--"}</strong>
                           </div>
                         </div>
@@ -345,6 +378,73 @@ export function RuleEngine({
                       },
                     ]}
                   />
+                </Card>
+              </div>
+            ),
+          },
+          {
+            key: "nextAction",
+            label: "未来操作",
+            children: (
+              <div className="strategy-dsl-preview">
+                <Card className="strategy-rule-card" size="small" title="当前持仓状态">
+                  <div className="strategy-preview-metrics strategy-preview-metrics-single">
+                    <div className="strategy-preview-metric-card">
+                      <div className="strategy-preview-metric-header">
+                        <span>持仓状态</span>
+                        <Tooltip title="根据当前策略回测到最后一个交易日时的真实持仓状态推导。">
+                          <QuestionCircleOutlined className="strategy-preview-metric-help" />
+                        </Tooltip>
+                      </div>
+                      <div className="strategy-preview-next-action-grid">
+                        <div>
+                          <small>状态</small>
+                          <strong>{previewResult?.currentPosition.status ?? "--"}</strong>
+                        </div>
+                        <div>
+                          <small>持仓数量</small>
+                          <strong>{previewResult ? previewResult.currentPosition.shares.toFixed(6) : "--"}</strong>
+                        </div>
+                        <div>
+                          <small>持仓均价</small>
+                          <strong>{previewResult?.currentPosition.entryPrice != null ? previewResult.currentPosition.entryPrice.toFixed(4) : "--"}</strong>
+                        </div>
+                        <div>
+                          <small>当前仓位</small>
+                          <strong>{previewResult ? `${previewResult.currentPosition.positionRatio.toFixed(2)}%` : "--"}</strong>
+                        </div>
+                        <div>
+                          <small>持仓天数</small>
+                          <strong>{previewResult?.currentPosition.holdingDays ?? "--"}</strong>
+                        </div>
+                        <div>
+                          <small>浮动收益率</small>
+                          <strong>
+                            {previewResult?.currentPosition.unrealizedReturn != null
+                              ? `${previewResult.currentPosition.unrealizedReturn.toFixed(2)}%`
+                              : "--"}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="strategy-rule-card" size="small" title="下一个交易日建议">
+                  <div className="strategy-preview-metrics strategy-preview-metrics-single">
+                    <div className="strategy-preview-metric-card">
+                      <div className="strategy-preview-metric-header">
+                        <span>建议动作</span>
+                        <Tooltip title="根据回测最后一个交易日收盘后的信号状态，推导下一个交易日开盘时应执行的动作。">
+                          <QuestionCircleOutlined className="strategy-preview-metric-help" />
+                        </Tooltip>
+                      </div>
+                      <div className="strategy-preview-next-action-block">
+                        <strong>{previewResult?.nextAction.action ?? "--"}</strong>
+                        <Text type="secondary">{previewResult?.nextAction.reason ?? "请先执行收益预览。"}</Text>
+                      </div>
+                    </div>
+                  </div>
                 </Card>
               </div>
             ),
@@ -460,7 +560,7 @@ type ConditionRowProps = {
 };
 
 function RuleConditionRow({ value, availableFields, onChange, onDelete }: ConditionRowProps) {
-  const fieldOptions = availableFields.map((item) => ({ label: item.label, value: item.value }));
+  const fieldOptions = availableFields.map((item) => ({ label: renderFieldOptionLabel(item), value: item.value }));
   const isCrossOperator = value.operator === "cross_over" || value.operator === "cross_under";
 
   return (
@@ -519,6 +619,18 @@ function RuleConditionRow({ value, availableFields, onChange, onDelete }: Condit
         <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={onDelete} />
       </div>
     </div>
+  );
+}
+
+function renderFieldOptionLabel(option: RuleFieldOption): ReactNode {
+  return (
+    <span className="strategy-field-option-label">
+      <span>{option.label}</span>
+      <Tag>{option.category}</Tag>
+      <Tooltip title={option.help}>
+        <QuestionCircleOutlined className="strategy-preview-metric-help" />
+      </Tooltip>
+    </span>
   );
 }
 

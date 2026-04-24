@@ -29,20 +29,40 @@ class AgentTaskError(ValueError):
 
 
 RULE_FIELDS = [
-    {"label": "收盘价", "value": "close"},
-    {"label": "开盘价", "value": "open"},
-    {"label": "最高价", "value": "high"},
-    {"label": "最低价", "value": "low"},
-    {"label": "成交量", "value": "volume"},
-    {"label": "MA5", "value": "ma5"},
-    {"label": "MA20", "value": "ma20"},
-    {"label": "RSI14", "value": "rsi14"},
-    {"label": "MACD DIF", "value": "macd_dif"},
-    {"label": "MACD DEA", "value": "macd_dea"},
-    {"label": "KDJ K", "value": "kdj_k"},
-    {"label": "KDJ D", "value": "kdj_d"},
-    {"label": "持仓收益率", "value": "position_return"},
-    {"label": "持仓天数", "value": "holding_days"},
+    {"label": "收盘价", "value": "close", "description": "当日收盘成交价。"},
+    {"label": "开盘价", "value": "open", "description": "当日开盘成交价。"},
+    {"label": "最高价", "value": "high", "description": "当日最高成交价。"},
+    {"label": "最低价", "value": "low", "description": "当日最低成交价。"},
+    {"label": "成交量", "value": "volume", "description": "当日成交数量。"},
+    {"label": "MA5", "value": "ma5", "description": "最近 5 个交易日收盘价的简单移动平均。"},
+    {"label": "MA10", "value": "ma10", "description": "最近 10 个交易日收盘价的简单移动平均。"},
+    {"label": "MA20", "value": "ma20", "description": "最近 20 个交易日收盘价的简单移动平均。"},
+    {"label": "MA60", "value": "ma60", "description": "最近 60 个交易日收盘价的简单移动平均。"},
+    {"label": "MA120", "value": "ma120", "description": "最近 120 个交易日收盘价的简单移动平均。"},
+    {"label": "RSI14", "value": "rsi14", "description": "14 日相对强弱指标，通常在 0 到 100 之间。"},
+    {"label": "MACD DIF", "value": "macd_dif", "description": "EMA12 与 EMA26 的差值。"},
+    {"label": "MACD DEA", "value": "macd_dea", "description": "MACD DIF 的 9 周期 EMA。"},
+    {"label": "KDJ K", "value": "kdj_k", "description": "KDJ 中较敏感的 K 值。"},
+    {"label": "KDJ D", "value": "kdj_d", "description": "KDJ 中更平滑的 D 值。"},
+    {"label": "BIAS(MA20)", "value": "bias_ma20", "description": "收盘价相对 MA20 的偏离率，口径为 close / MA20 - 1。"},
+    {"label": "5日收益率", "value": "return_5d", "description": "close / close[-5] - 1。"},
+    {"label": "20日收益率", "value": "return_20d", "description": "close / close[-20] - 1。"},
+    {"label": "60日收益率", "value": "return_60d", "description": "close / close[-60] - 1。"},
+    {"label": "量比(5日)", "value": "volume_ratio_5", "description": "当日成交量相对 5 日平均成交量的倍数。"},
+    {"label": "量比(20日)", "value": "volume_ratio_20", "description": "当日成交量相对 20 日平均成交量的倍数。"},
+    {"label": "ATR14", "value": "atr14", "description": "14 日平均真实波幅。"},
+    {"label": "20日波动率", "value": "volatility_20d", "description": "最近 20 个交易日日收益率标准差，不做年化。"},
+    {"label": "20日区间位置", "value": "close_pct_of_20d_range", "description": "收盘价位于最近 20 日高低区间中的相对位置。"},
+    {"label": "60日区间位置", "value": "close_pct_of_60d_range", "description": "收盘价位于最近 60 日高低区间中的相对位置。"},
+    {"label": "距20日高点", "value": "distance_to_20d_high", "description": "收盘价相对最近 20 日最高价的偏离率。"},
+    {"label": "距20日低点", "value": "distance_to_20d_low", "description": "收盘价相对最近 20 日最低价的偏离率。"},
+    {"label": "实体占比", "value": "body_pct", "description": "|close - open| / open。"},
+    {"label": "上影线占比", "value": "upper_shadow_pct", "description": "上影线长度相对开盘价的比例。"},
+    {"label": "下影线占比", "value": "lower_shadow_pct", "description": "下影线长度相对开盘价的比例。"},
+    {"label": "向上跳空", "value": "gap_up", "description": "若开盘价高于前一日最高价则记为 1，否则为 0。"},
+    {"label": "向下跳空", "value": "gap_down", "description": "若开盘价低于前一日最低价则记为 1，否则为 0。"},
+    {"label": "持仓收益率", "value": "position_return", "description": "当前收盘价相对持仓成本的收益率。"},
+    {"label": "持仓天数", "value": "holding_days", "description": "从首次建仓到当前 K 线为止已持有的交易日数。"},
 ]
 
 RULE_OPERATORS = [
@@ -55,6 +75,8 @@ RULE_OPERATORS = [
     {"label": "上穿", "value": "cross_over"},
     {"label": "下穿", "value": "cross_under"},
 ]
+RULE_FIELD_VALUES = {item["value"] for item in RULE_FIELDS}
+RULE_OPERATOR_VALUES = {item["value"] for item in RULE_OPERATORS}
 
 AI_DSL_GENERATION_RETRY_COUNT = 3
 
@@ -597,6 +619,7 @@ def _build_generation_prompt(task: AgentTask, recent_memories: list[str], benchm
     "stopLoss": float(task.stop_loss),
     "takeProfit": float(task.take_profit),
     "maxHoldingDays": task.max_holding_days,
+    "forceCloseOnEnd": True,
     "backtestStartDate": task.backtest_start_date.isoformat(),
     "backtestEndDate": task.backtest_end_date.isoformat(),
 }, ensure_ascii=False)}
@@ -681,6 +704,37 @@ def _validate_strategy_config(strategy_config: dict) -> None:
         raise AgentTaskError("AI 返回的策略 DSL 缺少 entry / exit / risk。")
     if not entry.get("children") or not exit_group.get("children"):
         raise AgentTaskError("AI 返回的策略 DSL 条件不能为空。")
+    _validate_rule_group(entry)
+    _validate_rule_group(exit_group)
+
+
+def _validate_rule_group(group: dict) -> None:
+    if group.get("type") != "group":
+        raise AgentTaskError("AI 返回的条件组结构无效。")
+    if group.get("logic") not in {"and", "or"}:
+        raise AgentTaskError("AI 返回的条件组逻辑无效。")
+    children = group.get("children")
+    if not isinstance(children, list) or not children:
+        raise AgentTaskError("AI 返回的条件组不能为空。")
+    for child in children:
+        if not isinstance(child, dict):
+            raise AgentTaskError("AI 返回的条件节点结构无效。")
+        if child.get("type") == "group":
+            _validate_rule_group(child)
+            continue
+        if child.get("type") != "condition":
+            raise AgentTaskError("AI 返回的条件节点类型无效。")
+        left_field = child.get("leftField")
+        right_mode = child.get("rightMode")
+        operator = child.get("operator")
+        if left_field not in RULE_FIELD_VALUES:
+            raise AgentTaskError(f"AI 返回了不支持的字段：{left_field}")
+        if operator not in RULE_OPERATOR_VALUES:
+            raise AgentTaskError(f"AI 返回了不支持的运算符：{operator}")
+        if right_mode not in {"field", "constant"}:
+            raise AgentTaskError("AI 返回的右值类型无效。")
+        if right_mode == "field" and child.get("rightField") not in RULE_FIELD_VALUES:
+            raise AgentTaskError(f"AI 返回了不支持的右值字段：{child.get('rightField')}")
 
 
 def _parse_decimal(value: Any, field_label: str) -> Decimal:

@@ -11,7 +11,7 @@ import type { AgentIterationItem, AgentTaskDetailResponse, AgentTaskItem } from 
 import { StrategyPreviewChart } from "@/components/strategy-builder/strategy-preview-chart";
 import type { StrategyPreviewResult } from "@/components/strategy-builder/types";
 import { getAccessToken } from "@/lib/auth";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -45,6 +45,7 @@ export default function AgentTaskDetailPage() {
   const [previewIteration, setPreviewIteration] = useState<AgentIterationItem | null>(null);
   const [dslOpen, setDslOpen] = useState(false);
   const [dslIteration, setDslIteration] = useState<AgentIterationItem | null>(null);
+  const [savingBestStrategy, setSavingBestStrategy] = useState(false);
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -149,6 +150,47 @@ export default function AgentTaskDetailPage() {
     ],
     [openIterationPreview],
   );
+
+  const handleSaveBestStrategy = useCallback(async () => {
+    if (!task?.bestStrategyConfig) {
+      messageApi.warning("当前还没有可保存的最佳策略。");
+      return;
+    }
+
+    const bestIteration =
+      iterations.find(
+        (item) =>
+          item.annualReturn !== null &&
+          task.bestAnnualReturn !== null &&
+          Math.abs(item.annualReturn - task.bestAnnualReturn) < 0.0001,
+      ) ?? null;
+
+    try {
+      setSavingBestStrategy(true);
+      const token = getAccessToken();
+      await apiPost(
+        "/strategies",
+        {
+          name: `${task.name} - 最佳策略`,
+          type: "AI Agent",
+          source: "人工创建",
+          countryRegion: task.countryCode,
+          assetType: task.assetType,
+          assetIdentifier: task.assetIdentifier,
+          assetName: task.assetName,
+          strategyConfig: task.bestStrategyConfig,
+          annualReturn: task.bestAnnualReturn,
+          maxDrawdown: bestIteration?.maxDrawdown ?? null,
+        },
+        token,
+      );
+      messageApi.success("当前最佳策略已保存。");
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "保存当前最佳策略失败。");
+    } finally {
+      setSavingBestStrategy(false);
+    }
+  }, [iterations, messageApi, task]);
 
   return (
     <AppShell>
@@ -299,7 +341,16 @@ export default function AgentTaskDetailPage() {
               )}
             </Card>
 
-            <Card className="dashboard-card agent-task-detail-card-equal" bordered title="当前最佳策略">
+            <Card
+              className="dashboard-card agent-task-detail-card-equal"
+              bordered
+              title="当前最佳策略"
+              extra={
+                <Button type="primary" size="small" loading={savingBestStrategy} onClick={() => void handleSaveBestStrategy()}>
+                  保存为策略
+                </Button>
+              }
+            >
               {task.bestSummary ? (
                 <Paragraph className="agent-task-detail-paragraph">{task.bestSummary}</Paragraph>
               ) : (

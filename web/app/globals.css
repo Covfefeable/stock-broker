@@ -1564,6 +1564,27 @@ select {
   font-weight: 600;
 }
 
+.strategy-risk-switch-row {
+  align-items: center;
+  grid-template-columns: 1fr auto;
+}
+
+.strategy-risk-switch-row > span {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.strategy-field-option-label {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.strategy-field-option-label .ant-tag {
+  margin-inline-end: 0;
+}
+
 .strategy-dsl-preview {
   display: grid;
   gap: 16px;
@@ -1656,6 +1677,40 @@ select {
 
 .strategy-preview-trades .ant-table-body {
   scrollbar-width: thin;
+}
+
+.strategy-preview-metrics-single {
+  grid-template-columns: 1fr;
+}
+
+.strategy-preview-next-action-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.strategy-preview-next-action-grid > div,
+.strategy-preview-next-action-block {
+  display: grid;
+  gap: 4px;
+}
+
+.strategy-preview-next-action-grid small,
+.strategy-preview-next-action-block small {
+  color: rgba(148, 163, 184, 0.82);
+  font-size: 11px;
+}
+
+.strategy-preview-next-action-grid strong,
+.strategy-preview-next-action-block strong {
+  color: #f8fafc;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.strategy-preview-next-action-block {
+  min-height: 92px;
+  align-content: start;
 }
 
 .strategy-dsl-preview pre {
@@ -1792,6 +1847,14 @@ select {
 }
 
 .agent-task-detail-card-equal .ant-collapse-content-box {
+  min-height: 0;
+}
+
+.agent-task-detail-card-equal .ant-collapse-content {
+  min-height: 0;
+}
+
+.agent-task-detail-card-equal .ant-collapse-item {
   min-height: 0;
 }
 

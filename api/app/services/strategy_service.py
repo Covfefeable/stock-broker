@@ -359,6 +359,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     stop_loss = float(risk.get("stopLoss") or 0)
     take_profit = float(risk.get("takeProfit") or 0)
     max_holding_days = int(risk.get("maxHoldingDays") or 0)
+    force_close_on_end = bool(risk.get("forceCloseOnEnd", True))
 
     entry_group = strategy_config.get("entry") or {}
     exit_group = strategy_config.get("exit") or {}
@@ -386,6 +387,29 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             equity_curve.append(cash)
             benchmark_curve.append(benchmark_curve[-1] if benchmark_curve else initial_capital)
             continue
+
+        if shares > 0 and pending_sell_signal and open_price is not None:
+            proceeds = shares * open_price
+            cash += proceeds
+            pnl_ratio = ((open_price - entry_price) / entry_price) if entry_price else 0.0
+            if pnl_ratio > 0:
+                wins += 1
+            trades.append(
+                {
+                    "date": bar["date"].isoformat(),
+                    "side": "sell",
+                    "price": round(open_price, 4),
+                    "shares": round(shares, 6),
+                    "positionRatio": 0.0,
+                    "return": round(pnl_ratio * 100, 2),
+                    "reason": pending_exit_reason or "卖出规则触发",
+                }
+            )
+            shares = 0.0
+            entry_price = None
+            entry_index = None
+            pending_sell_signal = False
+            pending_exit_reason = None
 
         if pending_buy_signal and open_price is not None:
             normalized_position_size = max(min(position_size, 1.0), 0.0)
@@ -426,29 +450,6 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             pending_buy_signal = False
             pending_entry_reason = None
 
-        if shares > 0 and pending_sell_signal and open_price is not None:
-            proceeds = shares * open_price
-            cash += proceeds
-            pnl_ratio = ((open_price - entry_price) / entry_price) if entry_price else 0.0
-            if pnl_ratio > 0:
-                wins += 1
-            trades.append(
-                {
-                    "date": bar["date"].isoformat(),
-                    "side": "sell",
-                    "price": round(open_price, 4),
-                    "shares": round(shares, 6),
-                    "positionRatio": 0.0,
-                    "return": round(pnl_ratio * 100, 2),
-                    "reason": pending_exit_reason or "卖出规则触发",
-                }
-            )
-            shares = 0.0
-            entry_price = None
-            entry_index = None
-            pending_sell_signal = False
-            pending_exit_reason = None
-
         context = {
             **bar,
             **{name: series[index] for name, series in indicators.items()},
@@ -481,7 +482,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                 pending_sell_signal = True
                 pending_exit_reason = risk_reason or "卖出规则触发"
 
-        if _evaluate_group(entry_group, context, previous_context):
+        if not pending_sell_signal and _evaluate_group(entry_group, context, previous_context):
             pending_buy_signal = True
             pending_entry_reason = "买入规则触发"
 
@@ -489,7 +490,42 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
         equity_curve.append(total_equity)
         benchmark_curve.append(benchmark_shares * close_price if benchmark_shares > 0 else initial_capital)
 
-    if shares > 0 and bars[-1]["close"] is not None:
+    live_close_price = bars[-1]["close"] if bars else None
+    current_position = {
+        "status": "持仓中" if shares > 0 else "空仓",
+        "shares": round(shares, 6),
+        "entryPrice": round(entry_price, 4) if entry_price is not None else None,
+        "positionRatio": round(((shares * live_close_price) / (cash + shares * live_close_price)) * 100, 2)
+        if shares > 0 and live_close_price is not None and (cash + shares * live_close_price) > 0
+        else 0.0,
+        "holdingDays": (len(bars) - 1 - entry_index) if shares > 0 and entry_index is not None else None,
+        "unrealizedReturn": round(((live_close_price - entry_price) / entry_price) * 100, 2)
+        if shares > 0 and live_close_price is not None and entry_price
+        else None,
+    }
+
+    if shares > 0 and pending_sell_signal:
+        next_action = {
+            "action": "下一个交易日开盘卖出",
+            "reason": pending_exit_reason or "卖出规则触发",
+        }
+    elif shares > 0:
+        next_action = {
+            "action": "继续持有",
+            "reason": "当前未触发卖出条件或风控条件。",
+        }
+    elif pending_buy_signal:
+        next_action = {
+            "action": "下一个交易日开盘买入",
+            "reason": pending_entry_reason or "买入规则触发",
+        }
+    else:
+        next_action = {
+            "action": "继续观望",
+            "reason": "当前未触发买入条件。",
+        }
+
+    if force_close_on_end and shares > 0 and bars[-1]["close"] is not None:
         close_price = bars[-1]["close"]
         proceeds = shares * close_price
         cash += proceeds
@@ -561,6 +597,8 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             "start": bars[0]["date"].isoformat() if bars else None,
             "end": bars[-1]["date"].isoformat() if bars else None,
         },
+        "currentPosition": current_position,
+        "nextAction": next_action,
     }
 
 
@@ -610,21 +648,224 @@ def _calculate_indicators(bars: list[dict]) -> dict[str, list[float | None]]:
     highs = [bar["high"] for bar in bars]
     lows = [bar["low"] for bar in bars]
 
+    opens = [bar["open"] for bar in bars]
+    volumes = [bar["volume"] for bar in bars]
+
     ma5 = _simple_moving_average(closes, 5)
+    ma10 = _simple_moving_average(closes, 10)
     ma20 = _simple_moving_average(closes, 20)
+    ma60 = _simple_moving_average(closes, 60)
+    ma120 = _simple_moving_average(closes, 120)
     rsi14 = _rsi_wilder(closes, 14)
     macd_dif, macd_dea = _macd(closes)
     kdj_k, kdj_d = _kdj(highs, lows, closes)
+    bias_ma20 = _ratio_to_series(closes, ma20)
+    return_5d = _rate_of_change(closes, 5)
+    return_20d = _rate_of_change(closes, 20)
+    return_60d = _rate_of_change(closes, 60)
+    volume_ma5 = _simple_moving_average(volumes, 5)
+    volume_ma20 = _simple_moving_average(volumes, 20)
+    volume_ratio_5 = _series_ratio(volumes, volume_ma5)
+    volume_ratio_20 = _series_ratio(volumes, volume_ma20)
+    atr14 = _atr(highs, lows, closes, 14)
+    volatility_20d = _rolling_volatility(closes, 20)
+    high20 = _rolling_max(highs, 20)
+    low20 = _rolling_min(lows, 20)
+    high60 = _rolling_max(highs, 60)
+    low60 = _rolling_min(lows, 60)
+    close_pct_of_20d_range = _range_position(closes, low20, high20)
+    close_pct_of_60d_range = _range_position(closes, low60, high60)
+    distance_to_20d_high = _distance_to_series(closes, high20)
+    distance_to_20d_low = _distance_to_series(closes, low20)
+    body_pct = _body_pct(opens, closes)
+    upper_shadow_pct = _upper_shadow_pct(opens, highs, closes)
+    lower_shadow_pct = _lower_shadow_pct(opens, lows, closes)
+    gap_up, gap_down = _gap_flags(opens, highs, lows)
 
     return {
         "ma5": ma5,
+        "ma10": ma10,
         "ma20": ma20,
+        "ma60": ma60,
+        "ma120": ma120,
         "rsi14": rsi14,
         "macd_dif": macd_dif,
         "macd_dea": macd_dea,
         "kdj_k": kdj_k,
         "kdj_d": kdj_d,
+        "bias_ma20": bias_ma20,
+        "return_5d": return_5d,
+        "return_20d": return_20d,
+        "return_60d": return_60d,
+        "volume_ratio_5": volume_ratio_5,
+        "volume_ratio_20": volume_ratio_20,
+        "atr14": atr14,
+        "volatility_20d": volatility_20d,
+        "close_pct_of_20d_range": close_pct_of_20d_range,
+        "close_pct_of_60d_range": close_pct_of_60d_range,
+        "distance_to_20d_high": distance_to_20d_high,
+        "distance_to_20d_low": distance_to_20d_low,
+        "body_pct": body_pct,
+        "upper_shadow_pct": upper_shadow_pct,
+        "lower_shadow_pct": lower_shadow_pct,
+        "gap_up": gap_up,
+        "gap_down": gap_down,
     }
+
+
+def _rolling_max(values: list[float | None], window: int) -> list[float | None]:
+    result: list[float | None] = []
+    for index in range(len(values)):
+        window_values = [value for value in values[max(0, index - window + 1) : index + 1] if value is not None]
+        result.append(round(max(window_values), 6) if len(window_values) == window else None)
+    return result
+
+
+def _rolling_min(values: list[float | None], window: int) -> list[float | None]:
+    result: list[float | None] = []
+    for index in range(len(values)):
+        window_values = [value for value in values[max(0, index - window + 1) : index + 1] if value is not None]
+        result.append(round(min(window_values), 6) if len(window_values) == window else None)
+    return result
+
+
+def _rate_of_change(values: list[float | None], periods: int) -> list[float | None]:
+    result: list[float | None] = [None] * len(values)
+    for index in range(periods, len(values)):
+        current = values[index]
+        previous = values[index - periods]
+        if current is None or previous in (None, 0):
+            continue
+        result[index] = round((current / previous) - 1, 6)
+    return result
+
+
+def _ratio_to_series(values: list[float | None], denominator_series: list[float | None]) -> list[float | None]:
+    result: list[float | None] = []
+    for value, denominator in zip(values, denominator_series, strict=False):
+        if value is None or denominator in (None, 0):
+            result.append(None)
+        else:
+            result.append(round((value / denominator) - 1, 6))
+    return result
+
+
+def _series_ratio(values: list[float | None], denominator_series: list[float | None]) -> list[float | None]:
+    result: list[float | None] = []
+    for value, denominator in zip(values, denominator_series, strict=False):
+        if value is None or denominator in (None, 0):
+            result.append(None)
+        else:
+            result.append(round(value / denominator, 6))
+    return result
+
+
+def _distance_to_series(values: list[float | None], base_series: list[float | None]) -> list[float | None]:
+    result: list[float | None] = []
+    for value, base in zip(values, base_series, strict=False):
+        if value is None or base in (None, 0):
+            result.append(None)
+        else:
+            result.append(round((value / base) - 1, 6))
+    return result
+
+
+def _range_position(
+    values: list[float | None],
+    lows: list[float | None],
+    highs: list[float | None],
+) -> list[float | None]:
+    result: list[float | None] = []
+    for value, low, high in zip(values, lows, highs, strict=False):
+        if value is None or low is None or high is None:
+            result.append(None)
+        elif high == low:
+            result.append(0.5)
+        else:
+            result.append(round((value - low) / (high - low), 6))
+    return result
+
+
+def _true_range(high: float, low: float, previous_close: float | None) -> float:
+    if previous_close is None:
+        return high - low
+    return max(high - low, abs(high - previous_close), abs(low - previous_close))
+
+
+def _atr(highs: list[float | None], lows: list[float | None], closes: list[float | None], period: int) -> list[float | None]:
+    true_ranges: list[float | None] = []
+    previous_close: float | None = None
+    for high, low, close in zip(highs, lows, closes, strict=False):
+        if high is None or low is None:
+            true_ranges.append(None)
+        else:
+            true_ranges.append(_true_range(high, low, previous_close))
+        if close is not None:
+            previous_close = close
+    return _simple_moving_average(true_ranges, period)
+
+
+def _rolling_volatility(closes: list[float | None], window: int) -> list[float | None]:
+    daily_returns = _rate_of_change(closes, 1)
+    result: list[float | None] = [None] * len(closes)
+    for index in range(window, len(closes)):
+        window_returns = [value for value in daily_returns[index - window + 1 : index + 1] if value is not None]
+        if len(window_returns) != window:
+            continue
+        mean = sum(window_returns) / window
+        variance = sum((item - mean) ** 2 for item in window_returns) / max(window - 1, 1)
+        result[index] = round(sqrt(variance), 6)
+    return result
+
+
+def _body_pct(opens: list[float | None], closes: list[float | None]) -> list[float | None]:
+    result: list[float | None] = []
+    for open_price, close_price in zip(opens, closes, strict=False):
+        if open_price in (None, 0) or close_price is None:
+            result.append(None)
+        else:
+            result.append(round(abs(close_price - open_price) / open_price, 6))
+    return result
+
+
+def _upper_shadow_pct(opens: list[float | None], highs: list[float | None], closes: list[float | None]) -> list[float | None]:
+    result: list[float | None] = []
+    for open_price, high_price, close_price in zip(opens, highs, closes, strict=False):
+        if open_price in (None, 0) or high_price is None or close_price is None:
+            result.append(None)
+        else:
+            result.append(round(max(high_price - max(open_price, close_price), 0.0) / open_price, 6))
+    return result
+
+
+def _lower_shadow_pct(opens: list[float | None], lows: list[float | None], closes: list[float | None]) -> list[float | None]:
+    result: list[float | None] = []
+    for open_price, low_price, close_price in zip(opens, lows, closes, strict=False):
+        if open_price in (None, 0) or low_price is None or close_price is None:
+            result.append(None)
+        else:
+            result.append(round(max(min(open_price, close_price) - low_price, 0.0) / open_price, 6))
+    return result
+
+
+def _gap_flags(
+    opens: list[float | None],
+    highs: list[float | None],
+    lows: list[float | None],
+) -> tuple[list[float | None], list[float | None]]:
+    gap_up: list[float | None] = [None]
+    gap_down: list[float | None] = [None]
+    for index in range(1, len(opens)):
+        open_price = opens[index]
+        previous_high = highs[index - 1]
+        previous_low = lows[index - 1]
+        if open_price is None or previous_high is None or previous_low is None:
+            gap_up.append(None)
+            gap_down.append(None)
+            continue
+        gap_up.append(1.0 if open_price > previous_high else 0.0)
+        gap_down.append(1.0 if open_price < previous_low else 0.0)
+    return gap_up, gap_down
 
 
 def _simple_moving_average(values: list[float | None], window: int) -> list[float | None]:

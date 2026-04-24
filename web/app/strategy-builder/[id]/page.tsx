@@ -129,32 +129,7 @@ export default function StrategyDetailPage() {
       const response = await apiGet<StrategyDetailResponse>(`/strategies/${strategyId}`, token);
       setStrategyDetail(response.strategy);
       setStrategyDsl(mergeStrategyConfig(response.strategy.strategyConfig));
-      setPreviewResult(
-        response.strategy.annualReturn != null && response.strategy.drawdown != null
-          ? {
-              annualReturn: Number(String(response.strategy.annualReturn).replace("%", "")),
-              benchmarkAnnualReturn: 0,
-              totalReturn: 0,
-              maxDrawdown: Number(String(response.strategy.drawdown).replace("%", "")),
-              benchmarkMaxDrawdown: 0,
-              volatility: 0,
-              benchmarkVolatility: 0,
-              sharpe: 0,
-              benchmarkSharpe: 0,
-              tradeCount: 0,
-              benchmarkTradeCount: 0,
-              winRate: 0,
-              benchmarkWinRate: 0,
-              initialCapital: 0,
-              finalEquity: 0,
-              benchmarkReturn: 0,
-              equityCurve: [],
-              benchmarkCurve: [],
-              trades: [],
-              dateRange: { start: null, end: null },
-            }
-          : null,
-      );
+      setPreviewResult(null);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "加载策略详情失败");
       router.replace("/strategy-builder");

@@ -39,9 +39,9 @@ export function MetricCardsRow({ metrics, loading }: Props) {
       className: "",
     },
     {
-      title: "已同步股票",
-      value: formatInteger(metrics.syncedStocksCount),
-      suffix: "只",
+      title: "已同步股票/指数",
+      value: formatInteger(metrics.syncedAssetsCount),
+      suffix: "个",
       icon: <CheckCircleOutlined />,
       className: "positive-text",
     },

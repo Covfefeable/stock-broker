@@ -184,7 +184,7 @@ export default function AgentTasksPage() {
       {
         title: "操作",
         key: "actions",
-        width: 170,
+        width: 220,
         render: (_, record) => (
           <Space size={4}>
             <Link href={`/agent-tasks/${record.id}`}>查看</Link>

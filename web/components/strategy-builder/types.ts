@@ -10,12 +10,32 @@ export type RuleFieldValue =
   | "close"
   | "volume"
   | "ma5"
+  | "ma10"
   | "ma20"
+  | "ma60"
+  | "ma120"
   | "kdj_k"
   | "kdj_d"
   | "macd_dif"
   | "macd_dea"
   | "rsi14"
+  | "bias_ma20"
+  | "return_5d"
+  | "return_20d"
+  | "return_60d"
+  | "volume_ratio_5"
+  | "volume_ratio_20"
+  | "atr14"
+  | "volatility_20d"
+  | "close_pct_of_20d_range"
+  | "close_pct_of_60d_range"
+  | "distance_to_20d_high"
+  | "distance_to_20d_low"
+  | "body_pct"
+  | "upper_shadow_pct"
+  | "lower_shadow_pct"
+  | "gap_up"
+  | "gap_down"
   | "position_return"
   | "holding_days";
 
@@ -44,6 +64,7 @@ export type RiskBacktestConfig = {
   stopLoss: number;
   takeProfit: number;
   maxHoldingDays: number;
+  forceCloseOnEnd: boolean;
   backtestStartDate: string;
   backtestEndDate: string;
 };
@@ -84,5 +105,17 @@ export type StrategyPreviewResult = {
   dateRange: {
     start: string | null;
     end: string | null;
+  };
+  currentPosition: {
+    status: "空仓" | "持仓中";
+    shares: number;
+    entryPrice: number | null;
+    positionRatio: number;
+    holdingDays: number | null;
+    unrealizedReturn: number | null;
+  };
+  nextAction: {
+    action: "下一个交易日开盘买入" | "下一个交易日开盘卖出" | "继续持有" | "继续观望";
+    reason: string;
   };
 };

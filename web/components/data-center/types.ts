@@ -46,7 +46,7 @@ export type OverviewMetrics = {
   stocksCount: number;
   stockDailyBarsCount: number;
   exchangeCount: number;
-  syncedStocksCount: number;
+  syncedAssetsCount: number;
   latestTradeDate: string | null;
   exchangeCoverage: ExchangeCoverageRow[];
 };
@@ -110,6 +110,7 @@ export type TaskStatusResponse = {
   result?: {
     recordsAffected?: number;
     totalStocks?: number;
+    totalIndexes?: number;
     skippedCount?: number;
     successCount?: number;
     failedCount?: number;

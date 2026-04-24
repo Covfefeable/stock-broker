@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from app.extensions import db
 from app.models.country import Country
@@ -83,6 +83,19 @@ def get_data_center_overview_metrics() -> dict:
         .scalar()
         or 0
     )
+    synced_indexes_count = (
+        db.session.query(func.count())
+        .select_from(
+            db.session.query(
+                IndexDailyBar.country_code,
+                IndexDailyBar.ticker,
+            )
+            .distinct()
+            .subquery()
+        )
+        .scalar()
+        or 0
+    )
 
     latest_trade_date = db.session.query(func.max(StockDailyBar.trade_date)).scalar()
     exchange_coverage = list_exchange_stock_coverage()
@@ -91,7 +104,7 @@ def get_data_center_overview_metrics() -> dict:
         "stocksCount": stocks_count,
         "stockDailyBarsCount": stock_daily_count,
         "exchangeCount": exchange_count,
-        "syncedStocksCount": synced_stocks_count,
+        "syncedAssetsCount": synced_stocks_count + synced_indexes_count,
         "latestTradeDate": latest_trade_date.isoformat() if latest_trade_date else None,
         "exchangeCoverage": exchange_coverage,
     }
@@ -454,7 +467,7 @@ def sync_index_daily_history(
     )
 
 
-def batch_sync_stock_daily_history(user: User, *, task_id: str | None = None) -> dict:
+def batch_sync_stock_daily_history(user: User, *, task_id: str | None = None, log_result: bool = True) -> dict:
     synced_stock_keys = (
         db.session.query(
             StockDailyBar.exchange_code.label("exchange_code"),
@@ -509,21 +522,22 @@ def batch_sync_stock_daily_history(user: User, *, task_id: str | None = None) ->
             pending_stocks.append((stock, latest_trade_date, exchange_latest_date))
 
     if not pending_stocks:
-        log_event(
-            user=user,
-            task_id=task_id,
-            event_type="data_sync_batch",
-            event_name="batch_sync_stock_daily_history",
-            source="canghai",
-            target=SYNC_ITEM_STOCK_DAILY_HISTORY,
-            status="success",
-            level="info",
-            message=f"批量自动补全完成，共扫描 {len(stocks_with_latest)} 只股票，均已追平数据库中的交易所最新日期，无需发起远程请求。",
-            records_affected=0,
-            started_at=datetime.now(timezone.utc),
-            finished_at=datetime.now(timezone.utc),
-            duration_ms=0,
-        )
+        if log_result:
+            log_event(
+                user=user,
+                task_id=task_id,
+                event_type="data_sync_batch",
+                event_name="batch_sync_stock_daily_history",
+                source="canghai",
+                target=SYNC_ITEM_STOCK_DAILY_HISTORY,
+                status="success",
+                level="info",
+                message=f"批量自动补全完成，共扫描 {len(stocks_with_latest)} 只股票，均已追平数据库中的交易所最新日期，无需发起远程请求。",
+                records_affected=0,
+                started_at=datetime.now(timezone.utc),
+                finished_at=datetime.now(timezone.utc),
+                duration_ms=0,
+            )
         return {
             "status": "success",
             "totalStocks": len(stocks_with_latest),
@@ -574,21 +588,22 @@ def batch_sync_stock_daily_history(user: User, *, task_id: str | None = None) ->
     if failed_examples:
         message = f"{message} 失败示例：{'；'.join(failed_examples)}"
 
-    log_event(
-        user=user,
-        task_id=task_id,
-        event_type="data_sync_batch",
-        event_name="batch_sync_stock_daily_history",
-        source="canghai",
-        target=SYNC_ITEM_STOCK_DAILY_HISTORY,
-        status="success" if failed_count == 0 else "partial_success",
-        level="info" if failed_count == 0 else "warning",
-        message=message,
-        records_affected=total_records,
-        started_at=started_at,
-        finished_at=finished_at,
-        duration_ms=duration_ms,
-    )
+    if log_result:
+        log_event(
+            user=user,
+            task_id=task_id,
+            event_type="data_sync_batch",
+            event_name="batch_sync_stock_daily_history",
+            source="canghai",
+            target=SYNC_ITEM_STOCK_DAILY_HISTORY,
+            status="success" if failed_count == 0 else "partial_success",
+            level="info" if failed_count == 0 else "warning",
+            message=message,
+            records_affected=total_records,
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_ms=duration_ms,
+        )
 
     return {
         "status": "success" if failed_count == 0 else "partial_success",
@@ -598,6 +613,238 @@ def batch_sync_stock_daily_history(user: User, *, task_id: str | None = None) ->
         "skippedCount": skipped_count,
         "recordsAffected": total_records,
         "durationMs": duration_ms,
+    }
+
+
+def batch_sync_index_daily_history(user: User, *, task_id: str | None = None, log_result: bool = True) -> dict:
+    synced_index_keys = (
+        db.session.query(
+            IndexDailyBar.country_code.label("country_code"),
+            IndexDailyBar.ticker.label("ticker"),
+        )
+        .distinct()
+        .subquery()
+    )
+
+    indexes_with_latest = (
+        db.session.query(
+            IndexAsset,
+            func.max(IndexDailyBar.trade_date).label("latest_trade_date"),
+        )
+        .join(
+            synced_index_keys,
+            and_(
+                synced_index_keys.c.country_code == IndexAsset.country_code,
+                synced_index_keys.c.ticker == IndexAsset.ticker,
+            ),
+        )
+        .join(
+            IndexDailyBar,
+            and_(
+                IndexDailyBar.country_code == IndexAsset.country_code,
+                IndexDailyBar.ticker == IndexAsset.ticker,
+            ),
+        )
+        .group_by(IndexAsset.id)
+        .order_by(IndexAsset.country_code.asc(), IndexAsset.ticker.asc())
+        .all()
+    )
+
+    if not indexes_with_latest:
+        raise DataSyncError("当前没有已同步过历史日线的指数，无法执行批量补全。")
+
+    country_latest_dates: dict[str, date] = {}
+    for index_asset, _latest_trade_date in indexes_with_latest:
+        cached_latest_date = country_latest_dates.get(index_asset.country_code)
+        if cached_latest_date is None:
+            cached_latest_date = (
+                db.session.query(func.max(IndexDailyBar.trade_date))
+                .filter(IndexDailyBar.country_code == index_asset.country_code)
+                .scalar()
+            )
+            if cached_latest_date is not None:
+                country_latest_dates[index_asset.country_code] = cached_latest_date
+
+    pending_indexes = [
+        (index_asset, latest_trade_date, country_latest_dates.get(index_asset.country_code))
+        for index_asset, latest_trade_date in indexes_with_latest
+        if latest_trade_date is not None
+        and country_latest_dates.get(index_asset.country_code) is not None
+        and latest_trade_date < country_latest_dates[index_asset.country_code]
+    ]
+
+    if not pending_indexes:
+        if log_result:
+            log_event(
+                user=user,
+                task_id=task_id,
+                event_type="data_sync_batch",
+                event_name="batch_sync_index_daily_history",
+                source="canghai",
+                target=SYNC_ITEM_INDEX_DAILY_HISTORY,
+                status="success",
+                level="info",
+                message=f"批量自动补全完成，共扫描 {len(indexes_with_latest)} 个指数，均已追平数据库中的国家最新日期，无需发起远程请求。",
+                records_affected=0,
+                started_at=datetime.now(timezone.utc),
+                finished_at=datetime.now(timezone.utc),
+                duration_ms=0,
+            )
+        return {
+            "status": "success",
+            "totalIndexes": len(indexes_with_latest),
+            "successCount": 0,
+            "failedCount": 0,
+            "skippedCount": len(indexes_with_latest),
+            "recordsAffected": 0,
+            "durationMs": 0,
+        }
+
+    started_at = datetime.now(timezone.utc)
+    started_perf = perf_counter()
+    total = len(indexes_with_latest)
+    success_count = 0
+    failed_count = 0
+    skipped_count = total - len(pending_indexes)
+    total_records = 0
+    failed_examples: list[str] = []
+
+    for index_asset, latest_trade_date, country_latest_date in pending_indexes:
+        try:
+            result = sync_index_daily_history(
+                user=user,
+                country_code=index_asset.country_code,
+                ticker=index_asset.ticker,
+                date_mode=DATE_MODE_CUSTOM,
+                start_date=(latest_trade_date + timedelta(days=1)).isoformat(),
+                end_date=country_latest_date.isoformat() if country_latest_date else None,
+                log_result=False,
+                task_id=task_id,
+            )
+            total_records += int(result.get("recordsAffected") or 0)
+            success_count += 1
+        except DataSyncError as exc:
+            failed_count += 1
+            if len(failed_examples) < 5:
+                failed_examples.append(f"{index_asset.country_code}/{index_asset.ticker}: {exc}")
+
+    finished_at = datetime.now(timezone.utc)
+    duration_ms = int((perf_counter() - started_perf) * 1000)
+    message = (
+        f"批量自动补全完成，共扫描 {total} 个指数，发起补全 {len(pending_indexes)} 个，成功 {success_count}，"
+        f"失败 {failed_count}，其中 {skipped_count} 个指数已追平数据库最新日期，新增或更新 {total_records} 条日线记录。"
+    )
+    if failed_examples:
+        message = f"{message} 失败示例：{'；'.join(failed_examples)}"
+
+    if log_result:
+        log_event(
+            user=user,
+            task_id=task_id,
+            event_type="data_sync_batch",
+            event_name="batch_sync_index_daily_history",
+            source="canghai",
+            target=SYNC_ITEM_INDEX_DAILY_HISTORY,
+            status="success" if failed_count == 0 else "partial_success",
+            level="info" if failed_count == 0 else "warning",
+            message=message,
+            records_affected=total_records,
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_ms=duration_ms,
+        )
+
+    return {
+        "status": "success" if failed_count == 0 else "partial_success",
+        "totalIndexes": total,
+        "successCount": success_count,
+        "failedCount": failed_count,
+        "skippedCount": skipped_count,
+        "recordsAffected": total_records,
+        "durationMs": duration_ms,
+    }
+
+
+def batch_sync_stock_and_index_daily_history(user: User, *, task_id: str | None = None) -> dict:
+    stock_result: dict[str, Any]
+    index_result: dict[str, Any]
+
+    try:
+        stock_result = batch_sync_stock_daily_history(user, task_id=task_id, log_result=False)
+    except DataSyncError as exc:
+        if "当前没有已同步过历史日线的股票" in str(exc):
+            stock_result = {
+                "status": "success",
+                "totalStocks": 0,
+                "successCount": 0,
+                "failedCount": 0,
+                "skippedCount": 0,
+                "recordsAffected": 0,
+                "durationMs": 0,
+            }
+        else:
+            raise
+
+    try:
+        index_result = batch_sync_index_daily_history(user, task_id=task_id, log_result=False)
+    except DataSyncError as exc:
+        if "当前没有已同步过历史日线的指数" in str(exc):
+            index_result = {
+                "status": "success",
+                "totalIndexes": 0,
+                "successCount": 0,
+                "failedCount": 0,
+                "skippedCount": 0,
+                "recordsAffected": 0,
+                "durationMs": 0,
+            }
+        else:
+            raise
+
+    if stock_result.get("totalStocks", 0) == 0 and index_result.get("totalIndexes", 0) == 0:
+        raise DataSyncError("当前没有已同步过历史日线的股票或指数，无法执行批量补全。")
+
+    message = (
+        f"批量同步股票/指数日线完成：股票共 {stock_result.get('totalStocks', 0)} 只，指数共 {index_result.get('totalIndexes', 0)} 个，"
+        f"成功 {int(stock_result.get('successCount', 0)) + int(index_result.get('successCount', 0))}，"
+        f"失败 {int(stock_result.get('failedCount', 0)) + int(index_result.get('failedCount', 0))}，"
+        f"跳过 {int(stock_result.get('skippedCount', 0)) + int(index_result.get('skippedCount', 0))}，"
+        f"新增或更新 {int(stock_result.get('recordsAffected', 0)) + int(index_result.get('recordsAffected', 0))} 条记录。"
+    )
+    log_event(
+        user=user,
+        task_id=task_id,
+        event_type="data_sync_batch",
+        event_name="batch_sync_stock_and_index_daily_history",
+        source="canghai",
+        target=SYNC_ITEM_STOCK_DAILY_HISTORY,
+        status=(
+            "success"
+            if stock_result.get("status") == "success" and index_result.get("status") == "success"
+            else "partial_success"
+        ),
+        level=(
+            "info"
+            if stock_result.get("status") == "success" and index_result.get("status") == "success"
+            else "warning"
+        ),
+        message=message,
+        records_affected=int(stock_result.get("recordsAffected", 0)) + int(index_result.get("recordsAffected", 0)),
+    )
+    return {
+        "status": (
+            "success"
+            if stock_result.get("status") == "success" and index_result.get("status") == "success"
+            else "partial_success"
+        ),
+        "totalStocks": stock_result.get("totalStocks", 0),
+        "totalIndexes": index_result.get("totalIndexes", 0),
+        "successCount": int(stock_result.get("successCount", 0)) + int(index_result.get("successCount", 0)),
+        "failedCount": int(stock_result.get("failedCount", 0)) + int(index_result.get("failedCount", 0)),
+        "skippedCount": int(stock_result.get("skippedCount", 0)) + int(index_result.get("skippedCount", 0)),
+        "recordsAffected": int(stock_result.get("recordsAffected", 0)) + int(index_result.get("recordsAffected", 0)),
+        "durationMs": int(stock_result.get("durationMs", 0)) + int(index_result.get("durationMs", 0)),
+        "message": message,
     }
 
 
