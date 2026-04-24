@@ -7,7 +7,7 @@ import {
   RobotOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Button, Drawer, Empty, Progress, Segmented, Space, Tag, Typography, notification } from "antd";
+import { Drawer, Empty, Progress, Segmented, Space, Tag, Typography, notification } from "antd";
 import Lottie from "lottie-react";
 import type { LottieRefCurrentProps } from "lottie-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -359,9 +359,6 @@ function TaskCard({ task }: { task: TaskItem }) {
         )}
       </div>
 
-      <Button type="link" className="task-center-action">
-        查看详情
-      </Button>
     </div>
   );
 }

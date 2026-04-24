@@ -3,6 +3,7 @@ import time
 from collections import OrderedDict, defaultdict
 
 from app import extensions
+from app.models.agent_task import AgentTask
 from app.models.event_log import EventLog
 
 TASK_CENTER_CHANNEL = "task_center.events"
@@ -74,6 +75,14 @@ def _build_task_summary(log: EventLog, logs: list[str]) -> dict:
     started_at = log.started_at.isoformat() if log.started_at else created_at
     finished_at = log.finished_at.isoformat() if log.finished_at else None
     updated_at = finished_at or created_at
+    progress_current = None
+    progress_total = None
+
+    if task_type_from_log(log) == "agent" and log.task_id:
+        agent_task = AgentTask.query.filter_by(celery_task_id=log.task_id).first()
+        if agent_task:
+            progress_current = agent_task.current_iteration
+            progress_total = agent_task.max_iterations
 
     return {
         "taskId": log.task_id,
@@ -82,6 +91,8 @@ def _build_task_summary(log: EventLog, logs: list[str]) -> dict:
         "status": task_status_from_log(log),
         "startedAt": started_at,
         "updatedAt": updated_at,
+        "progressCurrent": progress_current,
+        "progressTotal": progress_total,
         "progressText": log.message,
         "recordsAffected": log.records_affected,
         "durationMs": log.duration_ms,
@@ -92,6 +103,10 @@ def _build_task_summary(log: EventLog, logs: list[str]) -> dict:
 def task_name_from_log(log: EventLog) -> str:
     event_name = log.event_name or ""
     target = log.target or ""
+    event_type = (log.event_type or "").lower()
+
+    if "agent" in event_type:
+        return log.source or "AI Agent 任务"
 
     if event_name == "enqueue_batch_sync_stock_daily_history":
         return "批量同步股票日线"

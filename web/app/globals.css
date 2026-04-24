@@ -1696,3 +1696,126 @@ select {
     grid-template-columns: 1fr;
   }
 }
+.strategy-number-input {
+  width: 100%;
+}
+
+.agent-task-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.agent-task-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.agent-task-detail-meta .ant-typography {
+  display: block;
+}
+
+.agent-task-detail-card-equal {
+  height: 760px;
+}
+
+.agent-task-detail-card-equal > .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 57px);
+  overflow: hidden;
+}
+
+.agent-task-detail-paragraph {
+  color: rgba(226, 232, 240, 0.94);
+  line-height: 1.75;
+  margin-bottom: 12px !important;
+}
+
+.agent-task-detail-muted {
+  color: rgba(148, 163, 184, 0.88);
+  line-height: 1.75;
+  margin-bottom: 0 !important;
+}
+
+.agent-iteration-thoughts {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.agent-iteration-thought-card {
+  border: 1px solid rgba(99, 102, 241, 0.16);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.agent-iteration-thought-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.agent-iteration-thought-block {
+  margin-top: 10px;
+}
+
+.strategy-dsl-code-block-compact {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.strategy-dsl-code-block {
+  margin: 0;
+  padding: 16px;
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid rgba(110, 126, 183, 0.18);
+  border-radius: 10px;
+  background: rgba(10, 14, 24, 0.76);
+  color: rgba(233, 239, 255, 0.96);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre;
+}
+
+.agent-task-detail-card-equal .ant-collapse {
+  min-height: 0;
+}
+
+.agent-task-detail-card-equal .ant-collapse-content-box {
+  min-height: 0;
+}
+
+.agent-task-asset-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agent-task-asset-name {
+  color: rgba(241, 245, 249, 0.96);
+  font-weight: 600;
+}
+
+.agent-task-asset-code {
+  color: rgba(148, 163, 184, 0.88) !important;
+}
+
+@media (max-width: 1100px) {
+  .agent-task-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-task-detail-meta {
+    grid-template-columns: 1fr;
+  }
+}
