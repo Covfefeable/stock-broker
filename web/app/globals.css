@@ -308,15 +308,34 @@ select {
   color: var(--text-muted);
 }
 
-.topbar-user-name {
-  color: var(--text-main);
+.avatar {
+  background: var(--primary);
+  font-weight: 700;
+}
+
+.topbar-user-trigger {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  padding: 0;
+}
+
+.topbar-user-popover {
+  display: grid;
+  gap: 6px;
+  min-width: 120px;
+}
+
+.topbar-user-popover-name {
+  color: var(--text-main) !important;
   font-size: 14px;
   font-weight: 600;
 }
 
-.avatar {
-  background: var(--primary);
-  font-weight: 700;
+.topbar-user-popover-action {
+  justify-content: flex-start;
+  padding-left: 0 !important;
 }
 
 .content-area {
@@ -557,7 +576,7 @@ select {
 }
 
 .dashboard-main-row .dashboard-card {
-  height: 392px;
+  height: 420px;
 }
 
 .dashboard-secondary-row .dashboard-card {
@@ -699,6 +718,18 @@ select {
   gap: 16px;
 }
 
+.data-sync-panel .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sync-timeline-scroll {
+  flex: 1;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .sync-task {
   align-items: flex-start;
   border-bottom: 1px solid var(--panel-border);
@@ -722,6 +753,10 @@ select {
 .source-status-panel {
   display: grid;
   gap: 22px;
+}
+
+.source-status-card {
+  min-height: 420px;
 }
 
 .source-status-head {
@@ -772,6 +807,17 @@ select {
   font-size: 18px;
   line-height: 1.1;
   white-space: nowrap;
+}
+
+.source-status-coverage {
+  display: grid;
+  gap: 14px;
+}
+
+.source-status-coverage-title {
+  color: var(--text-main) !important;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 @media (max-width: 1200px) {
@@ -914,6 +960,10 @@ select {
   line-height: 1.4;
 }
 
+.trading-calendar-card {
+  min-height: 760px;
+}
+
 .trading-calendar-card .ant-card-body {
   display: flex;
   flex-direction: column;
@@ -931,12 +981,18 @@ select {
   min-width: 180px;
 }
 
+.trading-calendar-query-button {
+  flex: 0 0 120px;
+  width: 120px;
+}
+
 .trading-calendar-summary {
   margin-bottom: 4px;
 }
 
 .trading-calendar-card .ant-picker-calendar {
   background: transparent;
+  flex: 1;
 }
 
 .trading-calendar-card .ant-picker-panel {
@@ -956,7 +1012,7 @@ select {
   flex-direction: column;
   gap: 4px;
   height: 100%;
-  min-height: 76px;
+  min-height: 88px;
   padding: 8px;
   transition: border-color 120ms ease, background-color 120ms ease;
 }
@@ -990,7 +1046,7 @@ select {
   align-items: center;
   display: flex;
   justify-content: center;
-  min-height: 320px;
+  min-height: 72px;
 }
 
 .settings-layout {

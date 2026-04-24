@@ -1,10 +1,12 @@
-import { Badge, Card, Typography } from "antd";
-import type { DataSourceStatusItem } from "@/components/data-center/types";
+import { Badge, Card, Progress, Typography } from "antd";
+import type { DataSourceStatusItem, ExchangeCoverageRow } from "@/components/data-center/types";
+import { formatInteger, formatPercent } from "@/components/data-center/utils";
 
 const { Text } = Typography;
 
 type Props = {
   item: DataSourceStatusItem | null;
+  exchangeCoverage: ExchangeCoverageRow[];
   loading: boolean;
 };
 
@@ -21,7 +23,7 @@ function getStatusMeta(status: DataSourceStatusItem["status"] | undefined) {
   return { badge: "default" as const, text: "未知" };
 }
 
-export function SourceStatusCard({ item, loading }: Props) {
+export function SourceStatusCard({ item, exchangeCoverage, loading }: Props) {
   const statusMeta = getStatusMeta(item?.status);
 
   return (
@@ -48,6 +50,28 @@ export function SourceStatusCard({ item, loading }: Props) {
             <span>HTTP 状态</span>
             <strong>{item?.httpStatus ?? "-"}</strong>
           </div>
+        </div>
+
+        <div className="source-status-coverage">
+          <Text className="source-status-coverage-title">交易所覆盖率</Text>
+          {exchangeCoverage.length > 0 ? (
+            exchangeCoverage.map((item) => (
+              <div className="quality-progress" key={item.exchangeCode}>
+                <div>
+                  <Text>
+                    {item.exchangeName} ({item.exchangeCode})
+                  </Text>
+                  <strong>{formatPercent(item.percent)}%</strong>
+                </div>
+                <Progress percent={item.percent} showInfo={false} status={item.percent < 96 ? "exception" : "success"} />
+                <Text type="secondary">
+                  {formatInteger(item.actual)} / {formatInteger(item.expected)} 只股票
+                </Text>
+              </div>
+            ))
+          ) : (
+            <Text type="secondary">暂无可用于计算覆盖率的交易所数据。</Text>
+          )}
         </div>
       </div>
     </Card>

@@ -43,7 +43,9 @@ def overview():
 @data_center_bp.get("/data-center/event-logs")
 @auth_required
 def event_logs():
-    return {"items": list_recent_event_logs(limit=20)}
+    offset = max(int(str(request.args.get("offset") or "0")), 0)
+    limit = min(max(int(str(request.args.get("limit") or "20")), 1), 100)
+    return list_recent_event_logs(offset=offset, limit=limit)
 
 
 @data_center_bp.get("/data-center/source-status")

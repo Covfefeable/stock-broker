@@ -2,6 +2,7 @@ from celery import current_task
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.extensions import celery_app, db
+from app.models.event_log import EventLog
 from app.models.user import User
 from app.services.data_center_service import (
     DataSyncError,
@@ -79,9 +80,15 @@ def sync_data_center_item(
                 task_id=task_id,
             )
         raise DataSyncError(f"暂不支持同步项：{sync_item}")
+    except DataSyncError as exc:
+        _log_task_failed(user, task_id, sync_item, str(exc))
+        raise
     except SoftTimeLimitExceeded as exc:
         _log_task_timeout(user, task_id, sync_item)
         raise DataSyncError("同步任务超时") from exc
+    except Exception as exc:
+        _log_task_failed(user, task_id, sync_item, f"{sync_item_label(sync_item)}任务执行失败：{exc}")
+        raise
 
 
 @celery_app.task(name="app.tasks.data_center.batch_sync_stock_daily_history")
@@ -92,6 +99,9 @@ def batch_sync_stock_daily_history_task(*, user_id: int) -> dict:
 
     try:
         return batch_sync_stock_daily_history(user, task_id=task_id)
+    except DataSyncError as exc:
+        _log_task_failed(user, task_id, SYNC_ITEM_STOCK_DAILY_HISTORY, str(exc), batch=True)
+        raise
     except SoftTimeLimitExceeded as exc:
         log_event(
             user=user,
@@ -105,6 +115,9 @@ def batch_sync_stock_daily_history_task(*, user_id: int) -> dict:
             message="批量同步股票日线任务执行超时。",
         )
         raise DataSyncError("批量同步股票日线任务超时") from exc
+    except Exception as exc:
+        _log_task_failed(user, task_id, SYNC_ITEM_STOCK_DAILY_HISTORY, f"批量同步股票日线任务执行失败：{exc}", batch=True)
+        raise
 
 
 def _log_task_running(
@@ -174,4 +187,43 @@ def _log_task_timeout(user: User, task_id: str | None, sync_item: str) -> None:
         status="failed",
         level="error",
         message=f"{label_map.get(sync_item, sync_item)}任务执行超时。",
+    )
+
+
+def _log_task_failed(
+    user: User,
+    task_id: str | None,
+    sync_item: str,
+    message: str,
+    *,
+    batch: bool = False,
+) -> None:
+    if task_id:
+        existing_failure = (
+            EventLog.query.filter_by(task_id=task_id, status="failed")
+            .order_by(EventLog.id.desc())
+            .first()
+        )
+        if existing_failure:
+            return
+
+    event_name_map = {
+        SYNC_ITEM_COUNTRY_LIST: "sync_country_list",
+        SYNC_ITEM_EXCHANGE_LIST: "sync_exchange_list",
+        SYNC_ITEM_STOCK_LIST: "sync_stock_list",
+        SYNC_ITEM_INDEX_LIST: "sync_index_list",
+        SYNC_ITEM_TRADING_CALENDAR: "sync_trading_calendar",
+        SYNC_ITEM_STOCK_DAILY_HISTORY: "sync_stock_daily_history",
+        SYNC_ITEM_INDEX_DAILY_HISTORY: "sync_index_daily_history",
+    }
+    log_event(
+        user=user,
+        task_id=task_id,
+        event_type="data_sync_batch" if batch else "data_sync",
+        event_name="batch_sync_stock_daily_history" if batch else event_name_map.get(sync_item, sync_item),
+        source="worker",
+        target=sync_item,
+        status="failed",
+        level="error",
+        message=message,
     )

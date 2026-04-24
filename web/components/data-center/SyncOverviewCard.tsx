@@ -5,11 +5,14 @@ const { Text } = Typography;
 
 type Props = {
   logLoading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
   eventLogs: TimelineLogRow[];
   onRefresh: () => void;
+  onLoadMore: () => void;
 };
 
-export function SyncOverviewCard({ logLoading, eventLogs, onRefresh }: Props) {
+export function SyncOverviewCard({ logLoading, loadingMore, hasMore, eventLogs, onRefresh, onLoadMore }: Props) {
   return (
     <Card
       className="dashboard-card data-sync-panel"
@@ -20,7 +23,16 @@ export function SyncOverviewCard({ logLoading, eventLogs, onRefresh }: Props) {
         </Button>
       }
     >
-      <div className="sync-timeline">
+      <div
+        className="sync-timeline sync-timeline-scroll"
+        onScroll={(event) => {
+          const node = event.currentTarget;
+          const nearBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 40;
+          if (nearBottom && hasMore && !loadingMore && !logLoading) {
+            onLoadMore();
+          }
+        }}
+      >
         {logLoading ? (
           <div className="sync-task">
             <Badge status="processing" />
@@ -60,6 +72,15 @@ export function SyncOverviewCard({ logLoading, eventLogs, onRefresh }: Props) {
             </div>
           </div>
         )}
+        {!logLoading && loadingMore ? (
+          <div className="sync-task sync-task-loading-more">
+            <Badge status="processing" />
+            <div>
+              <strong>正在加载更多日志</strong>
+              <Text>请稍候...</Text>
+            </div>
+          </div>
+        ) : null}
       </div>
     </Card>
   );

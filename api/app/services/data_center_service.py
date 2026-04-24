@@ -5,6 +5,7 @@ from time import perf_counter
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
@@ -15,6 +16,7 @@ from app.models.event_log import EventLog
 from app.models.exchange import Exchange
 from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
+from app.models.setting import Setting
 from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
 from app.models.trading_calendar_day import TradingCalendarDay
@@ -24,7 +26,6 @@ from app.services.task_center_service import publish_task_event
 
 CANGHAI_COUNTRY_URL = "https://www.tsanghi.com/api/fin/index/country"
 CANGHAI_EXCHANGE_URL = "https://www.tsanghi.com/api/fin/stock/exchange"
-CANGHAI_SOURCE_STATUS_TEST_URL = "https://www.tsanghi.com/api/fin/stock/XSHG/list?token=demo"
 CANGHAI_SOURCE_KEY = "canghai"
 CANGHAI_SOURCE_NAME = "沧海数据"
 
@@ -119,7 +120,18 @@ def check_canghai_data_source_status(*, task_id: str | None = None) -> dict:
     message = "状态检测失败"
 
     try:
-        request = Request(CANGHAI_SOURCE_STATUS_TEST_URL, headers={"Accept": "application/json"})
+        token = get_any_canghai_token()
+        beijing_today = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Shanghai")).date()
+        check_date = beijing_today - timedelta(days=1)
+        request_url = build_canghai_url(
+            canghai_trading_calendar_url("XNAS"),
+            token,
+            extra_params={
+                "start_date": check_date.isoformat(),
+                "end_date": check_date.isoformat(),
+            },
+        )
+        request = Request(request_url, headers={"Accept": "application/json"})
         with urlopen(request, timeout=20) as response:
             http_status = response.status
             payload = json.loads(response.read().decode("utf-8"))
@@ -130,6 +142,8 @@ def check_canghai_data_source_status(*, task_id: str | None = None) -> dict:
         message = f"HTTP {exc.code}"
     except URLError as exc:
         message = f"网络异常：{exc.reason}"
+    except DataSyncError as exc:
+        message = str(exc)
     except Exception as exc:
         message = f"检测异常：{exc}"
 
@@ -153,11 +167,11 @@ def check_canghai_data_source_status(*, task_id: str | None = None) -> dict:
         show_in_ui=False,
         event_type="data_source_check",
         event_name="check_canghai_data_source_status",
-        source="canghai-demo",
+        source="canghai",
         target=CANGHAI_SOURCE_KEY,
         status="success" if status == "normal" else "failed",
         level="info" if status == "normal" else "warning",
-        message=f"{CANGHAI_SOURCE_NAME} status check finished: {message}",
+        message=f"{CANGHAI_SOURCE_NAME}状态检测完成：{message}",
         http_status=http_status,
         started_at=started_at,
         finished_at=checked_at,
@@ -729,13 +743,21 @@ def sync_from_canghai(
     }
 
 
-def list_recent_event_logs(limit: int = 20) -> list[dict]:
+def list_recent_event_logs(*, offset: int = 0, limit: int = 20) -> dict:
     rows = (
         EventLog.query.filter(EventLog.show_in_ui.is_(True))
         .order_by(EventLog.created_at.desc(), EventLog.id.desc())
+        .offset(max(offset, 0))
+        .limit(max(limit, 1) + 1)
         .all()
     )
-    return [row.to_dict() for row in rows]
+    has_more = len(rows) > limit
+    items = rows[:limit]
+    return {
+        "items": [row.to_dict() for row in items],
+        "hasMore": has_more,
+        "nextOffset": offset + len(items),
+    }
 
 
 def list_exchange_options() -> list[dict]:
@@ -984,6 +1006,20 @@ def get_user_token(user: User) -> str:
     if token:
         return token
     raise DataSyncError("未配置沧海数据 API Key，无法执行同步。")
+
+
+def get_any_canghai_token() -> str:
+    row = (
+        db.session.query(Setting.canghai_api_key)
+        .filter(Setting.canghai_api_key.isnot(None), Setting.canghai_api_key != "")
+        .order_by(Setting.updated_at.desc(), Setting.id.desc())
+        .first()
+    )
+    token = (row[0] if row else "") or ""
+    token = token.strip()
+    if token:
+        return token
+    raise DataSyncError("未配置沧海数据 API Key，无法执行状态检测。")
 
 
 def build_canghai_url(base_url: str, token: str, extra_params: dict[str, str] | None = None) -> str:

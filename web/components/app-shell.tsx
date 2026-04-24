@@ -14,7 +14,7 @@ import {
   SettingOutlined,
   SunOutlined,
 } from "@ant-design/icons";
-import { Avatar, Button, Layout, Menu, Space, Switch, Typography } from "antd";
+import { Avatar, Button, Layout, Menu, Popover, Space, Switch, Typography } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -85,17 +85,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   title="切换明暗模式"
                 />
                 <Button icon={<BellOutlined />} shape="circle" type="text" />
-                <span className="topbar-user-name">{user.username}</span>
-                <Avatar className="avatar">{getInitial(user)}</Avatar>
-                <Button
-                  onClick={() => {
-                    clearAccessToken();
-                    router.replace("/login");
-                  }}
-                  type="text"
+                <Popover
+                  trigger="hover"
+                  placement="bottomRight"
+                  content={
+                    <div className="topbar-user-popover">
+                      <Text className="topbar-user-popover-name">{user.username}</Text>
+                      <Button
+                        type="text"
+                        className="topbar-user-popover-action"
+                        onClick={() => {
+                          clearAccessToken();
+                          router.replace("/login");
+                        }}
+                      >
+                        退出
+                      </Button>
+                    </div>
+                  }
                 >
-                  退出
-                </Button>
+                  <button type="button" className="topbar-user-trigger" aria-label="用户菜单">
+                    <Avatar className="avatar">{getInitial(user)}</Avatar>
+                  </button>
+                </Popover>
               </Space>
             </Header>
             <Content className="content-area">{children}</Content>

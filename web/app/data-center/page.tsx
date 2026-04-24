@@ -5,7 +5,6 @@ import { Col, Form, Row, message } from "antd";
 import { AppShell } from "@/components/app-shell";
 import { DataBrowserCard } from "@/components/data-center/DataBrowserCard";
 import { DataCenterHeader } from "@/components/data-center/DataCenterHeader";
-import { ExchangeCoverageCard } from "@/components/data-center/ExchangeCoverageCard";
 import { MetricCardsRow } from "@/components/data-center/MetricCardsRow";
 import { SourceStatusCard } from "@/components/data-center/SourceStatusCard";
 import { SyncDataModal } from "@/components/data-center/SyncDataModal";
@@ -40,6 +39,9 @@ export default function DataCenterPage() {
   const [syncing, setSyncing] = useState(false);
   const [batchSyncing, setBatchSyncing] = useState(false);
   const [logLoading, setLogLoading] = useState(true);
+  const [logLoadingMore, setLogLoadingMore] = useState(false);
+  const [logHasMore, setLogHasMore] = useState(false);
+  const [logOffset, setLogOffset] = useState(0);
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [sourceStatusLoading, setSourceStatusLoading] = useState(true);
   const [exchangeLoading, setExchangeLoading] = useState(false);
@@ -75,16 +77,31 @@ export default function DataCenterPage() {
     }
   }, [messageApi]);
 
-  const loadLogs = useCallback(async () => {
-    setLogLoading(true);
+  const loadLogs = useCallback(async (reset = false, offsetValue = 0) => {
+    if (reset) {
+      setLogLoading(true);
+    } else {
+      setLogLoadingMore(true);
+    }
     try {
       const token = getAccessToken();
-      const response = await apiGet<{ items: EventLogItem[] }>("/data-center/event-logs", token);
-      setEventLogs(response.items.map(mapEventLogRow));
+      const nextOffset = reset ? 0 : offsetValue;
+      const response = await apiGet<{ items: EventLogItem[]; hasMore: boolean; nextOffset: number }>(
+        `/data-center/event-logs?offset=${nextOffset}&limit=20`,
+        token,
+      );
+      const mapped = response.items.map(mapEventLogRow);
+      setEventLogs((current) => (reset ? mapped : [...current, ...mapped]));
+      setLogHasMore(response.hasMore);
+      setLogOffset(response.nextOffset);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "加载同步日志失败");
     } finally {
-      setLogLoading(false);
+      if (reset) {
+        setLogLoading(false);
+      } else {
+        setLogLoadingMore(false);
+      }
     }
   }, [messageApi]);
 
@@ -226,7 +243,7 @@ export default function DataCenterPage() {
   useEffect(() => {
     void Promise.all([
       loadOverview(),
-      loadLogs(),
+      loadLogs(true, 0),
       loadSourceStatus(),
       loadExchangeOptions(),
       loadCountryOptions(),
@@ -376,20 +393,20 @@ export default function DataCenterPage() {
         <Col xs={24} xl={15}>
           <SyncOverviewCard
             logLoading={logLoading}
+            loadingMore={logLoadingMore}
+            hasMore={logHasMore}
             eventLogs={eventLogs}
-            onRefresh={() => void Promise.all([loadLogs(), loadSourceStatus()])}
+            onRefresh={() => void Promise.all([loadLogs(true, 0), loadSourceStatus()])}
+            onLoadMore={() => void loadLogs(false, logOffset)}
           />
         </Col>
         <Col xs={24} xl={9}>
-          <SourceStatusCard item={sourceStatus} loading={sourceStatusLoading} />
+          <SourceStatusCard item={sourceStatus} exchangeCoverage={exchangeCoverage} loading={sourceStatusLoading} />
         </Col>
       </Row>
 
-      <Row gutter={[20, 20]} className="dashboard-secondary-row equal-height-row">
-        <Col xs={24} xl={10}>
-          <ExchangeCoverageCard exchangeCoverage={exchangeCoverage} />
-        </Col>
-        <Col xs={24} xl={14}>
+      <Row gutter={[20, 20]} className="dashboard-secondary-row">
+        <Col xs={24}>
           <TradingCalendarCard countryOptions={countryOptions} exchangeOptions={exchangeOptions} />
         </Col>
       </Row>
