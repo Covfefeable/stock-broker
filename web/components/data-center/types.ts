@@ -98,3 +98,18 @@ export type TaskStatusResponse = {
   };
   error?: string;
 };
+
+export type SyncEnqueueResponse = {
+  message: string;
+  taskId: string;
+};
+
+export type DataSourceStatusItem = {
+  sourceKey: string;
+  sourceName: string;
+  status: "normal" | "abnormal" | "unknown" | "checking";
+  latencyMs: number | null;
+  checkedAt: string | null;
+  httpStatus: number | null;
+  message: string | null;
+};

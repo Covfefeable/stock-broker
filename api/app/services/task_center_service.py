@@ -13,6 +13,7 @@ def list_recent_task_summaries(*, user_id: int, limit: int = 30) -> list[dict]:
         EventLog.query.filter(
             EventLog.user_id == user_id,
             EventLog.task_id.isnot(None),
+            EventLog.show_in_ui.is_(True),
         )
         .order_by(EventLog.created_at.desc(), EventLog.id.desc())
         .limit(max(limit * 6, 60))
@@ -39,7 +40,7 @@ def list_recent_task_summaries(*, user_id: int, limit: int = 30) -> list[dict]:
 
 
 def publish_task_event(log: EventLog) -> None:
-    if extensions.redis_client is None or not log.task_id:
+    if extensions.redis_client is None or not log.task_id or not log.show_in_ui:
         return
 
     payload = {

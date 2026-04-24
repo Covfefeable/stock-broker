@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, Col, Form, Row, message } from "antd";
+import { Col, Form, Row, message } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { issues, prices } from "@/components/data-center/constants";
@@ -14,21 +14,19 @@ import { SyncDataModal } from "@/components/data-center/SyncDataModal";
 import { SyncOverviewCard } from "@/components/data-center/SyncOverviewCard";
 import type {
   CountryOption,
+  DataSourceStatusItem,
   EventLogItem,
   ExchangeOption,
   OverviewMetrics,
   StockDailyCoverage,
   StockOption,
+  SyncEnqueueResponse,
   SyncFormValues,
-  TaskStatusResponse,
   TimelineLogRow,
 } from "@/components/data-center/types";
 import { defaultMetrics, mapEventLogRow } from "@/components/data-center/utils";
 import { getAccessToken } from "@/lib/auth";
 import { apiGet, apiPost } from "@/lib/api";
-
-const TASK_POLL_INTERVAL_MS = 2000;
-const TASK_POLL_TIMEOUT_MS = 3 * 60 * 1000;
 
 export default function DataCenterPage() {
   const [messageApi, contextHolder] = message.useMessage();
@@ -39,12 +37,14 @@ export default function DataCenterPage() {
   const [batchSyncing, setBatchSyncing] = useState(false);
   const [logLoading, setLogLoading] = useState(true);
   const [overviewLoading, setOverviewLoading] = useState(true);
+  const [sourceStatusLoading, setSourceStatusLoading] = useState(true);
   const [exchangeLoading, setExchangeLoading] = useState(false);
   const [countryLoading, setCountryLoading] = useState(false);
   const [stockLoading, setStockLoading] = useState(false);
   const [coverageLoading, setCoverageLoading] = useState(false);
 
   const [metrics, setMetrics] = useState<OverviewMetrics>(defaultMetrics);
+  const [sourceStatus, setSourceStatus] = useState<DataSourceStatusItem | null>(null);
   const [exchangeOptions, setExchangeOptions] = useState<ExchangeOption[]>([]);
   const [countryOptions, setCountryOptions] = useState<CountryOption[]>([]);
   const [stockOptions, setStockOptions] = useState<StockOption[]>([]);
@@ -86,6 +86,19 @@ export default function DataCenterPage() {
     }
   }, [messageApi]);
 
+  const loadSourceStatus = useCallback(async () => {
+    setSourceStatusLoading(true);
+    try {
+      const token = getAccessToken();
+      const response = await apiGet<{ item: DataSourceStatusItem }>("/data-center/source-status", token);
+      setSourceStatus(response.item);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "加载数据源状态失败");
+    } finally {
+      setSourceStatusLoading(false);
+    }
+  }, [messageApi]);
+
   const loadExchangeOptions = useCallback(async () => {
     setExchangeLoading(true);
     try {
@@ -118,6 +131,7 @@ export default function DataCenterPage() {
         setStockOptions([]);
         return;
       }
+
       setStockLoading(true);
       try {
         const token = getAccessToken();
@@ -141,6 +155,7 @@ export default function DataCenterPage() {
         setDailyCoverage({ existingDates: [], latestDate: null, count: 0 });
         return;
       }
+
       setCoverageLoading(true);
       try {
         const token = getAccessToken();
@@ -159,8 +174,14 @@ export default function DataCenterPage() {
   );
 
   useEffect(() => {
-    void Promise.all([loadOverview(), loadLogs(), loadExchangeOptions(), loadCountryOptions()]);
-  }, [loadCountryOptions, loadExchangeOptions, loadLogs, loadOverview]);
+    void Promise.all([
+      loadOverview(),
+      loadLogs(),
+      loadSourceStatus(),
+      loadExchangeOptions(),
+      loadCountryOptions(),
+    ]);
+  }, [loadCountryOptions, loadExchangeOptions, loadLogs, loadOverview, loadSourceStatus]);
 
   const resetDailyHistoryFields = useCallback(() => {
     form.setFieldValue("ticker", undefined);
@@ -170,41 +191,12 @@ export default function DataCenterPage() {
     setStockOptions([]);
   }, [form]);
 
-  const pollTaskUntilFinished = useCallback(
-    async (taskId: string, submittedMessage: string) => {
-      const token = getAccessToken();
-      const startedAt = Date.now();
-      messageApi.success(`${submittedMessage}，任务 ID：${taskId}`);
-
-      while (Date.now() - startedAt < TASK_POLL_TIMEOUT_MS) {
-        await sleep(TASK_POLL_INTERVAL_MS);
-        const status = await apiGet<TaskStatusResponse>(`/tasks/${encodeURIComponent(taskId)}`, token);
-        if (!status.ready) {
-          continue;
-        }
-
-        await Promise.all([loadLogs(), loadOverview()]);
-
-        if (status.successful) {
-          const recordsAffected = status.result?.recordsAffected ?? 0;
-          messageApi.success(`任务执行完成，共处理 ${recordsAffected} 条记录`);
-        } else {
-          messageApi.error(status.error ?? "任务执行失败");
-        }
-        return;
-      }
-
-      messageApi.warning(`任务 ${taskId} 仍在执行，可稍后刷新同步日志查看结果`);
-    },
-    [loadLogs, loadOverview, messageApi],
-  );
-
   const handleSyncSubmit = useCallback(async () => {
     const values = await form.validateFields();
     setSyncing(true);
     try {
       const token = getAccessToken();
-      const response = await apiPost<{ message: string; taskId: string }>(
+      const response = await apiPost<SyncEnqueueResponse>(
         "/data-center/sync",
         {
           syncItem: values.syncItem,
@@ -217,40 +209,39 @@ export default function DataCenterPage() {
         },
         token,
       );
+
       setModalOpen(false);
       form.resetFields();
       setDailyCoverage({ existingDates: [], latestDate: null, count: 0 });
       setStockOptions([]);
-      void pollTaskUntilFinished(response.taskId, response.message);
+      messageApi.success(`${response.message}，任务 ID：${response.taskId}`);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "同步失败");
-      void Promise.all([loadLogs(), loadOverview()]);
     } finally {
       setSyncing(false);
     }
-  }, [form, loadLogs, loadOverview, messageApi, pollTaskUntilFinished]);
+  }, [form, messageApi]);
 
   const handleBatchSync = useCallback(async () => {
     setBatchSyncing(true);
     try {
       const token = getAccessToken();
-      const response = await apiPost<{ message: string; taskId: string }>(
+      const response = await apiPost<SyncEnqueueResponse>(
         "/data-center/sync/stocks/batch-auto-fill",
         {},
         token,
       );
-      void pollTaskUntilFinished(response.taskId, response.message);
+      messageApi.success(`${response.message}，任务 ID：${response.taskId}`);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "批量同步失败");
-      void Promise.all([loadLogs(), loadOverview()]);
     } finally {
       setBatchSyncing(false);
     }
-  }, [loadLogs, loadOverview, messageApi, pollTaskUntilFinished]);
+  }, [messageApi]);
 
   const handleSyncItemChange = useCallback(
     (value: SyncFormValues["syncItem"]) => {
-      if (value !== "stock_list") {
+      if (value !== "stock_list" && value !== "stock_daily_history") {
         form.setFieldValue("exchangeCode", undefined);
       }
       if (value !== "index_list") {
@@ -282,6 +273,7 @@ export default function DataCenterPage() {
   return (
     <AppShell>
       {contextHolder}
+
       <DataCenterHeader
         batchSyncing={batchSyncing}
         onBatchSync={() => void handleBatchSync()}
@@ -292,16 +284,23 @@ export default function DataCenterPage() {
 
       <Row gutter={[20, 20]} className="dashboard-main-row equal-height-row">
         <Col xs={24} xl={15}>
-          <SyncOverviewCard logLoading={logLoading} eventLogs={eventLogs} onRefresh={() => void loadLogs()} />
+          <SyncOverviewCard
+            logLoading={logLoading}
+            eventLogs={eventLogs}
+            onRefresh={() => void Promise.all([loadLogs(), loadSourceStatus()])}
+          />
         </Col>
         <Col xs={24} xl={9}>
-          <SourceStatusCard />
+          <SourceStatusCard item={sourceStatus} loading={sourceStatusLoading} />
         </Col>
       </Row>
 
       <Row gutter={[20, 20]} className="dashboard-secondary-row equal-height-row">
         <Col xs={24} xl={10}>
-          <ExchangeCoverageCard latestTradeDate={metrics.latestTradeDate} exchangeCoverage={exchangeCoverage} />
+          <ExchangeCoverageCard
+            latestTradeDate={metrics.latestTradeDate}
+            exchangeCoverage={exchangeCoverage}
+          />
         </Col>
         <Col xs={24} xl={14}>
           <DataQualityIssuesCard issues={issues} />
@@ -324,7 +323,9 @@ export default function DataCenterPage() {
         dailyCoverage={dailyCoverage}
         onSubmit={() => void handleSyncSubmit()}
         onCancel={() => {
-          if (!syncing) setModalOpen(false);
+          if (!syncing) {
+            setModalOpen(false);
+          }
         }}
         onSyncItemChange={handleSyncItemChange}
         onExchangeChange={handleDailyExchangeChange}
@@ -332,10 +333,4 @@ export default function DataCenterPage() {
       />
     </AppShell>
   );
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
 }

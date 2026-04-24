@@ -11,6 +11,7 @@ from app.services.data_center_service import (
     SYNC_ITEM_STOCK_DAILY_HISTORY,
     SYNC_ITEM_STOCK_LIST,
     get_data_center_overview_metrics,
+    get_data_source_status_snapshot,
     get_stock_daily_coverage,
     list_country_options,
     list_exchange_options,
@@ -19,10 +20,7 @@ from app.services.data_center_service import (
     log_event,
     sync_item_label,
 )
-from app.tasks.data_center import (
-    batch_sync_stock_daily_history_task,
-    sync_data_center_item,
-)
+from app.tasks.data_center import batch_sync_stock_daily_history_task, sync_data_center_item
 
 data_center_bp = Blueprint("data_center", __name__)
 
@@ -37,6 +35,12 @@ def overview():
 @auth_required
 def event_logs():
     return {"items": list_recent_event_logs(limit=20)}
+
+
+@data_center_bp.get("/data-center/source-status")
+@auth_required
+def source_status():
+    return {"item": get_data_source_status_snapshot()}
 
 
 @data_center_bp.get("/data-center/exchange-options")
@@ -145,9 +149,7 @@ def sync_data():
 @data_center_bp.post("/data-center/sync/stocks/batch-auto-fill")
 @auth_required
 def batch_sync_stocks():
-    task = batch_sync_stock_daily_history_task.apply_async(
-        kwargs={"user_id": g.current_user.id}
-    )
+    task = batch_sync_stock_daily_history_task.apply_async(kwargs={"user_id": g.current_user.id})
     log_event(
         user=g.current_user,
         task_id=task.id,

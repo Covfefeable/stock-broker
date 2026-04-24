@@ -12,4 +12,4 @@ dist/
 *.tsbuildinfo
 docker/volumes/
 .pnpm-store/
-
+api/celerybeat-schedule*

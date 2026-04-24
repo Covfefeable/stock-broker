@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.extensions import db
 from app.models.country import Country
+from app.models.data_source_status import DataSourceStatus
 from app.models.event_log import EventLog
 from app.models.exchange import Exchange
 from app.models.index_asset import IndexAsset
@@ -20,6 +21,9 @@ from app.services.task_center_service import publish_task_event
 
 CANGHAI_COUNTRY_URL = "https://www.tsanghi.com/api/fin/index/country"
 CANGHAI_EXCHANGE_URL = "https://www.tsanghi.com/api/fin/stock/exchange"
+CANGHAI_SOURCE_STATUS_TEST_URL = "https://www.tsanghi.com/api/fin/stock/XSHG/list?token=demo"
+CANGHAI_SOURCE_KEY = "canghai"
+CANGHAI_SOURCE_NAME = "沧海数据"
 
 SYNC_ITEM_COUNTRY_LIST = "country_list"
 SYNC_ITEM_EXCHANGE_LIST = "exchange_list"
@@ -76,6 +80,77 @@ def get_data_center_overview_metrics() -> dict:
         "latestTradeDate": latest_trade_date.isoformat() if latest_trade_date else None,
         "exchangeCoverage": exchange_coverage,
     }
+
+
+def get_data_source_status_snapshot() -> dict:
+    record = DataSourceStatus.query.filter_by(source_key=CANGHAI_SOURCE_KEY).first()
+    if not record:
+        return {
+            "sourceKey": CANGHAI_SOURCE_KEY,
+            "sourceName": CANGHAI_SOURCE_NAME,
+            "status": "unknown",
+            "latencyMs": None,
+            "checkedAt": None,
+            "httpStatus": None,
+            "message": "尚未检测",
+        }
+    return record.to_dict()
+
+
+def check_canghai_data_source_status(*, task_id: str | None = None) -> dict:
+    started_at = datetime.now(timezone.utc)
+    started_perf = perf_counter()
+    status = "abnormal"
+    http_status: int | None = None
+    message = "状态检测失败"
+
+    try:
+        request = Request(CANGHAI_SOURCE_STATUS_TEST_URL, headers={"Accept": "application/json"})
+        with urlopen(request, timeout=20) as response:
+            http_status = response.status
+            payload = json.loads(response.read().decode("utf-8"))
+            status = "normal" if http_status == 200 and int(payload.get("code") or 0) == 200 else "abnormal"
+            message = str(payload.get("msg") or "Status check finished")
+    except HTTPError as exc:
+        http_status = exc.code
+        message = f"HTTP {exc.code}"
+    except URLError as exc:
+        message = f"网络异常：{exc.reason}"
+    except Exception as exc:
+        message = f"检测异常：{exc}"
+
+    checked_at = datetime.now(timezone.utc)
+    latency_ms = int((perf_counter() - started_perf) * 1000)
+    record = DataSourceStatus.query.filter_by(source_key=CANGHAI_SOURCE_KEY).first()
+    if not record:
+        record = DataSourceStatus(source_key=CANGHAI_SOURCE_KEY, source_name=CANGHAI_SOURCE_NAME)
+        db.session.add(record)
+
+    record.status = status
+    record.latency_ms = latency_ms
+    record.checked_at = checked_at
+    record.http_status = http_status
+    record.message = message
+    db.session.commit()
+
+    log_event(
+        user=None,
+        task_id=task_id,
+        show_in_ui=False,
+        event_type="data_source_check",
+        event_name="check_canghai_data_source_status",
+        source="canghai-demo",
+        target=CANGHAI_SOURCE_KEY,
+        status="success" if status == "normal" else "failed",
+        level="info" if status == "normal" else "warning",
+        message=f"{CANGHAI_SOURCE_NAME} status check finished: {message}",
+        http_status=http_status,
+        started_at=started_at,
+        finished_at=checked_at,
+        duration_ms=latency_ms,
+    )
+
+    return record.to_dict()
 
 
 def list_exchange_stock_coverage() -> list[dict]:
@@ -172,11 +247,13 @@ def sync_exchange_list(user: User, *, task_id: str | None = None) -> dict:
 def sync_stock_list(user: User, exchange_code: str, *, task_id: str | None = None) -> dict:
     normalized_exchange_code = exchange_code.strip().upper()
     if not normalized_exchange_code:
-        raise DataSyncError("股票清单同步前请先选择交易所。")
+        raise DataSyncError("同步股票清单前请先选择交易所。")
 
     exchange = Exchange.query.filter_by(exchange_code=normalized_exchange_code).first()
     if not exchange:
-        raise DataSyncError(f"未找到交易所 {normalized_exchange_code}，请先完成交易所清单同步。")
+        raise DataSyncError(
+            f"未找到交易所 {normalized_exchange_code}，请先完成交易所清单同步。"
+        )
 
     return sync_with_token_guard(
         user=user,
@@ -184,19 +261,20 @@ def sync_stock_list(user: User, exchange_code: str, *, task_id: str | None = Non
         sync_item=SYNC_ITEM_STOCK_LIST,
         event_name="sync_stock_list",
         base_url=canghai_stock_url(normalized_exchange_code),
-        success_message=f"股票清单同步成功（{normalized_exchange_code}）",
+        success_message=f"股票清单同步成功（{normalized_exchange_code}）。",
         upsert_func=lambda rows: upsert_stocks(rows, normalized_exchange_code),
     )
-
 
 def sync_index_list(user: User, country_code: str, *, task_id: str | None = None) -> dict:
     normalized_country_code = country_code.strip().upper()
     if not normalized_country_code:
-        raise DataSyncError("指数清单同步前请先选择国家/地区。")
+        raise DataSyncError("同步指数清单前请先选择国家/地区。")
 
     country = Country.query.filter_by(country_code=normalized_country_code).first()
     if not country:
-        raise DataSyncError(f"未找到国家/地区 {normalized_country_code}，请先完成国家/地区清单同步。")
+        raise DataSyncError(
+            f"未找到国家/地区 {normalized_country_code}，请先完成国家/地区清单同步。"
+        )
 
     return sync_with_token_guard(
         user=user,
@@ -204,10 +282,9 @@ def sync_index_list(user: User, country_code: str, *, task_id: str | None = None
         sync_item=SYNC_ITEM_INDEX_LIST,
         event_name="sync_index_list",
         base_url=canghai_index_url(normalized_country_code),
-        success_message=f"指数清单同步成功（{normalized_country_code}）",
+        success_message=f"指数清单同步成功（{normalized_country_code}）。",
         upsert_func=lambda rows: upsert_index_assets(rows, normalized_country_code),
     )
-
 
 def sync_stock_daily_history(
     user: User,
@@ -223,9 +300,9 @@ def sync_stock_daily_history(
     normalized_exchange_code = exchange_code.strip().upper()
     normalized_ticker = ticker.strip().upper()
     if not normalized_exchange_code:
-        raise DataSyncError("股票历史日线同步前请先选择交易所。")
+        raise DataSyncError("同步股票历史日线前请先选择交易所。")
     if not normalized_ticker:
-        raise DataSyncError("股票历史日线同步前请先选择股票。")
+        raise DataSyncError("同步股票历史日线前请先选择股票。")
 
     stock = Stock.query.filter_by(
         exchange_code=normalized_exchange_code,
@@ -253,12 +330,11 @@ def sync_stock_daily_history(
         sync_item=SYNC_ITEM_STOCK_DAILY_HISTORY,
         event_name="sync_stock_daily_history",
         base_url=canghai_stock_daily_url(normalized_exchange_code),
-        success_message=f"股票历史日线同步成功（{normalized_exchange_code}/{normalized_ticker}）",
+        success_message=f"股票历史日线同步成功（{normalized_exchange_code}/{normalized_ticker}）。",
         upsert_func=lambda rows: upsert_stock_daily_bars(rows, stock),
         extra_params=extra_params,
         log_result=log_result,
     )
-
 
 def batch_sync_stock_daily_history(user: User, *, task_id: str | None = None) -> dict:
     synced_stock_keys = (
@@ -550,7 +626,8 @@ def sync_from_canghai(
 
 def list_recent_event_logs(limit: int = 20) -> list[dict]:
     rows = (
-        EventLog.query.order_by(EventLog.created_at.desc(), EventLog.id.desc())
+        EventLog.query.filter(EventLog.show_in_ui.is_(True))
+        .order_by(EventLog.created_at.desc(), EventLog.id.desc())
         .limit(limit)
         .all()
     )
@@ -845,6 +922,7 @@ def log_event(
     *,
     user: User | None,
     task_id: str | None = None,
+    show_in_ui: bool = True,
     event_type: str,
     event_name: str,
     source: str | None,
@@ -861,6 +939,7 @@ def log_event(
     log = EventLog(
         user=user,
         task_id=task_id,
+        show_in_ui=show_in_ui,
         event_type=event_type,
         event_name=event_name,
         source=source,

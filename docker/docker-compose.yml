@@ -44,6 +44,7 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ACCESS_TOKEN_EXPIRES: ${JWT_ACCESS_TOKEN_EXPIRES:-604800}
+      SYNC_TASK_TIMEOUT_SECONDS: ${SYNC_TASK_TIMEOUT_SECONDS:-3600}
       DATABASE_URL: postgresql+psycopg://${DB_USERNAME}:${DB_PASSWORD}@postgres:5432/${DB_DATABASE}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
@@ -67,6 +68,28 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ACCESS_TOKEN_EXPIRES: ${JWT_ACCESS_TOKEN_EXPIRES:-604800}
+      SYNC_TASK_TIMEOUT_SECONDS: ${SYNC_TASK_TIMEOUT_SECONDS:-3600}
+      DATABASE_URL: postgresql+psycopg://${DB_USERNAME}:${DB_PASSWORD}@postgres:5432/${DB_DATABASE}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker-beat:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    command: uv run celery -A app.celery beat --loglevel=info
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ACCESS_TOKEN_EXPIRES: ${JWT_ACCESS_TOKEN_EXPIRES:-604800}
+      SYNC_TASK_TIMEOUT_SECONDS: ${SYNC_TASK_TIMEOUT_SECONDS:-3600}
       DATABASE_URL: postgresql+psycopg://${DB_USERNAME}:${DB_PASSWORD}@postgres:5432/${DB_DATABASE}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}

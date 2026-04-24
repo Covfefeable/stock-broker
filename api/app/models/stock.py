@@ -8,7 +8,7 @@ class Stock(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     ticker = db.Column(db.String(32), nullable=False)
-    name = db.Column(db.String(160), nullable=False)
+    name = db.Column(db.String(512), nullable=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     exchange_id = db.Column(db.Integer, db.ForeignKey("exchanges.id"), nullable=True, index=True)
     exchange_code = db.Column(db.String(16), nullable=False, index=True)

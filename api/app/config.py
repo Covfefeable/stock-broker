@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 
 class BaseConfig:
@@ -12,6 +13,10 @@ class BaseConfig:
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
     CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
+    CELERY_BEAT_SCHEDULE_FILENAME = os.getenv(
+        "CELERY_BEAT_SCHEDULE_FILENAME",
+        os.path.join(tempfile.gettempdir(), "stock-broker-celerybeat-schedule"),
+    )
     CORS_ORIGINS = [
         origin.strip()
         for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
@@ -19,6 +24,7 @@ class BaseConfig:
     ]
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
     JWT_ACCESS_TOKEN_EXPIRES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", "604800"))
+    SYNC_TASK_TIMEOUT_SECONDS = int(os.getenv("SYNC_TASK_TIMEOUT_SECONDS", "3600"))
     JSON_SORT_KEYS = False
 
 

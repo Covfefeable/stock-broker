@@ -7,7 +7,7 @@ import {
   RobotOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Button, Divider, Drawer, Empty, Progress, Space, Tag, Typography } from "antd";
+import { Button, Drawer, Empty, Progress, Segmented, Space, Tag, Typography } from "antd";
 import Lottie from "lottie-react";
 import type { LottieRefCurrentProps } from "lottie-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -19,6 +19,7 @@ const { Text, Title } = Typography;
 
 type TaskStatus = "queued" | "running" | "success" | "failure";
 type TaskType = "sync" | "agent";
+type TaskFilter = "active" | "finished" | "all";
 
 type TaskItem = {
   taskId: string;
@@ -56,17 +57,16 @@ type TaskSocketMessage =
       message: string;
     };
 
-const statusMeta: Record<
-  TaskStatus,
-  { label: string; color: string; icon: React.ReactNode }
-> = {
+const FINISHED_TASK_LIMIT = 30;
+
+const statusMeta: Record<TaskStatus, { label: string; color: string; icon: React.ReactNode }> = {
   queued: {
     label: "排队中",
     color: "default",
     icon: <ClockCircleFilled />,
   },
   running: {
-    label: "运行中",
+    label: "进行中",
     color: "processing",
     icon: <SyncOutlined spin />,
   },
@@ -85,19 +85,35 @@ const statusMeta: Record<
 export function TaskCenter() {
   const [open, setOpen] = useState(false);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [filter, setFilter] = useState<TaskFilter>("active");
   const lottieRef = useRef<LottieRefCurrentProps>(null);
 
-  const runningCount = useMemo(
-    () => tasks.filter((task) => task.status === "queued" || task.status === "running").length,
+  const activeTasks = useMemo(
+    () => tasks.filter((task) => task.status === "queued" || task.status === "running"),
     [tasks],
   );
+  const finishedTasks = useMemo(
+    () => tasks.filter((task) => task.status === "success" || task.status === "failure"),
+    [tasks],
+  );
+  const runningCount = activeTasks.length;
+
+  const visibleTasks = useMemo(() => {
+    if (filter === "active") {
+      return activeTasks;
+    }
+    if (filter === "finished") {
+      return finishedTasks.slice(0, FINISHED_TASK_LIMIT);
+    }
+    return [...activeTasks, ...finishedTasks.slice(0, FINISHED_TASK_LIMIT)];
+  }, [activeTasks, filter, finishedTasks]);
 
   const groupedTasks = useMemo(
     () => ({
-      sync: tasks.filter((task) => task.type === "sync"),
-      agent: tasks.filter((task) => task.type === "agent"),
+      sync: visibleTasks.filter((task) => task.type === "sync"),
+      agent: visibleTasks.filter((task) => task.type === "agent"),
     }),
-    [tasks],
+    [visibleTasks],
   );
 
   useEffect(() => {
@@ -118,7 +134,7 @@ export function TaskCenter() {
       try {
         const response = await apiGet<TaskSnapshotResponse>("/task-center/tasks", token);
         if (!cancelled) {
-          setTasks(response.items);
+          setTasks(sortTasks(response.items));
         }
       } catch {
         if (!cancelled) {
@@ -205,44 +221,70 @@ export function TaskCenter() {
         placement="right"
         open={open}
         onClose={() => setOpen(false)}
-        width={420}
+        width={760}
         className="task-center-drawer"
+        extra={
+          <Segmented<TaskFilter>
+            size="small"
+            value={filter}
+            onChange={(value) => setFilter(value as TaskFilter)}
+            options={[
+              { label: `进行中 ${runningCount}`, value: "active" },
+              { label: `已完成 ${finishedTasks.length}`, value: "finished" },
+              { label: `全部 ${tasks.length}`, value: "all" },
+            ]}
+          />
+        }
       >
-        <section className="task-center-section">
-          <div className="task-center-section-head">
-            <Title level={5}>同步任务</Title>
-            <Text>{groupedTasks.sync.length} 个</Text>
-          </div>
-          {groupedTasks.sync.length ? (
-            <Space orientation="vertical" size={12} className="task-center-list">
-              {groupedTasks.sync.map((task) => (
-                <TaskCard key={task.taskId} task={task} />
-              ))}
-            </Space>
-          ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无同步任务" />
-          )}
-        </section>
-
-        <Divider className="task-center-divider" />
-
-        <section className="task-center-section">
-          <div className="task-center-section-head">
-            <Title level={5}>AI Agent 任务</Title>
-            <Text>{groupedTasks.agent.length} 个</Text>
-          </div>
-          {groupedTasks.agent.length ? (
-            <Space orientation="vertical" size={12} className="task-center-list">
-              {groupedTasks.agent.map((task) => (
-                <TaskCard key={task.taskId} task={task} />
-              ))}
-            </Space>
-          ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 AI Agent 任务" />
-          )}
-        </section>
+        <div className="task-center-grid">
+          <TaskSection
+            title="同步任务"
+            helper={filter !== "active" ? `已完成仅展示最新 ${FINISHED_TASK_LIMIT} 个` : undefined}
+            tasks={groupedTasks.sync}
+            emptyText="当前筛选下暂无同步任务"
+          />
+          <TaskSection
+            title="AI Agent 任务"
+            helper={filter !== "active" ? `已完成仅展示最新 ${FINISHED_TASK_LIMIT} 个` : undefined}
+            tasks={groupedTasks.agent}
+            emptyText="当前筛选下暂无 AI Agent 任务"
+          />
+        </div>
       </Drawer>
     </>
+  );
+}
+
+function TaskSection({
+  title,
+  helper,
+  tasks,
+  emptyText,
+}: {
+  title: string;
+  helper?: string;
+  tasks: TaskItem[];
+  emptyText: string;
+}) {
+  return (
+    <section className="task-center-section">
+      <div className="task-center-section-head">
+        <div className="task-center-section-copy">
+          <Title level={5}>{title}</Title>
+          {helper ? <Text className="task-center-subtle">{helper}</Text> : null}
+        </div>
+        <Text>{tasks.length} 项</Text>
+      </div>
+      {tasks.length ? (
+        <Space orientation="vertical" size={12} className="task-center-list">
+          {tasks.map((task) => (
+            <TaskCard key={task.taskId} task={task} />
+          ))}
+        </Space>
+      ) : (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
+      )}
+    </section>
   );
 }
 
@@ -330,11 +372,13 @@ function dedupeLogs(logs: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
   for (const log of logs) {
-    if (!log || seen.has(log)) continue;
+    if (!log || seen.has(log)) {
+      continue;
+    }
     seen.add(log);
     result.push(log);
   }
-  return result.slice(-3);
+  return result.slice(-6);
 }
 
 function buildTaskCenterWsUrl(token: string): string {
@@ -348,9 +392,14 @@ function buildTaskCenterWsUrl(token: string): string {
 }
 
 function formatDisplayTime(value: string | null): string {
-  if (!value) return "-";
+  if (!value) {
+    return "-";
+  }
+
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
 
   return new Intl.DateTimeFormat("zh-CN", {
     timeZone: "Asia/Shanghai",
