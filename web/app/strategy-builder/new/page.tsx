@@ -21,6 +21,7 @@ type AssetOption = {
   ticker: string;
   exchangeCode?: string;
   name: string;
+  latestDate?: string | null;
 };
 
 type CreateStrategyFormValues = {

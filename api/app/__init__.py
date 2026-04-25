@@ -1,8 +1,9 @@
-from flask import Flask
+from flask import Flask, jsonify
+from werkzeug.exceptions import HTTPException
 
 from app.config import get_config
 from app.extensions import celery_app, cors, db, init_celery, init_redis, migrate, sock
-from app.models import Country, EventLog, Exchange, IndexAsset, Setting, Stock, StockDailyBar, Strategy, User
+from app.models import Country, EventLog, Exchange, IndexAsset, Setting, Stock, StockDailyBar, StockSplit, Strategy, User
 from app.routes import register_routes
 
 celery = celery_app
@@ -21,6 +22,14 @@ def create_app(config_name: str | None = None) -> Flask:
 
     register_routes(app)
     from app import tasks  # noqa: F401
+
+    @app.errorhandler(Exception)
+    def handle_unexpected_error(exc: Exception):
+        if isinstance(exc, HTTPException):
+            return exc
+        db.session.rollback()
+        app.logger.exception("Unhandled application error", exc_info=exc)
+        return jsonify({"message": "服务器内部错误。"}), 500
 
     return app
 

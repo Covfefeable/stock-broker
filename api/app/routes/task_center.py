@@ -2,7 +2,7 @@ import json
 
 from flask import Blueprint, g, request
 
-from app.extensions import sock
+from app.extensions import db, sock
 from app.models.user import User
 from app.routes.auth import auth_required
 from app.services.task_center_service import (
@@ -29,6 +29,7 @@ def task_stream(ws):
         ws.close()
         return
 
+    user_id: int
     try:
         payload = decode_access_token(token)
         user = User.query.get(int(payload["sub"]))
@@ -42,26 +43,29 @@ def task_stream(ws):
         ws.close()
         return
 
+    user_id = user.id
     ws.send(
         json.dumps(
             {
                 "type": "snapshot",
                 "payload": {
-                    "tasks": list_recent_task_summaries(user_id=user.id),
+                    "tasks": list_recent_task_summaries(user_id=user_id),
                 },
             },
             ensure_ascii=False,
         )
     )
+    db.session.remove()
 
     pubsub = subscribe_task_events()
     try:
         for message in iter_task_events(pubsub):
             payload = json.loads(message)
-            if payload.get("userId") not in {None, user.id}:
+            if payload.get("userId") not in {None, user_id}:
                 continue
             ws.send(json.dumps(payload, ensure_ascii=False))
     except Exception:
         pass
     finally:
         pubsub.close()
+        db.session.remove()

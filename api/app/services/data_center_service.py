@@ -1,6 +1,7 @@
 import json
 from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from time import perf_counter
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -19,10 +20,12 @@ from app.models.index_daily_bar import IndexDailyBar
 from app.models.setting import Setting
 from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
+from app.models.stock_split import StockSplit
 from app.models.trading_calendar_day import TradingCalendarDay
 from app.models.user import User
 from app.services.event_log_meta import event_log_to_dict, event_types_for_category, sync_event_name, sync_item_label
 from app.services.settings_service import get_or_create_settings
+from app.services.stock_adjustment import apply_stock_split_adjustments
 from app.services.task_center_service import publish_task_event
 
 CANGHAI_COUNTRY_URL = "https://www.tsanghi.com/api/fin/index/country"
@@ -57,6 +60,10 @@ def canghai_index_url(country_code: str) -> str:
 
 def canghai_stock_daily_url(exchange_code: str) -> str:
     return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/daily"
+
+
+def canghai_stock_split_url(exchange_code: str) -> str:
+    return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/split"
 
 
 def canghai_trading_calendar_url(exchange_code: str) -> str:
@@ -375,6 +382,7 @@ def sync_stock_daily_history(
             f"未找到股票 {normalized_exchange_code}/{normalized_ticker}，请先完成股票清单同步。"
         )
 
+    split_records = sync_stock_splits_for_stock(user, stock)
     extra_params = {"ticker": normalized_ticker, "order": "1"}
     if date_mode == DATE_MODE_CUSTOM:
         if start_date:
@@ -395,7 +403,10 @@ def sync_stock_daily_history(
         sync_item=SYNC_ITEM_STOCK_DAILY_HISTORY,
         event_name="sync_stock_daily_history",
         base_url=canghai_stock_daily_url(normalized_exchange_code),
-        success_message=f"股票历史日线同步成功（{normalized_exchange_code}/{normalized_ticker}）。",
+        success_message=(
+            f"股票历史日线同步成功（{normalized_exchange_code}/{normalized_ticker}），"
+            f"同步送股/拆股事件 {split_records} 条。"
+        ),
         upsert_func=lambda rows: upsert_stock_daily_bars(rows, stock),
         extra_params=extra_params,
         log_result=log_result,
@@ -853,6 +864,41 @@ def sync_with_token_guard(
     )
 
 
+def sync_stock_splits_for_stock(user: User, stock: Stock) -> int:
+    token = get_user_token(user)
+    request_url = build_canghai_url(
+        canghai_stock_split_url(stock.exchange_code),
+        token,
+        extra_params={
+            "ticker": stock.ticker,
+            "start_date": DEFAULT_FULL_HISTORY_SYNC_START_DATE,
+            "order": "1",
+        },
+    )
+    try:
+        payload = fetch_json(request_url)
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore") if exc.fp else ""
+        detail = f" HTTP {exc.code}"
+        if body:
+            detail = f"{detail}：{body[:240]}"
+        raise DataSyncError(f"股票送股/拆股信息同步失败（{stock.exchange_code}/{stock.ticker}）。{detail}") from exc
+    except URLError as exc:
+        raise DataSyncError(
+            f"股票送股/拆股信息同步失败（{stock.exchange_code}/{stock.ticker}），网络请求异常：{exc.reason}"
+        ) from exc
+
+    if payload.get("code") != 200:
+        raise DataSyncError(
+            f"股票送股/拆股信息同步失败（{stock.exchange_code}/{stock.ticker}）："
+            f"{payload.get('msg') or '上游接口返回异常'}"
+        )
+    rows = payload.get("data") or []
+    if not isinstance(rows, list):
+        raise DataSyncError(f"股票送股/拆股信息同步失败（{stock.exchange_code}/{stock.ticker}）：上游数据结构不符合预期。")
+    return upsert_stock_splits(rows, stock)
+
+
 def sync_from_canghai(
     *,
     user: User,
@@ -1136,7 +1182,7 @@ def get_stock_browser_bars(exchange_code: str, ticker: str) -> dict:
         .order_by(StockDailyBar.trade_date.desc(), StockDailyBar.id.desc())
         .all()
     )
-    bars = [row.to_dict() for row in reversed(rows)]
+    bars = apply_stock_split_adjustments([row.to_dict() for row in reversed(rows)], stock.exchange_code, stock.ticker)
     return {
         "meta": {
             "type": "stock",
@@ -1401,6 +1447,42 @@ def upsert_stock_daily_bars(rows: list[dict], stock: Stock) -> int:
     return affected
 
 
+def upsert_stock_splits(rows: list[dict], stock: Stock) -> int:
+    affected = 0
+    for item in rows:
+        ticker = str(item.get("ticker") or "").strip()
+        event_date_raw = str(item.get("date") or "").strip()
+        split_factor = parse_positive_decimal(item.get("split_factor"))
+        if (
+            not ticker
+            or ticker.upper() != stock.ticker.upper()
+            or not event_date_raw
+            or split_factor is None
+        ):
+            continue
+
+        event_date = date.fromisoformat(event_date_raw)
+        record = StockSplit.query.filter_by(
+            exchange_code=stock.exchange_code,
+            ticker=stock.ticker,
+            event_date=event_date,
+        ).first()
+        if not record:
+            record = StockSplit(
+                exchange_code=stock.exchange_code,
+                ticker=stock.ticker,
+                event_date=event_date,
+            )
+            db.session.add(record)
+
+        record.stock_id = stock.id
+        record.split_factor = split_factor
+        affected += 1
+
+    db.session.commit()
+    return affected
+
+
 def upsert_index_daily_bars(rows: list[dict], index_asset: IndexAsset) -> int:
     affected = 0
     for item in rows:
@@ -1493,6 +1575,16 @@ def get_latest_trading_calendar_date(exchange: Exchange) -> date | None:
 def normalize_optional_text(value: object) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
+
+
+def parse_positive_decimal(value: object) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return decimal_value if decimal_value > 0 else None
 
 
 def log_event(

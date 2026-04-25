@@ -5,7 +5,7 @@ from decimal import Decimal
 from math import sqrt
 from typing import Any
 
-from sqlalchemy import asc, desc, or_
+from sqlalchemy import asc, desc, func, or_
 
 from app.extensions import db
 from app.models.exchange import Exchange
@@ -15,6 +15,7 @@ from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
 from app.models.strategy import Strategy
 from app.models.user import User
+from app.services.stock_adjustment import apply_stock_split_adjustments
 
 
 class StrategyError(Exception):
@@ -105,8 +106,24 @@ def list_strategy_asset_options(country_code: str, asset_type: str) -> dict:
                 "message": "当前国家/地区还没有交易所清单，请先同步交易所数据。",
             }
 
+        latest_date_subquery = (
+            db.session.query(
+                StockDailyBar.exchange_code.label("exchange_code"),
+                StockDailyBar.ticker.label("ticker"),
+                func.max(StockDailyBar.trade_date).label("latest_date"),
+            )
+            .group_by(StockDailyBar.exchange_code, StockDailyBar.ticker)
+            .subquery()
+        )
+
         rows = (
-            Stock.query.filter(Stock.country_code == normalized_country_code)
+            db.session.query(Stock, latest_date_subquery.c.latest_date)
+            .outerjoin(
+                latest_date_subquery,
+                (Stock.exchange_code == latest_date_subquery.c.exchange_code)
+                & (Stock.ticker == latest_date_subquery.c.ticker),
+            )
+            .filter(Stock.country_code == normalized_country_code)
             .order_by(Stock.exchange_code.asc(), Stock.ticker.asc())
             .all()
         )
@@ -118,22 +135,29 @@ def list_strategy_asset_options(country_code: str, asset_type: str) -> dict:
             }
 
         return {
-            "items": [
-                {
-                    "label": f"{row.ticker} - {row.name}",
-                    "value": f"{row.exchange_code}:{row.ticker}",
-                    "ticker": row.ticker,
-                    "exchangeCode": row.exchange_code,
-                    "name": row.name,
-                }
-                for row in rows
-            ],
+            "items": [strategy_stock_option(row, latest_date) for row, latest_date in rows],
             "syncHint": None,
             "message": None,
         }
 
+    latest_date_subquery = (
+        db.session.query(
+            IndexDailyBar.country_code.label("country_code"),
+            IndexDailyBar.ticker.label("ticker"),
+            func.max(IndexDailyBar.trade_date).label("latest_date"),
+        )
+        .group_by(IndexDailyBar.country_code, IndexDailyBar.ticker)
+        .subquery()
+    )
+
     rows = (
-        IndexAsset.query.filter(IndexAsset.country_code == normalized_country_code)
+        db.session.query(IndexAsset, latest_date_subquery.c.latest_date)
+        .outerjoin(
+            latest_date_subquery,
+            (IndexAsset.country_code == latest_date_subquery.c.country_code)
+            & (IndexAsset.ticker == latest_date_subquery.c.ticker),
+        )
+        .filter(IndexAsset.country_code == normalized_country_code)
         .order_by(IndexAsset.ticker.asc())
         .all()
     )
@@ -145,17 +169,38 @@ def list_strategy_asset_options(country_code: str, asset_type: str) -> dict:
         }
 
     return {
-        "items": [
-            {
-                "label": f"{row.ticker} - {row.name}",
-                "value": row.ticker,
-                "ticker": row.ticker,
-                "name": row.name,
-            }
-            for row in rows
-        ],
+        "items": [strategy_index_option(row, latest_date) for row, latest_date in rows],
         "syncHint": None,
         "message": None,
+    }
+
+
+def strategy_stock_option(stock: Stock, latest_date: date | None) -> dict:
+    latest_date_text = latest_date.isoformat() if latest_date else None
+    label = f"{stock.ticker} - {stock.name}"
+    if latest_date_text:
+        label = f"{label}（同步至 {latest_date_text}）"
+    return {
+        "label": label,
+        "value": f"{stock.exchange_code}:{stock.ticker}",
+        "ticker": stock.ticker,
+        "exchangeCode": stock.exchange_code,
+        "name": stock.name,
+        "latestDate": latest_date_text,
+    }
+
+
+def strategy_index_option(index_asset: IndexAsset, latest_date: date | None) -> dict:
+    latest_date_text = latest_date.isoformat() if latest_date else None
+    label = f"{index_asset.ticker} - {index_asset.name}"
+    if latest_date_text:
+        label = f"{label}（同步至 {latest_date_text}）"
+    return {
+        "label": label,
+        "value": index_asset.ticker,
+        "ticker": index_asset.ticker,
+        "name": index_asset.name,
+        "latestDate": latest_date_text,
     }
 
 
@@ -382,7 +427,7 @@ def _load_asset_bars(asset_type: str, asset_identifier: str, country_code: str, 
         query = query.filter(model.trade_date <= end_date)
 
     rows = query.order_by(model.trade_date.asc()).all()
-    return [
+    bars = [
         {
             "date": row.trade_date,
             "open": _to_float(row.open),
@@ -394,6 +439,9 @@ def _load_asset_bars(asset_type: str, asset_identifier: str, country_code: str, 
         for row in rows
         if row.trade_date and row.close is not None
     ]
+    if asset_type == "stock":
+        return apply_stock_split_adjustments(bars, exchange_code, ticker)
+    return bars
 
 
 def _parse_date(value: Any) -> date | None:
