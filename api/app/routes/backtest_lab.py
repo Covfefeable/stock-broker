@@ -4,6 +4,7 @@ from app.routes.auth import auth_required
 from app.services.backtest_lab_service import (
     BacktestLabError,
     evaluate_strategy,
+    generate_improved_strategy,
     get_strategy_evaluation_detail,
     list_evaluation_candidate_assets,
     list_backtest_lab_strategies,
@@ -53,6 +54,16 @@ def post_evaluate_strategy(strategy_id: int):
         "evaluation": evaluation.to_dict(),
         "taskId": evaluation.celery_task_id,
     }, 202
+
+
+@backtest_lab_bp.post("/backtest-lab/strategies/<int:strategy_id>/generate-improved")
+@auth_required
+def post_generate_improved_strategy(strategy_id: int):
+    try:
+        draft = generate_improved_strategy(g.current_user, strategy_id)
+    except BacktestLabError as exc:
+        return {"message": str(exc)}, 400
+    return {"message": "更优策略草稿已生成。", "draft": draft}
 
 
 @backtest_lab_bp.get("/backtest-lab/strategies/<int:strategy_id>/candidate-assets")

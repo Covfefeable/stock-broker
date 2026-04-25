@@ -1403,7 +1403,7 @@ select {
   align-items: center;
   display: grid;
   gap: 18px;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) max-content;
 }
 
 .backtest-score-panel > div {
@@ -1416,6 +1416,14 @@ select {
   color: var(--text);
   font-size: 28px;
   line-height: 1;
+}
+
+.backtest-score-actions {
+  justify-content: flex-end;
+}
+
+.backtest-score-action-button {
+  min-width: 112px;
 }
 
 .backtest-detail-summary {

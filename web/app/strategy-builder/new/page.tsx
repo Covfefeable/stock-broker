@@ -2,7 +2,7 @@
 
 import { ArrowLeftOutlined, SaveOutlined } from "@ant-design/icons";
 import { Button, Card, Form, Input, Modal, Radio, Select, Space, Typography, message } from "antd";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import type { CountryOption, IndexDailyCoverage, StockDailyCoverage, SyncEnqueueResponse } from "@/components/data-center/types";
@@ -47,6 +47,7 @@ export default function NewStrategyPage() {
   const [modal, modalHolder] = Modal.useModal();
   const [form] = Form.useForm<CreateStrategyFormValues>();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [loadingCountries, setLoadingCountries] = useState(true);
   const [loadingAssets, setLoadingAssets] = useState(false);
@@ -57,6 +58,7 @@ export default function NewStrategyPage() {
   const [strategyDsl, setStrategyDsl] = useState<StrategyDslConfig>(() => createDefaultStrategyDslConfig());
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<StrategyPreviewResult | null>(null);
+  const [pendingPrefillAssetIdentifier, setPendingPrefillAssetIdentifier] = useState<string | null>(null);
 
   const assetType = Form.useWatch("assetType", form);
   const countryCode = Form.useWatch("countryCode", form);
@@ -77,6 +79,39 @@ export default function NewStrategyPage() {
   useEffect(() => {
     void loadCountryOptions();
   }, [loadCountryOptions]);
+
+  useEffect(() => {
+    const prefillKey = searchParams.get("prefill");
+    if (!prefillKey || typeof window === "undefined") {
+      return;
+    }
+    const raw = window.localStorage.getItem(prefillKey);
+    if (!raw) {
+      return;
+    }
+    try {
+      const draft = JSON.parse(raw) as Partial<CreateStrategyFormValues> & {
+        countryCode?: string;
+        strategyConfig?: StrategyDslConfig;
+      };
+      form.setFieldsValue({
+        name: draft.name,
+        type: draft.type,
+        countryCode: draft.countryCode,
+        assetType: draft.assetType,
+      });
+      if (draft.strategyConfig) {
+        setStrategyDsl(draft.strategyConfig);
+      }
+      if (draft.assetIdentifier) {
+        setPendingPrefillAssetIdentifier(draft.assetIdentifier);
+      }
+      window.localStorage.removeItem(prefillKey);
+      messageApi.success("已填入 AI 生成的策略草稿，检查后点击保存即可新建。");
+    } catch {
+      messageApi.error("读取策略草稿失败。");
+    }
+  }, [form, messageApi, searchParams]);
 
   const enqueueSync = useCallback(
     async (
@@ -239,6 +274,14 @@ export default function NewStrategyPage() {
       void loadAssetOptions(countryCode, assetType);
     }
   }, [assetType, countryCode, form, loadAssetOptions]);
+
+  useEffect(() => {
+    if (!pendingPrefillAssetIdentifier || !assetOptions.some((item) => item.value === pendingPrefillAssetIdentifier)) {
+      return;
+    }
+    form.setFieldValue("assetIdentifier", pendingPrefillAssetIdentifier);
+    setPendingPrefillAssetIdentifier(null);
+  }, [assetOptions, form, pendingPrefillAssetIdentifier]);
 
   const handleSubmit = async () => {
     try {

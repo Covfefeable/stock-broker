@@ -15,6 +15,7 @@ from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
 from app.models.strategy import Strategy
+from app.models.strategy_evaluation import StrategyEvaluation
 from app.models.user import User
 from app.services.stock_adjustment import apply_stock_split_adjustments
 
@@ -315,6 +316,7 @@ def archive_strategy(user: User, strategy_id: int) -> Strategy:
 
 def delete_strategy(user: User, strategy_id: int) -> None:
     strategy = get_strategy(user, strategy_id)
+    StrategyEvaluation.query.filter_by(user_id=user.id, strategy_id=strategy.id).delete(synchronize_session=False)
     db.session.delete(strategy)
     db.session.commit()
 

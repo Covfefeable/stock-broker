@@ -159,6 +159,7 @@ export default function BacktestLabDetailPage() {
   const [messageApi, contextHolder] = message.useMessage();
   const [loading, setLoading] = useState(true);
   const [evaluating, setEvaluating] = useState(false);
+  const [generatingImproved, setGeneratingImproved] = useState(false);
   const [payload, setPayload] = useState<DetailResponse | null>(null);
   const [evaluateModalOpen, setEvaluateModalOpen] = useState(false);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
@@ -253,6 +254,26 @@ export default function BacktestLabDetailPage() {
     }
   }, [loadDetail, messageApi, selectedCandidateValues, strategyId]);
 
+  const handleGenerateImprovedStrategy = useCallback(async () => {
+    setGeneratingImproved(true);
+    try {
+      const token = getAccessToken();
+      const response = await apiPost<{ draft: Record<string, unknown> }>(
+        `/backtest-lab/strategies/${strategyId}/generate-improved`,
+        {},
+        token,
+      );
+      const key = `strategy-prefill-${Date.now()}`;
+      window.localStorage.setItem(key, JSON.stringify(response.draft));
+      window.open(`/strategy-builder/new?prefill=${encodeURIComponent(key)}`, "_blank", "noopener,noreferrer");
+      messageApi.success("更优策略草稿已生成，已在新标签页打开。");
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "生成更优策略失败。");
+    } finally {
+      setGeneratingImproved(false);
+    }
+  }, [messageApi, strategyId]);
+
   const report = payload?.evaluation?.report || {};
   const isRunning = payload?.strategy.evaluationStatus === "queued" || payload?.strategy.evaluationStatus === "running";
 
@@ -308,9 +329,14 @@ export default function BacktestLabDetailPage() {
                     {statusMeta[payload.strategy.evaluationStatus]?.label || payload.strategy.evaluationStatusLabel}
                   </Tag>
                 </div>
-                <Button type="primary" loading={evaluating} disabled={isRunning} onClick={() => void openEvaluateModal()}>
-                  重新评估
-                </Button>
+                <Space className="backtest-score-actions">
+                  <Button className="backtest-score-action-button" type="primary" loading={evaluating} disabled={isRunning} onClick={() => void openEvaluateModal()}>
+                    重新评估
+                  </Button>
+                  <Button className="backtest-score-action-button" type="primary" loading={generatingImproved} disabled={isRunning || !payload.evaluation || payload.evaluation.status !== "success"} onClick={() => void handleGenerateImprovedStrategy()}>
+                    生成更优策略
+                  </Button>
+                </Space>
               </div>
 
               {report.aiAdvice ? (
