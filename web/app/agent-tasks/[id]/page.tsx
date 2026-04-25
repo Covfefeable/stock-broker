@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowLeftOutlined } from "@ant-design/icons";
-import { Button, Card, Collapse, Empty, Modal, Progress, Space, Table, Tag, Tooltip, Typography, message } from "antd";
+import { ArrowLeftOutlined, QuestionCircleOutlined, SaveOutlined } from "@ant-design/icons";
+import { Button, Card, Empty, Modal, Progress, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -72,7 +72,9 @@ export default function AgentTaskDetailPage() {
   const [previewIteration, setPreviewIteration] = useState<AgentIterationItem | null>(null);
   const [dslOpen, setDslOpen] = useState(false);
   const [dslIteration, setDslIteration] = useState<AgentIterationItem | null>(null);
-  const [savingBestStrategy, setSavingBestStrategy] = useState(false);
+  const [savingBestAnnualStrategy, setSavingBestAnnualStrategy] = useState(false);
+  const [savingBestCompositeStrategy, setSavingBestCompositeStrategy] = useState(false);
+  const [savingIterationStrategyId, setSavingIterationStrategyId] = useState<number | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
 
   const loadDetail = useCallback(async (options?: { silent?: boolean }) => {
@@ -182,6 +184,42 @@ export default function AgentTaskDetailPage() {
     [messageApi, params.id],
   );
 
+  const saveStrategyFromIteration = useCallback(
+    async (iteration: AgentIterationItem, nameSuffix: string) => {
+      if (!task || !iteration.strategyConfig) {
+        messageApi.warning("当前迭代没有可保存的策略。");
+        return;
+      }
+
+      try {
+        setSavingIterationStrategyId(iteration.id);
+        const token = getAccessToken();
+        await apiPost(
+          "/strategies",
+          {
+            name: `${task.name} - ${nameSuffix}`,
+            type: "AI Agent",
+            source: "人工创建",
+            countryRegion: task.countryCode,
+            assetType: task.assetType,
+            assetIdentifier: task.assetIdentifier,
+            assetName: task.assetName,
+            strategyConfig: iteration.strategyConfig,
+            annualReturn: iteration.annualReturn,
+            maxDrawdown: iteration.maxDrawdown ?? null,
+          },
+          token,
+        );
+        messageApi.success("策略已保存。");
+      } catch (error) {
+        messageApi.error(error instanceof Error ? error.message : "保存策略失败。");
+      } finally {
+        setSavingIterationStrategyId(null);
+      }
+    },
+    [messageApi, task],
+  );
+
   const iterationColumns: ColumnsType<AgentIterationItem> = useMemo(
     () => [
       { title: "轮次", dataIndex: "iterationNumber", key: "iterationNumber", width: 80 },
@@ -217,6 +255,21 @@ export default function AgentTaskDetailPage() {
         render: (value: number | null) => (value !== null ? value.toFixed(2) : "-"),
       },
       {
+        title: (
+          <Space size={4}>
+            综合分数
+            <Tooltip title="综合分数 = 年化收益 * 0.7 + Sharpe * 10 - 最大回撤 * 0.2，用于平衡收益、稳定性和回撤后选择最佳综合表现。">
+              <QuestionCircleOutlined />
+            </Tooltip>
+          </Space>
+        ),
+        dataIndex: "score",
+        key: "score",
+        width: 130,
+        sorter: (a, b) => (a.score ?? Number.NEGATIVE_INFINITY) - (b.score ?? Number.NEGATIVE_INFINITY),
+        render: (value: number | null | undefined) => (value !== null && value !== undefined ? value.toFixed(2) : "-"),
+      },
+      {
         title: "总结",
         dataIndex: "summary",
         key: "summary",
@@ -225,9 +278,10 @@ export default function AgentTaskDetailPage() {
       {
         title: "操作",
         key: "actions",
-        width: 180,
+        width: 260,
+        fixed: "right",
         render: (_, record) => (
-          <Space size={4}>
+          <Space size={12} className="table-action-links">
             <Button type="link" onClick={() => void openIterationPreview(record)}>
               查看收益
             </Button>
@@ -240,15 +294,42 @@ export default function AgentTaskDetailPage() {
             >
               查看 DSL
             </Button>
+            <Button
+              type="link"
+              loading={savingIterationStrategyId === record.id}
+              onClick={() => void saveStrategyFromIteration(record, `第 ${record.iterationNumber} 轮策略`)}
+            >
+              保存为策略
+            </Button>
           </Space>
         ),
       },
     ],
-    [openIterationPreview],
+    [openIterationPreview, saveStrategyFromIteration, savingIterationStrategyId],
   );
 
-  const bestIteration = useMemo(() => {
-    if (!task?.bestAnnualReturn) {
+  const bestAnnualIteration = useMemo(() => {
+    return iterations.reduce<AgentIterationItem | null>((best, item) => {
+      if (item.annualReturn === null) {
+        return best;
+      }
+      if (!best || best.annualReturn === null || item.annualReturn > best.annualReturn) {
+        return item;
+      }
+      return best;
+    }, null);
+  }, [iterations]);
+
+  const bestCompositeIteration = useMemo(() => {
+    if (task?.bestScore !== null && task?.bestScore !== undefined) {
+      const matched = iterations.find(
+        (item) => item.score !== null && item.score !== undefined && Math.abs(item.score - task.bestScore!) < 0.0001,
+      );
+      if (matched) {
+        return matched;
+      }
+    }
+    if (task?.bestAnnualReturn === null || task?.bestAnnualReturn === undefined) {
       return null;
     }
     return (
@@ -256,33 +337,40 @@ export default function AgentTaskDetailPage() {
         (item) => item.annualReturn !== null && Math.abs(item.annualReturn - task.bestAnnualReturn!) < 0.0001,
       ) ?? null
     );
-  }, [iterations, task?.bestAnnualReturn]);
+  }, [iterations, task?.bestAnnualReturn, task?.bestScore]);
 
-  const bestMaxDrawdown = task?.bestMaxDrawdown ?? bestIteration?.maxDrawdown ?? null;
-  const bestSharpe = task?.bestSharpe ?? bestIteration?.sharpe ?? null;
+  const bestMaxDrawdown = task?.bestMaxDrawdown ?? bestCompositeIteration?.maxDrawdown ?? null;
+  const bestSharpe = task?.bestSharpe ?? bestCompositeIteration?.sharpe ?? null;
+  const bestCompositeScore = task?.bestScore ?? bestCompositeIteration?.score ?? null;
   const iterationPercent = task ? Math.min(100, Math.round((task.currentIteration / Math.max(task.maxIterations, 1)) * 100)) : 0;
 
-  const handleSaveBestStrategy = useCallback(async () => {
-    if (!task?.bestStrategyConfig) {
-      messageApi.warning("当前还没有可保存的最佳策略。");
+  const handleSaveBestAnnualStrategy = useCallback(async () => {
+    if (!task || !bestAnnualIteration?.strategyConfig) {
+      messageApi.warning("当前还没有可保存的最佳年化收益策略。");
       return;
     }
 
-    const bestIteration =
-      iterations.find(
-        (item) =>
-          item.annualReturn !== null &&
-          task.bestAnnualReturn !== null &&
-          Math.abs(item.annualReturn - task.bestAnnualReturn) < 0.0001,
-      ) ?? null;
+    try {
+      setSavingBestAnnualStrategy(true);
+      await saveStrategyFromIteration(bestAnnualIteration, "最佳年化收益策略");
+    } finally {
+      setSavingBestAnnualStrategy(false);
+    }
+  }, [bestAnnualIteration, messageApi, saveStrategyFromIteration, task]);
+
+  const handleSaveBestCompositeStrategy = useCallback(async () => {
+    if (!task?.bestStrategyConfig) {
+      messageApi.warning("当前还没有可保存的最佳综合表现策略。");
+      return;
+    }
 
     try {
-      setSavingBestStrategy(true);
+      setSavingBestCompositeStrategy(true);
       const token = getAccessToken();
       await apiPost(
         "/strategies",
         {
-          name: `${task.name} - 最佳策略`,
+          name: `${task.name} - 最佳综合表现策略`,
           type: "AI Agent",
           source: "人工创建",
           countryRegion: task.countryCode,
@@ -290,18 +378,18 @@ export default function AgentTaskDetailPage() {
           assetIdentifier: task.assetIdentifier,
           assetName: task.assetName,
           strategyConfig: task.bestStrategyConfig,
-          annualReturn: task.bestAnnualReturn,
-          maxDrawdown: bestIteration?.maxDrawdown ?? null,
+          annualReturn: bestCompositeIteration?.annualReturn ?? task.bestAnnualReturn,
+          maxDrawdown: bestCompositeIteration?.maxDrawdown ?? task.bestMaxDrawdown ?? null,
         },
         token,
       );
-      messageApi.success("当前最佳策略已保存。");
+      messageApi.success("当前最佳综合表现策略已保存。");
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "保存当前最佳策略失败。");
+      messageApi.error(error instanceof Error ? error.message : "保存当前最佳综合表现策略失败。");
     } finally {
-      setSavingBestStrategy(false);
+      setSavingBestCompositeStrategy(false);
     }
-  }, [iterations, messageApi, task]);
+  }, [bestCompositeIteration, messageApi, task]);
 
   return (
     <AppShell>
@@ -329,11 +417,42 @@ export default function AgentTaskDetailPage() {
           <div className="agent-task-detail-grid">
             <Card className="dashboard-card" bordered loading={loading} title="任务概览">
               <div className="agent-best-performance">
-                <div>
-                  <Text type="secondary">当前最佳年化收益</Text>
-                  <strong className={task.bestAnnualReturn !== null && task.bestAnnualReturn < 0 ? "negative-text" : "positive-text"}>
-                    {formatPercent(task.bestAnnualReturn)}
+                <div className="agent-best-performance-action">
+                  <div className="agent-metric-title">
+                    <Text type="secondary">当前最佳年化收益率</Text>
+                    <Tooltip title="保存当前最佳年化收益对应的迭代策略">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<SaveOutlined />}
+                        loading={savingBestAnnualStrategy}
+                        onClick={() => void handleSaveBestAnnualStrategy()}
+                      />
+                    </Tooltip>
+                  </div>
+                  <strong className={bestAnnualIteration?.annualReturn !== null && bestAnnualIteration?.annualReturn !== undefined && bestAnnualIteration.annualReturn < 0 ? "negative-text" : "positive-text"}>
+                    {formatPercent(bestAnnualIteration?.annualReturn ?? null)}
                   </strong>
+                </div>
+                <div className="agent-best-performance-action">
+                  <div className="agent-metric-title">
+                    <Text type="secondary">
+                      当前最佳综合分数{" "}
+                      <Tooltip title="综合分数 = 年化收益 * 0.7 + Sharpe * 10 - 最大回撤 * 0.2，用于平衡收益、稳定性和回撤后选择最佳综合表现。">
+                        <QuestionCircleOutlined />
+                      </Tooltip>
+                    </Text>
+                    <Tooltip title="保存当前最佳综合表现对应的策略">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<SaveOutlined />}
+                        loading={savingBestCompositeStrategy}
+                        onClick={() => void handleSaveBestCompositeStrategy()}
+                      />
+                    </Tooltip>
+                  </div>
+                  <strong>{bestCompositeScore !== null && bestCompositeScore !== undefined ? bestCompositeScore.toFixed(2) : "-"}</strong>
                 </div>
                 <div>
                   <Text type="secondary">最大回撤</Text>
@@ -343,22 +462,24 @@ export default function AgentTaskDetailPage() {
                   <Text type="secondary">Sharpe</Text>
                   <strong>{bestSharpe !== null && bestSharpe !== undefined ? bestSharpe.toFixed(2) : "-"}</strong>
                 </div>
-                <div className="agent-best-performance-progress">
+              </div>
+              <div className="agent-best-progress-row">
+                <div className="agent-metric-title">
                   <Text type="secondary">迭代进度</Text>
-                  <Progress percent={iterationPercent} size="small" />
-                  <span>{task.currentIteration} / {task.maxIterations}</span>
                 </div>
+                <Progress percent={iterationPercent} size="small" />
+                <span>{task.currentIteration} / {task.maxIterations}</span>
               </div>
               <div className="agent-task-detail-meta">
                 <div>
                   <Text type="secondary">任务名称</Text>
-                  <Title level={4}>{task.name}</Title>
+                  <Tooltip title={task.name}>
+                    <Title level={4} className="agent-task-name-ellipsis">{task.name}</Title>
+                  </Tooltip>
                 </div>
                 <div>
                   <Text type="secondary">状态</Text>
-                  <div>
-                    <Tag color={statusMeta[task.status].color}>{statusMeta[task.status].label}</Tag>
-                  </div>
+                  <div className="agent-task-status-text">{statusMeta[task.status].label}</div>
                 </div>
                 <div>
                   <Text type="secondary">标的</Text>
@@ -468,30 +589,13 @@ export default function AgentTaskDetailPage() {
             <Card
               className="dashboard-card agent-task-detail-card-equal"
               bordered
-              title="当前最佳策略"
-              extra={
-                <Button type="primary" size="small" loading={savingBestStrategy} onClick={() => void handleSaveBestStrategy()}>
-                  保存为策略
-                </Button>
-              }
+              title="当前最佳综合表现"
             >
               {task.bestSummary ? (
                 <Paragraph className="agent-task-detail-paragraph">{task.bestSummary}</Paragraph>
               ) : (
                 <Empty description="暂无最佳策略总结" />
               )}
-              {task.bestStrategyConfig ? (
-                <Collapse
-                  ghost
-                  items={[
-                    {
-                      key: "best-strategy-dsl",
-                      label: "查看 DSL",
-                      children: <pre className="strategy-dsl-code-block">{JSON.stringify(task.bestStrategyConfig, null, 2)}</pre>,
-                    },
-                  ]}
-                />
-              ) : null}
             </Card>
           </div>
 
@@ -502,6 +606,7 @@ export default function AgentTaskDetailPage() {
               dataSource={iterations}
               pagination={false}
               locale={{ emptyText: "暂无迭代记录" }}
+              scroll={{ x: 1180 }}
             />
           </Card>
         </>

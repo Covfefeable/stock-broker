@@ -31,6 +31,7 @@ export type AgentTaskItem = {
   bestAnnualReturn: number | null;
   bestMaxDrawdown?: number | null;
   bestSharpe: number | null;
+  bestScore?: number | null;
   bestStrategyConfig?: Record<string, unknown> | null;
   bestSummary?: string | null;
   celeryTaskId?: string | null;
@@ -47,6 +48,7 @@ export type AgentIterationItem = {
   annualReturn: number | null;
   maxDrawdown: number | null;
   sharpe: number | null;
+  score?: number | null;
   strategyConfig: Record<string, unknown>;
   memory?: string | null;
   analysis?: string | null;

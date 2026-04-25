@@ -2016,8 +2016,8 @@ select {
   border-radius: 10px;
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 18px;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  margin-bottom: 12px;
   padding: 16px;
 }
 
@@ -2038,11 +2038,57 @@ select {
   font-size: 12px;
 }
 
-.agent-best-performance-progress {
-  align-content: start;
+.agent-metric-title {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
 }
 
-.agent-best-performance-progress span {
+.agent-metric-title .ant-typography {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-metric-title .ant-btn {
+  color: rgba(148, 163, 184, 0.92);
+  flex: 0 0 auto;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+}
+
+.agent-task-name-ellipsis {
+  font-size: 20px !important;
+  margin: 6px 0 0 !important;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-task-status-text {
+  color: rgba(226, 232, 240, 0.94);
+  font-size: 20px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.agent-best-progress-row {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  margin: 0 0 20px;
+  padding: 12px 16px;
+}
+
+.agent-best-progress-row span {
   color: var(--text-muted);
   font-size: 12px;
 }
@@ -2155,6 +2201,10 @@ select {
 
   .agent-best-performance {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .agent-best-progress-row {
+    grid-template-columns: 1fr;
   }
 
   .agent-task-detail-meta {

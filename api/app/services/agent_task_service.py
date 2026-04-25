@@ -93,6 +93,9 @@ RULE_FUNCTIONS = [
 ]
 
 AI_DSL_GENERATION_RETRY_COUNT = 3
+AGENT_RECENT_MEMORY_LIMIT = 5
+AGENT_RECENT_PROMPT_MEMORY_LIMIT = 10
+AGENT_BEST_PROMPT_MEMORY_LIMIT = 3
 
 
 def list_agent_tasks(
@@ -172,6 +175,7 @@ def get_agent_task_detail(user: User, task_id: int) -> dict:
         if best_iteration and best_iteration.max_drawdown is not None
         else None
     )
+    task_payload["bestScore"] = _score_iteration(best_iteration)
     return {
         "task": task_payload,
         "iterations": [_serialize_agent_iteration_detail(task, item) for item in task.iterations],
@@ -213,6 +217,7 @@ def _get_best_iteration(task: AgentTask) -> AgentIteration | None:
 
 def _serialize_agent_iteration_detail(task: AgentTask, iteration: AgentIteration) -> dict:
     payload = iteration.to_dict()
+    payload["score"] = _score_iteration(iteration)
     analysis = (payload.get("analysis") or "").strip()
     action_plan = (payload.get("actionPlan") or "").strip()
     memory = (payload.get("memory") or "").strip()
@@ -228,6 +233,21 @@ def _serialize_agent_iteration_detail(task: AgentTask, iteration: AgentIteration
     payload["actionPlan"] = action_plan
     payload["memory"] = memory
     return payload
+
+
+def _score_iteration(iteration: AgentIteration | None) -> float | None:
+    if not iteration:
+        return None
+    return round(
+        _score_result(
+            {
+                "annualReturn": float(iteration.annual_return) if iteration.annual_return is not None else 0,
+                "sharpe": float(iteration.sharpe) if iteration.sharpe is not None else 0,
+                "maxDrawdown": float(iteration.max_drawdown) if iteration.max_drawdown is not None else 0,
+            }
+        ),
+        2,
+    )
 
 
 def list_available_ai_models(user: User) -> list[dict[str, str]]:
@@ -396,16 +416,27 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
     }
 
     best_result: dict | None = None
-    recent_memories = [
-        item.memory
-        for item in reversed(task.iterations[-5:])
-        if getattr(item, "memory", None)
-    ]
+    iteration_results: list[dict] = []
+    iteration_memory_rows: list[dict] = []
 
     for iteration in range(1, task.max_iterations + 1):
-        generation_result = _generate_strategy_with_ai(task, recent_memories, benchmark_metrics)
+        sampled_memories = _select_agent_prompt_memories(iteration_memory_rows)
+        research_state = _build_agent_research_state(
+            task,
+            iteration,
+            iteration_results,
+            best_result,
+            benchmark_metrics,
+        )
+        generation_result = _generate_strategy_with_ai(
+            task,
+            sampled_memories,
+            benchmark_metrics,
+            research_state,
+        )
         strategy_config = generation_result["strategyConfig"]
         preview = _run_strategy_backtest(bars, strategy_config)
+        curve_diagnostics = _build_equity_curve_diagnostics(preview)
         analysis_text = generation_result.get("analysis") or _build_analysis_fallback(
             task,
             preview,
@@ -416,6 +447,12 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             preview,
             benchmark_metrics,
         )
+        analysis_text, action_plan_text = _enrich_agent_thoughts(
+            analysis_text,
+            action_plan_text,
+            generation_result,
+            research_state,
+        )
         summary = _build_iteration_summary(
             task,
             iteration,
@@ -425,6 +462,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             benchmark_metrics,
             analysis_text,
             action_plan_text,
+            generation_result.get("mode"),
         )
         memory_text = _build_iteration_memory(
             iteration,
@@ -434,6 +472,9 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             analysis_text,
             action_plan_text,
             summary,
+            generation_result,
+            research_state,
+            curve_diagnostics,
         )
 
         iteration_row = AgentIteration(
@@ -451,15 +492,37 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
         )
         db.session.add(iteration_row)
 
-        if _is_better_result(preview, best_result):
+        is_best_result = _is_better_result(preview, best_result)
+        if is_best_result:
             best_result = preview
             task.best_annual_return = Decimal(str(preview["annualReturn"]))
             task.best_sharpe = Decimal(str(preview["sharpe"]))
             task.best_strategy_config = strategy_config
             task.best_summary = summary
 
-        recent_memories.append(memory_text)
-        recent_memories = recent_memories[-5:]
+        iteration_results.append(
+            {
+                "iteration": iteration,
+                "mode": generation_result.get("mode") or "explore_new",
+                "score": _score_result(preview),
+                "isBest": is_best_result,
+                "annualReturn": preview["annualReturn"],
+                "totalReturn": preview["totalReturn"],
+                "maxDrawdown": preview["maxDrawdown"],
+                "sharpe": preview["sharpe"],
+                "tradeCount": preview.get("tradeCount"),
+                "entry": _describe_group(strategy_config.get("entry") or {}),
+                "exit": _describe_group(strategy_config.get("exit") or {}),
+            }
+        )
+
+        iteration_memory_rows.append(
+            {
+                "iteration": iteration,
+                "score": iteration_results[-1]["score"],
+                "memory": memory_text,
+            }
+        )
 
         task.current_iteration = iteration
         task.updated_at = datetime.now(timezone.utc)
@@ -474,7 +537,13 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             target=task.asset_name,
             status="running",
             level="info",
-            message=f"第 {iteration}/{task.max_iterations} 轮完成：年化 {preview['annualReturn']:.2f}% / Sharpe {preview['sharpe']:.2f}。{summary}",
+            message=(
+                f"第 {iteration}/{task.max_iterations} 轮完成："
+                f"综合分 {_score_result(preview):.2f}，"
+                f"年化 {preview['annualReturn']:.2f}%，"
+                f"回撤 {preview['maxDrawdown']:.2f}%，"
+                f"Sharpe {preview['sharpe']:.2f}。"
+            ),
             records_affected=iteration,
         )
 
@@ -573,12 +642,398 @@ def _resolve_asset_name(country_code: str, asset_type: str, asset_identifier: st
     return row.name
 
 
-def _generate_strategy_with_ai(task: AgentTask, recent_memories: list[str], benchmark_metrics: dict[str, float]) -> dict:
+def _build_agent_research_state(
+    task: AgentTask,
+    iteration: int,
+    iteration_results: list[dict],
+    best_result: dict | None,
+    benchmark_metrics: dict[str, float],
+) -> dict:
+    stagnation_rounds = _count_stagnation_rounds(iteration_results)
+    recent_outcomes = iteration_results[-AGENT_RECENT_MEMORY_LIMIT:]
+    best_outcome = _summarize_best_outcome(iteration_results)
+    top_outcomes = _summarize_ranked_outcomes(iteration_results, reverse=True)
+    bottom_outcomes = _summarize_ranked_outcomes(iteration_results, reverse=False)
+    recent_best_score = max((float(item.get("score") or 0) for item in recent_outcomes), default=None)
+    best_score = float(best_outcome.get("score") or 0) if best_outcome else None
+    score_trend = _build_score_trend(iteration_results, best_score, recent_best_score)
+    return {
+        "iteration": iteration,
+        "completedIterations": len(iteration_results),
+        "availableModes": ["continue_best", "refine_recent", "explore_new", "mutate"],
+        "stagnationRounds": stagnation_rounds,
+        "recentBestScore": recent_best_score,
+        "recentBestScoreRatio": round(recent_best_score / best_score, 4) if best_score and recent_best_score is not None else None,
+        "scoreTrend": score_trend,
+        "recentOutcomes": recent_outcomes,
+        "bestOutcome": best_outcome,
+        "topOutcomes": top_outcomes,
+        "bottomOutcomes": bottom_outcomes,
+    }
+
+
+def _select_agent_prompt_memories(iteration_memory_rows: list[dict]) -> dict[str, list[str]]:
+    best_rows = sorted(
+        iteration_memory_rows,
+        key=lambda item: float(item.get("score") or float("-inf")),
+        reverse=True,
+    )[:AGENT_BEST_PROMPT_MEMORY_LIMIT]
+    recent_rows = iteration_memory_rows[-AGENT_RECENT_PROMPT_MEMORY_LIMIT:]
+    return {
+        "best": [_format_agent_memory_item(item) for item in best_rows if item.get("memory")],
+        "recent": [_format_agent_memory_item(item) for item in recent_rows if item.get("memory")],
+    }
+
+
+def _format_agent_memory_item(item: dict) -> str:
+    memory = str(item.get("memory") or "")
+    try:
+        payload = json.loads(memory)
+    except json.JSONDecodeError:
+        return f"第 {item.get('iteration', '-')} 轮：{memory}"
+
+    metrics = payload.get("metrics") or {}
+    strategy_digest = payload.get("strategyDigest") or {}
+    reflection = payload.get("reflection") or {}
+    diagnostics_text = _format_curve_diagnostics_for_memory(payload.get("curveDiagnostics") or {})
+    return (
+        f"第 {payload.get('round', item.get('iteration', '-'))} 轮："
+        f"score={payload.get('score', '-')}，"
+        f"年化={metrics.get('annualReturn', '-')}%，"
+        f"回撤={metrics.get('maxDrawdown', '-')}%，"
+        f"Sharpe={metrics.get('sharpe', '-')}，"
+        f"交易={metrics.get('tradeCount', '-')} 次，"
+        f"模式={payload.get('modeLabel', payload.get('mode', '-'))}。\n"
+        f"  买入：{strategy_digest.get('entry', '-')}\n"
+        f"  卖出：{strategy_digest.get('exit', '-')}\n"
+        f"  曲线诊断：{diagnostics_text}\n"
+        f"  分析：{reflection.get('analysis', '-')}\n"
+        f"  决策：{reflection.get('plan', '-')}"
+    )
+
+
+def _format_curve_diagnostics_for_memory(diagnostics: dict) -> str:
+    if not diagnostics:
+        return "暂无"
+    longest_cash = diagnostics.get("longestCashPeriod") or {}
+    missed = diagnostics.get("missedUptrends") or []
+    defensive = diagnostics.get("defensivePeriods") or []
+    parts = [
+        f"持仓占比 {diagnostics.get('holdingRatio', 0)}%",
+        f"跑赢持续持有天数占比 {diagnostics.get('outperformRatio', 0)}%",
+    ]
+    if longest_cash.get("tradingDays"):
+        parts.append(
+            f"最长空仓 {longest_cash.get('tradingDays')} 个交易日"
+            f"（{longest_cash.get('startDate')} 至 {longest_cash.get('endDate')}）"
+        )
+    if missed:
+        item = missed[0]
+        parts.append(
+            "最大错失上涨 "
+            f"{item.get('startDate')} 至 {item.get('endDate')}："
+            f"持续持有 {item.get('benchmarkReturn')}%，策略 {item.get('strategyReturn')}%，"
+            f"差距 {item.get('gap')}%，持仓占比 {item.get('holdingRatio')}%"
+        )
+    if defensive:
+        item = defensive[0]
+        parts.append(
+            "最有效避险 "
+            f"{item.get('startDate')} 至 {item.get('endDate')}："
+            f"持续持有 {item.get('benchmarkReturn')}%，策略 {item.get('strategyReturn')}%，"
+            f"优势 {item.get('advantage')}%，持仓占比 {item.get('holdingRatio')}%"
+        )
+    return "；".join(parts)
+
+
+def _count_stagnation_rounds(iteration_results: list[dict]) -> int:
+    stagnation_rounds = 0
+    for item in reversed(iteration_results):
+        if item.get("isBest"):
+            break
+        stagnation_rounds += 1
+    return stagnation_rounds
+
+
+def _build_score_trend(iteration_results: list[dict], best_score: float | None, recent_best_score: float | None) -> dict:
+    recent_scores = [round(float(item.get("score") or 0), 2) for item in iteration_results[-AGENT_RECENT_MEMORY_LIMIT:]]
+    unique_recent_scores = {score for score in recent_scores}
+    return {
+        "recentScores": recent_scores,
+        "isPlateau": len(recent_scores) >= 3 and len(unique_recent_scores) <= 2,
+        "bestScore": round(best_score, 2) if best_score is not None else None,
+        "recentBestScore": round(recent_best_score, 2) if recent_best_score is not None else None,
+        "gapToBest": round(best_score - recent_best_score, 2) if best_score is not None and recent_best_score is not None else None,
+    }
+
+
+def _summarize_best_outcome(iteration_results: list[dict]) -> dict | None:
+    if not iteration_results:
+        return None
+    best_item = max(iteration_results, key=lambda item: item.get("score", float("-inf")))
+    return _summarize_outcome(best_item)
+
+
+def _summarize_ranked_outcomes(iteration_results: list[dict], *, reverse: bool) -> list[dict]:
+    sorted_items = sorted(
+        iteration_results,
+        key=lambda item: item.get("score", float("-inf")),
+        reverse=reverse,
+    )
+    return [_summarize_outcome(item) for item in sorted_items[:5]]
+
+
+def _summarize_outcome(best_item: dict) -> dict:
+    return {
+        "iteration": best_item.get("iteration"),
+        "mode": best_item.get("mode"),
+        "score": best_item.get("score"),
+        "annualReturn": best_item.get("annualReturn"),
+        "totalReturn": best_item.get("totalReturn"),
+        "maxDrawdown": best_item.get("maxDrawdown"),
+        "sharpe": best_item.get("sharpe"),
+        "tradeCount": best_item.get("tradeCount"),
+        "entry": best_item.get("entry"),
+        "exit": best_item.get("exit"),
+    }
+
+
+def _score_result(result: dict) -> float:
+    return (
+        float(result.get("annualReturn") or 0) * 0.7
+        + float(result.get("sharpe") or 0) * 10
+        - float(result.get("maxDrawdown") or 0) * 0.2
+    )
+
+
+def _build_equity_curve_diagnostics(preview: dict) -> dict:
+    equity_curve = preview.get("equityCurve") or []
+    benchmark_curve = preview.get("benchmarkCurve") or []
+    trades = preview.get("trades") or []
+    total_days = min(len(equity_curve), len(benchmark_curve))
+    if total_days <= 1:
+        return {
+            "holdingRatio": 0.0,
+            "longestCashPeriod": None,
+            "outperformRatio": 0.0,
+            "missedUptrends": [],
+            "defensivePeriods": [],
+        }
+
+    dates = [str(item.get("date")) for item in equity_curve[:total_days]]
+    equity_values = [float(item.get("value") or 0) for item in equity_curve[:total_days]]
+    benchmark_values = [float(item.get("value") or 0) for item in benchmark_curve[:total_days]]
+    holding_flags = _build_holding_flags(dates, trades)
+
+    holding_days = sum(1 for flag in holding_flags if flag)
+    outperform_days = sum(
+        1
+        for strategy_value, benchmark_value in zip(equity_values, benchmark_values, strict=False)
+        if strategy_value >= benchmark_value * 0.999
+    )
+
+    return {
+        "holdingRatio": round((holding_days / total_days) * 100, 2),
+        "longestCashPeriod": _find_longest_cash_period(dates, holding_flags),
+        "outperformRatio": round((outperform_days / total_days) * 100, 2),
+        "missedUptrends": _find_curve_windows(
+            dates,
+            equity_values,
+            benchmark_values,
+            holding_flags,
+            kind="missed_uptrend",
+        ),
+        "defensivePeriods": _find_curve_windows(
+            dates,
+            equity_values,
+            benchmark_values,
+            holding_flags,
+            kind="defensive_period",
+        ),
+    }
+
+
+def _build_holding_flags(dates: list[str], trades: list[dict]) -> list[bool]:
+    trades_by_date: dict[str, list[dict]] = {}
+    for trade in trades:
+        trade_date = str(trade.get("date") or "")
+        if trade_date:
+            trades_by_date.setdefault(trade_date, []).append(trade)
+
+    holding = False
+    flags: list[bool] = []
+    for current_date in dates:
+        day_trades = trades_by_date.get(current_date, [])
+        for trade in day_trades:
+            if trade.get("side") == "sell":
+                holding = False
+        for trade in day_trades:
+            if trade.get("side") == "buy":
+                holding = True
+        flags.append(holding)
+    return flags
+
+
+def _find_longest_cash_period(dates: list[str], holding_flags: list[bool]) -> dict | None:
+    best_start: int | None = None
+    best_end: int | None = None
+    current_start: int | None = None
+    for index, is_holding in enumerate(holding_flags):
+        if not is_holding:
+            if current_start is None:
+                current_start = index
+            continue
+        if current_start is not None:
+            if best_start is None or index - current_start > best_end - best_start + 1:
+                best_start = current_start
+                best_end = index - 1
+            current_start = None
+
+    if current_start is not None:
+        index = len(holding_flags)
+        if best_start is None or index - current_start > best_end - best_start + 1:
+            best_start = current_start
+            best_end = index - 1
+
+    if best_start is None or best_end is None:
+        return None
+    return {
+        "startDate": dates[best_start],
+        "endDate": dates[best_end],
+        "tradingDays": best_end - best_start + 1,
+    }
+
+
+def _find_curve_windows(
+    dates: list[str],
+    equity_values: list[float],
+    benchmark_values: list[float],
+    holding_flags: list[bool],
+    *,
+    kind: str,
+) -> list[dict]:
+    candidates: list[dict] = []
+    for window in (20, 60, 120):
+        if len(dates) <= window:
+            continue
+        for start in range(0, len(dates) - window):
+            end = start + window
+            strategy_return = _window_return(equity_values[start], equity_values[end])
+            benchmark_return = _window_return(benchmark_values[start], benchmark_values[end])
+            holding_ratio = round((sum(1 for flag in holding_flags[start : end + 1] if flag) / (window + 1)) * 100, 2)
+            if kind == "missed_uptrend":
+                gap = benchmark_return - strategy_return
+                if benchmark_return >= 8 and gap >= 5:
+                    candidates.append(
+                        {
+                            "startIndex": start,
+                            "endIndex": end,
+                            "startDate": dates[start],
+                            "endDate": dates[end],
+                            "benchmarkReturn": round(benchmark_return, 2),
+                            "strategyReturn": round(strategy_return, 2),
+                            "gap": round(gap, 2),
+                            "holdingRatio": holding_ratio,
+                            "score": gap * max(benchmark_return, 0),
+                        }
+                    )
+            else:
+                advantage = strategy_return - benchmark_return
+                if benchmark_return <= -8 and advantage >= 5:
+                    candidates.append(
+                        {
+                            "startIndex": start,
+                            "endIndex": end,
+                            "startDate": dates[start],
+                            "endDate": dates[end],
+                            "benchmarkReturn": round(benchmark_return, 2),
+                            "strategyReturn": round(strategy_return, 2),
+                            "advantage": round(advantage, 2),
+                            "holdingRatio": holding_ratio,
+                            "score": advantage * abs(benchmark_return),
+                        }
+                    )
+
+    merged = _merge_curve_windows(candidates, kind=kind)
+    return [
+        {key: value for key, value in item.items() if key not in {"startIndex", "endIndex", "score"}}
+        for item in sorted(merged, key=lambda item: item.get("score", 0), reverse=True)[:3]
+    ]
+
+
+def _merge_curve_windows(candidates: list[dict], *, kind: str) -> list[dict]:
+    if not candidates:
+        return []
+    ordered = sorted(candidates, key=lambda item: (item["startIndex"], item["endIndex"]))
+    merged: list[dict] = []
+    for item in ordered:
+        if not merged or item["startIndex"] > merged[-1]["endIndex"] + 5:
+            merged.append(item.copy())
+            continue
+        current = merged[-1]
+        if item.get("score", 0) > current.get("score", 0):
+            current.update(item)
+        else:
+            current["endIndex"] = max(current["endIndex"], item["endIndex"])
+            current["endDate"] = item["endDate"] if item["endIndex"] >= current["endIndex"] else current["endDate"]
+        metric_key = "gap" if kind == "missed_uptrend" else "advantage"
+        if item.get(metric_key, 0) > current.get(metric_key, 0):
+            current[metric_key] = item[metric_key]
+            current["benchmarkReturn"] = item["benchmarkReturn"]
+            current["strategyReturn"] = item["strategyReturn"]
+            current["holdingRatio"] = item["holdingRatio"]
+            current["score"] = item["score"]
+    return merged
+
+
+def _window_return(start_value: float, end_value: float) -> float:
+    if start_value <= 0:
+        return 0.0
+    return ((end_value / start_value) - 1) * 100
+
+
+def _agent_mode_label(mode: str | None) -> str:
+    return {
+        "continue_best": "延续最佳",
+        "refine_recent": "优化近期",
+        "explore_new": "探索新结构",
+        "mutate": "突变",
+    }.get(str(mode or "").strip().lower(), "探索新结构")
+
+def _enrich_agent_thoughts(
+    analysis: str,
+    action_plan: str,
+    generation_result: dict,
+    research_state: dict,
+) -> tuple[str, str]:
+    mode = generation_result.get("mode") or "explore_new"
+    analysis_parts = [
+        f"本轮模式：{_agent_mode_label(mode)}。",
+        analysis.strip(),
+    ]
+
+    action_parts = [action_plan.strip()]
+    if research_state.get("stagnationRounds"):
+        action_parts.append(f"当前已停滞 {research_state['stagnationRounds']} 轮。")
+
+    return "".join(analysis_parts), "".join(action_parts)
+
+
+def _generate_strategy_with_ai(
+    task: AgentTask,
+    recent_memories: dict[str, list[str]],
+    benchmark_metrics: dict[str, float],
+    research_state: dict,
+) -> dict:
     model_config = task.ai_model_config or {}
     if not model_config.get("baseUrl") or not model_config.get("apiKey") or not model_config.get("model"):
         raise AgentTaskError("Agent 任务缺少有效的 AI 模型配置。")
 
-    prompt = _build_generation_prompt(task, recent_memories, benchmark_metrics)
+    prompt = _build_generation_prompt(task, recent_memories, benchmark_metrics, research_state)
+    print(
+        f"[agent-context] task_id={task.id} iteration={research_state.get('iteration')} chars={len(prompt)}",
+        flush=True,
+    )
     last_error: AgentTaskError | None = None
 
     for attempt in range(1, AI_DSL_GENERATION_RETRY_COUNT + 1):
@@ -639,35 +1094,62 @@ def _generate_strategy_with_ai(task: AgentTask, recent_memories: list[str], benc
     )
 
 
-def _build_generation_prompt(task: AgentTask, recent_memories: list[str], benchmark_metrics: dict[str, float]) -> str:
-    memory_block = "\n".join(f"- {item}" for item in recent_memories) if recent_memories else "- 暂无历史记忆"
+def _compact_rule_items(items: list[dict], *, include_description: bool = False) -> str:
+    lines: list[str] = []
+    for item in items:
+        value = item.get("value") or item.get("name")
+        label = item.get("label") or item.get("name") or value
+        description = str(item.get("description") or "").strip()
+        suffix = f"：{description}" if include_description and description else ""
+        lines.append(f"- {value}: {label}{suffix}")
+    return "\n".join(lines)
+
+
+def _format_agent_memory_block(items: list[str]) -> str:
+    if not items:
+        return "- 暂无"
+    return "\n".join(f"- {item}" for item in items)
+
+
+def _build_generation_prompt(
+    task: AgentTask,
+    recent_memories: dict[str, list[str]],
+    benchmark_metrics: dict[str, float],
+    research_state: dict,
+) -> str:
+    current_iteration = research_state.get("iteration")
+    best_memory_block = _format_agent_memory_block(recent_memories.get("best") or [])
+    recent_memory_block = _format_agent_memory_block(recent_memories.get("recent") or [])
     return f"""
 请围绕单一标的生成一套策略 JSON DSL，并采用 ReAct 风格：先分析，再决策，最后输出策略。
+本轮由你自主选择研究动作。代码不会限制你的模式选择，你需要根据历史表现、当前最佳、近期走势和持续持有对照自行判断。
 
 任务信息：
 - 标的名称：{task.asset_name}
 - 标的标识：{task.asset_identifier}
 - 国家/地区：{task.country_code}
 - 标的类型：{task.asset_type}
+- 当前迭代：第 {current_iteration} / {task.max_iterations} 轮
 - 目标年化收益率：{float(task.target_annual_return):.2f}%
 - 最大可接受回撤：{float(task.max_drawdown_limit):.2f}%
 - 最低 Sharpe：{float(task.min_sharpe):.2f}
 
-持续持有对照（从回测开始日开盘买入并一直持有到结束）：
+持续持有对照（benchmark，仅用于参考；含义是从回测开始日开盘全仓买入该标的，并一直持有到回测结束，不执行任何买卖规则）：
 - 持续持有总收益：{benchmark_metrics["benchmarkReturn"]:.2f}%
 - 持续持有年化收益：{benchmark_metrics["benchmarkAnnualReturn"]:.2f}%
 - 持续持有最大回撤：{benchmark_metrics["benchmarkMaxDrawdown"]:.2f}%
 - 持续持有 Sharpe：{benchmark_metrics["benchmarkSharpe"]:.2f}
 - 持续持有波动率：{benchmark_metrics["benchmarkVolatility"]:.2f}%
+- 这些数值不是当前策略表现，也不是目标约束是否达标的判定对象，只用于判断主动策略相比“什么都不做、一直持有”是否有改进。
 
 可用字段：
-{json.dumps(RULE_FIELDS, ensure_ascii=False)}
+{_compact_rule_items(RULE_FIELDS, include_description=True)}
 
 可用运算符：
-{json.dumps(RULE_OPERATORS, ensure_ascii=False)}
+{_compact_rule_items(RULE_OPERATORS)}
 
 可用函数：
-{json.dumps(RULE_FUNCTIONS, ensure_ascii=False)}
+{_compact_rule_items(RULE_FUNCTIONS, include_description=True)}
 
 风险参数必须固定为：
 {json.dumps({
@@ -681,13 +1163,31 @@ def _build_generation_prompt(task: AgentTask, recent_memories: list[str], benchm
     "backtestEndDate": task.backtest_end_date.isoformat(),
 }, ensure_ascii=False)}
 
-最近几轮记忆：
-{memory_block}
+开始以来最佳的三次表现：
+{best_memory_block}
+
+最近的表现：
+{recent_memory_block}
+
+研究动作要求：
+- continue_best：延续最佳。
+- refine_recent：优化近期。
+- explore_new：探索新结构。
+- mutate：突变。
+- 你可以自由选择任何研究动作，也可以参考、组合或反驳历史记忆里的经验。
+- 如果历史最佳仍未达到目标年化收益率，优先考虑 explore_new 或 mutate，用新结构寻找更高上限。
+- 如果历史最佳已经达到目标年化收益率，再优先考虑 continue_best 或 refine_recent，用于巩固收益、降低回撤、提升 Sharpe。
+- 重点判断本轮 DSL 是否可能改变真实交易行为，而不只是字面变化。
+- tradeCount 是重要观察指标：交易次数过低通常说明买入或卖出条件过于苛刻，不能只看少数交易带来的偶然高收益。
+- 不要把交易次数当成硬性阈值；请结合回测区间、标的波动、收益、回撤和 Sharpe 自行判断触发频率是否健康。
+- 分析目标达标情况时，请基于历史迭代里的策略表现；持续持有对照只能作为基准参考，不要写成“持续持有未达目标所以策略未达标”。
+- 历史记忆中的“曲线诊断”用于描述收益曲线形态，请关注是否长期空仓、是否错过主升段、是否只在下跌段避险但趋势参与不足。
 
 返回 JSON，结构必须为：
 {{
-  "analysis": "先对当前标的、目标收益、持续持有对照、最近几轮记忆做简短分析",
-  "actionPlan": "这一轮准备怎样调整 DSL、为什么这样调",
+  "mode": "continue_best 或 refine_recent 或 explore_new 或 mutate",
+  "analysis": "先思考历史表现、持续持有对照、当前目标和本轮选择原因；必须额外分析历史 tradeCount 是否过低、过密，是否说明过往规则触发频率不健康",
+  "plan": "本轮准备怎样设计 DSL，以及它预计会怎样改变交易行为",
   "strategy": {{
     "entry": {{
       "type": "group",
@@ -750,7 +1250,7 @@ def _build_generation_prompt(task: AgentTask, recent_memories: list[str], benchm
 """.strip()
 
 
-def _parse_strategy_generation_payload(content: str) -> dict[str, str | dict]:
+def _parse_strategy_generation_payload(content: str) -> dict:
     normalized = content.strip()
     if normalized.startswith("```"):
         normalized = normalized.strip("`")
@@ -764,11 +1264,37 @@ def _parse_strategy_generation_payload(content: str) -> dict[str, str | dict]:
     strategy = data.get("strategy", data)
     if not isinstance(strategy, dict):
         raise AgentTaskError("AI 返回的策略 DSL 结构无效。")
+    plan = str(data.get("plan", data.get("actionPlan", ""))).strip()
     return {
+        "mode": _normalize_agent_mode(data.get("mode")),
         "analysis": str(data.get("analysis", "")).strip(),
-        "actionPlan": str(data.get("actionPlan", "")).strip(),
+        "actionPlan": plan,
         "strategyConfig": strategy,
     }
+
+
+def _normalize_agent_mode(value: Any) -> str:
+    mode = str(value or "").strip().lower()
+    legacy_map = {
+        "exploration": "explore_new",
+        "exploitation": "continue_best",
+        "mutation": "mutate",
+    }
+    mode = legacy_map.get(mode, mode)
+    if mode in {"continue_best", "refine_recent", "explore_new", "mutate"}:
+        return mode
+    return "explore_new"
+
+
+def _normalize_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        text = str(item or "").strip()
+        if text:
+            result.append(text)
+    return result[:4]
 
 
 def _validate_strategy_config(strategy_config: dict) -> None:
@@ -808,9 +1334,7 @@ def _parse_date(value: Any, field_label: str) -> date:
 def _is_better_result(current: dict, best: dict | None) -> bool:
     if best is None:
         return True
-    current_tuple = (current["annualReturn"], current["sharpe"], -current["maxDrawdown"])
-    best_tuple = (best["annualReturn"], best["sharpe"], -best["maxDrawdown"])
-    return current_tuple > best_tuple
+    return _score_result(current) > _score_result(best)
 
 
 def _build_iteration_summary(
@@ -822,11 +1346,13 @@ def _build_iteration_summary(
     benchmark_metrics: dict[str, float],
     analysis: str | None = None,
     action_plan: str | None = None,
+    mode: str | None = None,
 ) -> str:
     entry_desc = _describe_group(strategy_config.get("entry") or {})
     exit_desc = _describe_group(strategy_config.get("exit") or {})
 
     summary_parts = [
+        f"本轮模式：{_agent_mode_label(mode)}。",
         f"本轮买入规则为“{entry_desc}”，卖出规则为“{exit_desc}”。",
         f"回测结果：年化收益 {preview['annualReturn']:.2f}% ，最大回撤 {preview['maxDrawdown']:.2f}% ，Sharpe {preview['sharpe']:.2f}。",
         f"持续持有对照：年化收益 {benchmark_metrics['benchmarkAnnualReturn']:.2f}% ，总收益 {benchmark_metrics['benchmarkReturn']:.2f}% 。",
@@ -882,16 +1408,35 @@ def _build_iteration_memory(
     analysis: str,
     action_plan: str,
     summary: str,
+    generation_result: dict,
+    research_state: dict,
+    curve_diagnostics: dict,
 ) -> str:
-    return (
-        f"第 {iteration} 轮："
-        f"策略 DSL={json.dumps(strategy_config, ensure_ascii=False)}；"
-        f"策略结果=年化 {preview['annualReturn']:.2f}% / 总收益 {preview['totalReturn']:.2f}% / 最大回撤 {preview['maxDrawdown']:.2f}% / Sharpe {preview['sharpe']:.2f}；"
-        f"持续持有=年化 {benchmark_metrics['benchmarkAnnualReturn']:.2f}% / 总收益 {benchmark_metrics['benchmarkReturn']:.2f}% / 最大回撤 {benchmark_metrics['benchmarkMaxDrawdown']:.2f}% / Sharpe {benchmark_metrics['benchmarkSharpe']:.2f}；"
-        f"分析={analysis}；"
-        f"决策={action_plan}；"
-        f"总结={summary}"
-    )
+    del benchmark_metrics, summary, research_state
+    mode = generation_result.get("mode") or "explore_new"
+    memory_payload = {
+        "round": iteration,
+        "mode": mode,
+        "modeLabel": _agent_mode_label(mode),
+        "score": round(_score_result(preview), 2),
+        "metrics": {
+            "annualReturn": round(float(preview["annualReturn"]), 2),
+            "totalReturn": round(float(preview["totalReturn"]), 2),
+            "maxDrawdown": round(float(preview["maxDrawdown"]), 2),
+            "sharpe": round(float(preview["sharpe"]), 2),
+            "tradeCount": preview.get("tradeCount"),
+        },
+        "strategyDigest": {
+            "entry": _describe_group(strategy_config.get("entry") or {}),
+            "exit": _describe_group(strategy_config.get("exit") or {}),
+        },
+        "curveDiagnostics": curve_diagnostics,
+        "reflection": {
+            "analysis": analysis,
+            "plan": action_plan,
+        },
+    }
+    return json.dumps(memory_payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def _build_iteration_detail_analysis(task: AgentTask, iteration: AgentIteration) -> str:
