@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { ConfigProvider, theme } from "antd";
 import zhCN from "antd/locale/zh_CN";
 
@@ -12,6 +12,7 @@ type ThemeModeContextValue = {
 };
 
 const ThemeModeContext = createContext<ThemeModeContextValue | null>(null);
+const THEME_STORAGE_KEY = "genesis-theme-mode";
 
 export function useThemeMode() {
   const value = useContext(ThemeModeContext);
@@ -24,7 +25,18 @@ export function useThemeMode() {
 }
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<ThemeMode>("dark");
+  const [mode, setMode] = useState<ThemeMode>(() => {
+    if (typeof window === "undefined") {
+      return "dark";
+    }
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return stored === "light" || stored === "dark" ? stored : "dark";
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, mode);
+    document.body.dataset.theme = mode;
+  }, [mode]);
 
   const contextValue = useMemo(
     () => ({

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button, Calendar, Card, Modal, Select, Space, Tag, Typography, message } from "antd";
+import { EmptyState } from "@/components/empty-state";
 import type { CountryOption, ExchangeOption, SyncEnqueueResponse, TradingCalendarDay } from "@/components/data-center/types";
 import { getAccessToken } from "@/lib/auth";
 import { apiGet, apiPost } from "@/lib/api";
@@ -239,11 +240,11 @@ export function TradingCalendarCard({ countryOptions, exchangeOptions }: Props) 
 
         {!exchangeCode ? (
           <div className="trading-calendar-empty">
-            <Text type="secondary">请选择国家/地区和交易所，然后查询交易日历。</Text>
+            <EmptyState title="请选择国家/地区和交易所" description="然后查询交易日历。" compact />
           </div>
         ) : queried && !loading && items.length === 0 ? (
           <div className="trading-calendar-empty">
-            <Text type="secondary">当前月份暂无交易日历数据，请同步后再查询。</Text>
+            <EmptyState title="当前月份暂无交易日历数据" description="请同步后再查询。" compact />
           </div>
         ) : null}
       </Card>

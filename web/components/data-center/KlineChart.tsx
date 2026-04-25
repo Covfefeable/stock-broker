@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import Lottie from "lottie-react";
 import * as echarts from "echarts";
+import { EmptyState } from "@/components/empty-state";
 import type { BrowserBar } from "@/components/data-center/types";
-import findDataAnimation from "@/lib/lottie/find-data.json";
 
 type Props = {
   bars: BrowserBar[];
@@ -154,10 +153,7 @@ export function KlineChart({ bars, dark = true }: Props) {
   if (!validBars.length) {
     return (
       <div className="data-browser-empty-chart">
-        <div className="data-browser-empty-state">
-          <Lottie animationData={findDataAnimation} autoplay loop className="data-browser-empty-lottie" />
-          <div className="data-browser-empty-text">请选择股票或指数</div>
-        </div>
+        <EmptyState title="请选择股票或指数" />
       </div>
     );
   }

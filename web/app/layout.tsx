@@ -16,12 +16,18 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var t=localStorage.getItem('genesis-theme-mode');document.body.dataset.theme=(t==='light'||t==='dark')?t:'dark'}catch(e){document.body.dataset.theme='dark'}",
+          }}
+        />
         <div
           id="initial-splash"
           style={{
             alignItems: "center",
-            background: "#0f172a",
-            color: "#e5e7eb",
+            background: "var(--app-bg, #0f172a)",
+            color: "var(--text-main, #e5e7eb)",
             display: "flex",
             fontFamily: "system-ui, sans-serif",
             inset: 0,
@@ -32,7 +38,7 @@ export default function RootLayout({
         >
           <div style={{ opacity: 0.86, textAlign: "center" }}>
             <div style={{ color: "#6366f1", fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Genesis</div>
-            <div style={{ color: "#8d99ae", fontSize: 13 }}>正在加载工作台</div>
+            <div style={{ color: "var(--text-muted, #8d99ae)", fontSize: 13 }}>正在加载工作台</div>
           </div>
         </div>
         <AppProviders>

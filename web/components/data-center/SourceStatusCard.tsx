@@ -1,4 +1,5 @@
 import { Badge, Card, Progress, Typography } from "antd";
+import { EmptyState } from "@/components/empty-state";
 import type { DataSourceStatusItem, ExchangeCoverageRow } from "@/components/data-center/types";
 import { formatInteger, formatPercent } from "@/components/data-center/utils";
 
@@ -70,7 +71,7 @@ export function SourceStatusCard({ item, exchangeCoverage, loading }: Props) {
               </div>
             ))
           ) : (
-            <Text type="secondary">暂无可用于计算覆盖率的交易所数据。</Text>
+            <EmptyState title="暂无交易所覆盖率数据" description="同步交易所和股票清单后会显示覆盖率。" compact />
           )}
         </div>
       </div>

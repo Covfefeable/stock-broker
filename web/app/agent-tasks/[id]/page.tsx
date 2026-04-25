@@ -1,12 +1,13 @@
 "use client";
 
 import { ArrowLeftOutlined, QuestionCircleOutlined, SaveOutlined } from "@ant-design/icons";
-import { Button, Card, Empty, Modal, Progress, Space, Table, Tag, Tooltip, Typography, message } from "antd";
+import { Button, Card, Modal, Progress, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { EmptyState } from "@/components/empty-state";
 import type { AgentIterationItem, AgentTaskDetailResponse, AgentTaskItem } from "@/components/agent-tasks/types";
 import { StrategyPreviewChart } from "@/components/strategy-builder/strategy-preview-chart";
 import type { StrategyPreviewResult } from "@/components/strategy-builder/types";
@@ -408,7 +409,7 @@ export default function AgentTaskDetailPage() {
 
       {!task && !loading ? (
         <Card className="dashboard-card" bordered>
-          <Empty description="未找到对应的 Agent 任务" />
+          <EmptyState title="未找到对应的 Agent 任务" compact />
         </Card>
       ) : null}
 
@@ -582,7 +583,7 @@ export default function AgentTaskDetailPage() {
                   ))}
                 </div>
               ) : (
-                <Empty description="暂无迭代分析与决策" />
+                <EmptyState title="暂无迭代分析与决策" compact />
               )}
             </Card>
 
@@ -594,7 +595,7 @@ export default function AgentTaskDetailPage() {
               {task.bestSummary ? (
                 <Paragraph className="agent-task-detail-paragraph">{task.bestSummary}</Paragraph>
               ) : (
-                <Empty description="暂无最佳策略总结" />
+                <EmptyState title="暂无最佳策略总结" compact />
               )}
             </Card>
           </div>
@@ -605,7 +606,9 @@ export default function AgentTaskDetailPage() {
               columns={iterationColumns}
               dataSource={iterations}
               pagination={false}
-              locale={{ emptyText: "暂无迭代记录" }}
+              locale={{
+                emptyText: <EmptyState title="暂无迭代记录" compact />,
+              }}
               scroll={{ x: 1180 }}
             />
           </Card>
@@ -670,7 +673,9 @@ export default function AgentTaskDetailPage() {
               scroll={{ y: 240 }}
               rowKey={(record) => `${record.date}_${record.side}_${record.price}`}
               dataSource={previewResult.trades}
-              locale={{ emptyText: "暂无成交记录" }}
+              locale={{
+                emptyText: <EmptyState title="暂无成交记录" compact />,
+              }}
               columns={[
                 { title: "日期", dataIndex: "date", width: 120 },
                 {
@@ -702,7 +707,7 @@ export default function AgentTaskDetailPage() {
             />
           </div>
         ) : (
-          <Empty description="暂无收益预览" />
+          <EmptyState title="暂无收益预览" compact />
         )}
       </Modal>
 
@@ -719,7 +724,7 @@ export default function AgentTaskDetailPage() {
         {dslIteration?.strategyConfig ? (
           <pre className="strategy-dsl-code-block">{JSON.stringify(dslIteration.strategyConfig, null, 2)}</pre>
         ) : (
-          <Empty description="暂无 DSL 内容" />
+          <EmptyState title="暂无 DSL 内容" compact />
         )}
       </Modal>
     </AppShell>

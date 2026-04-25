@@ -58,7 +58,35 @@ body {
   font-family: "DM Sans", "Microsoft YaHei", system-ui, sans-serif;
 }
 
+body[data-theme="dark"] {
+  --app-bg: var(--dark-bg);
+  --panel-bg: var(--dark-panel);
+  --panel-soft: var(--dark-panel-soft);
+  --panel-border: var(--dark-border);
+  --text-main: var(--dark-text);
+  --text-muted: var(--dark-muted);
+  --text-primary: var(--dark-text);
+  --text-secondary: var(--dark-muted);
+  background: var(--dark-bg);
+  color: var(--dark-text);
+}
+
+body[data-theme="light"] {
+  --app-bg: var(--light-bg);
+  --panel-bg: var(--light-panel);
+  --panel-soft: var(--light-panel-soft);
+  --panel-border: var(--light-border);
+  --text-main: var(--light-text);
+  --text-muted: var(--light-muted);
+  --text-primary: var(--light-text);
+  --text-secondary: var(--light-muted);
+  background: var(--light-bg);
+  color: var(--light-text);
+}
+
 .theme-root {
+  background: var(--app-bg);
+  color: var(--text-main);
   min-height: 100vh;
 }
 
@@ -69,6 +97,8 @@ body {
   --panel-border: var(--dark-border);
   --text-main: var(--dark-text);
   --text-muted: var(--dark-muted);
+  --text-primary: var(--dark-text);
+  --text-secondary: var(--dark-muted);
 }
 
 .theme-light {
@@ -78,6 +108,8 @@ body {
   --panel-border: var(--light-border);
   --text-main: var(--light-text);
   --text-muted: var(--light-muted);
+  --text-primary: var(--light-text);
+  --text-secondary: var(--light-muted);
 }
 
 .initial-splash-hidden {
@@ -972,35 +1004,70 @@ select {
   margin: 0;
 }
 
-.data-browser-kline-chart,
+.app-empty-state-frame,
 .data-browser-empty-chart {
-  height: 460px;
+  align-items: center;
+  display: flex;
+  min-height: 220px;
+  justify-content: center;
   width: 100%;
 }
 
 .data-browser-empty-chart {
-  align-items: center;
-  display: flex;
-  justify-content: center;
+  height: 460px;
 }
 
+.data-browser-kline-chart {
+  height: 460px;
+  width: 100%;
+}
+
+.app-empty-state,
 .data-browser-empty-state {
   align-items: center;
   display: flex;
   flex-direction: column;
   gap: 8px;
   justify-content: center;
+  min-height: 160px;
+  padding: 18px;
+  text-align: center;
 }
 
+.app-empty-state-compact {
+  min-height: 112px;
+  padding: 10px;
+}
+
+.app-empty-state-lottie,
 .data-browser-empty-lottie {
   height: 140px;
   width: 140px;
 }
 
+.app-empty-state-compact .app-empty-state-lottie {
+  height: 96px;
+  width: 96px;
+}
+
+.app-empty-state-copy,
 .data-browser-empty-text {
   color: var(--text-secondary);
+  display: grid;
   font-size: 14px;
+  gap: 4px;
   line-height: 1.4;
+}
+
+.app-empty-state-copy strong {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.app-empty-state-copy span {
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 .trading-calendar-card {
@@ -2192,6 +2259,47 @@ select {
 
 .agent-task-asset-code {
   color: rgba(148, 163, 184, 0.88) !important;
+}
+
+.app-shell-light .agent-best-performance {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(99, 102, 241, 0.08));
+  border-color: rgba(16, 185, 129, 0.24);
+}
+
+.app-shell-light .agent-best-progress-row,
+.app-shell-light .agent-iteration-thought,
+.app-shell-light .strategy-preview-metric-card,
+.app-shell-light .strategy-preview-next-action-block,
+.app-shell-light .strategy-expression-function-arg {
+  background: rgba(248, 250, 252, 0.86);
+  border-color: rgba(148, 163, 184, 0.24);
+}
+
+.app-shell-light .agent-task-name-ellipsis,
+.app-shell-light .agent-task-status-text,
+.app-shell-light .agent-task-detail-paragraph,
+.app-shell-light .agent-task-asset-name,
+.app-shell-light .strategy-preview-metric-values strong,
+.app-shell-light .strategy-preview-next-action-grid strong,
+.app-shell-light .strategy-preview-next-action-block strong {
+  color: #111827 !important;
+}
+
+.app-shell-light .agent-task-detail-muted,
+.app-shell-light .agent-task-asset-code,
+.app-shell-light .agent-iteration-thought-section span,
+.app-shell-light .agent-best-progress-row span,
+.app-shell-light .strategy-preview-metric-header,
+.app-shell-light .strategy-preview-metric-values span,
+.app-shell-light .strategy-preview-next-action-grid span {
+  color: #64748b !important;
+}
+
+.app-shell-light .agent-iteration-memory,
+.app-shell-light .strategy-preview-dsl {
+  background: rgba(241, 245, 249, 0.92);
+  border-color: rgba(148, 163, 184, 0.26);
+  color: #1f2937;
 }
 
 @media (max-width: 1100px) {

@@ -1,4 +1,5 @@
 import { Badge, Button, Card, Typography } from "antd";
+import { EmptyState } from "@/components/empty-state";
 import type { TimelineLogRow } from "@/components/data-center/types";
 
 const { Text } = Typography;
@@ -64,13 +65,7 @@ export function SyncOverviewCard({ logLoading, loadingMore, hasMore, eventLogs, 
             </div>
           ))
         ) : (
-          <div className="sync-task">
-            <Badge status="default" />
-            <div>
-              <strong>暂无同步日志</strong>
-              <Text>完成首次同步后，这里会显示最新执行记录。</Text>
-            </div>
-          </div>
+          <EmptyState title="暂无同步日志" description="完成首次同步后，这里会显示最新执行记录。" compact />
         )}
         {!logLoading && loadingMore ? (
           <div className="sync-task sync-task-loading-more">

@@ -6,6 +6,7 @@ import type { ColumnsType, TablePaginationConfig, TableProps } from "antd/es/tab
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { EmptyState } from "@/components/empty-state";
 import { getAccessToken } from "@/lib/auth";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 
@@ -389,7 +390,9 @@ export default function StrategyBuilderPage() {
           columns={columns}
           dataSource={items}
           loading={loading}
-          locale={{ emptyText: "暂无策略，请先新建策略。" }}
+          locale={{
+            emptyText: <EmptyState title="暂无策略" description="请先新建策略。" compact />,
+          }}
           pagination={tablePagination}
           onChange={handleTableChange}
           scroll={{ x: 1120 }}

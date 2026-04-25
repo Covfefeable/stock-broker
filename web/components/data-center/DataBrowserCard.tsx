@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import Lottie from "lottie-react";
 import { Button, Card, Modal, Select, Segmented, Space, Statistic, Typography, message } from "antd";
 import { useThemeMode } from "@/app/providers";
 import { KlineChart } from "@/components/data-center/KlineChart";
+import { EmptyState } from "@/components/empty-state";
 import type {
   BrowserBar,
   BrowserMeta,
@@ -18,7 +18,6 @@ import type {
 } from "@/components/data-center/types";
 import { getAccessToken } from "@/lib/auth";
 import { apiGet, apiPost } from "@/lib/api";
-import findDataAnimation from "@/lib/lottie/find-data.json";
 
 const { Text, Title } = Typography;
 
@@ -415,10 +414,7 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
 
       {chartLoading ? (
         <div className="data-browser-empty-chart">
-          <div className="data-browser-empty-state">
-            <Lottie animationData={findDataAnimation} autoplay loop className="data-browser-empty-lottie" />
-            <div className="data-browser-empty-text">正在加载 K 线数据</div>
-          </div>
+          <EmptyState title="正在加载 K 线数据" />
         </div>
       ) : (
         <KlineChart bars={bars} dark={mode === "dark"} />

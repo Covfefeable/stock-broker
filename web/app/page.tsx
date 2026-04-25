@@ -6,11 +6,12 @@ import {
   RobotOutlined,
   RiseOutlined,
 } from "@ant-design/icons";
-import { Badge, Button, Card, Col, Empty, Progress, Row, Space, Table, Tag, Typography } from "antd";
+import { Badge, Button, Card, Col, Progress, Row, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { EmptyState } from "@/components/empty-state";
 import { apiGet } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
 
@@ -243,7 +244,7 @@ export default function Home() {
               ))}
               </Space>
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无运行中的 Agent 任务" />
+              <EmptyState title="暂无运行中的 Agent 任务" compact />
             )}
           </Card>
         </Col>
@@ -284,7 +285,7 @@ export default function Home() {
               ))}
               </div>
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无回测结果" />
+              <EmptyState title="暂无回测结果" compact />
             )}
           </Card>
         </Col>
@@ -301,7 +302,7 @@ export default function Home() {
                 ))}
               </Space>
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无策略提醒" />
+              <EmptyState title="暂无策略提醒" compact />
             )}
           </Card>
         </Col>

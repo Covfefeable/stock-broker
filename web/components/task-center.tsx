@@ -7,10 +7,11 @@ import {
   RobotOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Drawer, Empty, Progress, Segmented, Space, Tag, Typography, notification } from "antd";
+import { Drawer, Progress, Segmented, Space, Tag, Typography, notification } from "antd";
 import Lottie from "lottie-react";
 import type { LottieRefCurrentProps } from "lottie-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { EmptyState } from "@/components/empty-state";
 import sphereAnimation from "@/lib/lottie/sphere.json";
 import { normalizeDisplayText } from "@/components/data-center/utils";
 import { getAccessToken } from "@/lib/auth";
@@ -308,7 +309,7 @@ function TaskSection({
           ))}
         </Space>
       ) : (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
+        <EmptyState title={emptyText} compact />
       )}
     </section>
   );

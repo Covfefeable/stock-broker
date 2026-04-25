@@ -6,6 +6,7 @@ import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { EmptyState } from "@/components/empty-state";
 import type { AgentTaskItem, AgentTaskListResponse, AgentTaskStatus } from "@/components/agent-tasks/types";
 import { getAccessToken } from "@/lib/auth";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
@@ -299,7 +300,9 @@ export default function AgentTasksPage() {
           columns={columns}
           dataSource={rows}
           loading={loading}
-          locale={{ emptyText: "暂无 Agent 任务，请先新建任务。" }}
+          locale={{
+            emptyText: <EmptyState title="暂无 Agent 任务" description="请先新建任务。" compact />,
+          }}
           pagination={{
             ...pagination,
             showSizeChanger: false,

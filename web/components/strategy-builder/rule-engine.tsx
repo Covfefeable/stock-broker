@@ -4,6 +4,7 @@ import { DeleteOutlined, PlusOutlined, QuestionCircleOutlined } from "@ant-desig
 import { Button, Card, Input, InputNumber, Modal, Popover, Radio, Select, Switch, Table, Tabs, Tag, Tooltip, Typography } from "antd";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { EmptyState } from "@/components/empty-state";
 import { StrategyPreviewChart } from "@/components/strategy-builder/strategy-preview-chart";
 import type {
   ExpressionFunctionName,
@@ -376,7 +377,9 @@ export function RuleEngine({
                     scroll={{ y: 240 }}
                     rowKey={(record) => `${record.date}_${record.side}_${record.price}`}
                     dataSource={previewResult?.trades ?? []}
-                    locale={{ emptyText: "暂无成交记录" }}
+                    locale={{
+                      emptyText: <EmptyState title="暂无成交记录" compact />,
+                    }}
                     columns={[
                       { title: "日期", dataIndex: "date", width: 120 },
                       {
