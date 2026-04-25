@@ -1,6 +1,6 @@
 "use client";
 
-import { DeleteOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
+import { PlusOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { Button, Card, Input, Popconfirm, Select, Space, Table, Tag, Typography, message } from "antd";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import Link from "next/link";
@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import type { AgentTaskItem, AgentTaskListResponse, AgentTaskStatus } from "@/components/agent-tasks/types";
 import { getAccessToken } from "@/lib/auth";
-import { apiDelete, apiGet } from "@/lib/api";
+import { apiDelete, apiGet, apiPost } from "@/lib/api";
 
 const { Title, Text } = Typography;
 
@@ -45,6 +45,7 @@ export default function AgentTasksPage() {
   const [assetType, setAssetType] = useState<"stock" | "index" | undefined>();
   const [countryCode, setCountryCode] = useState<string | undefined>();
   const [status, setStatus] = useState<AgentTaskStatus | undefined>();
+  const [rerunningId, setRerunningId] = useState<number | null>(null);
   const [pagination, setPagination] = useState<TablePaginationConfig>({
     current: 1,
     pageSize: 10,
@@ -110,7 +111,7 @@ export default function AgentTasksPage() {
     });
   };
 
-  const handleDelete = async (taskId: number) => {
+  const handleDelete = useCallback(async (taskId: number) => {
     try {
       const token = getAccessToken();
       await apiDelete(`/agent-tasks/${taskId}`, token);
@@ -119,7 +120,21 @@ export default function AgentTasksPage() {
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "删除 Agent 任务失败。");
     }
-  };
+  }, [loadTasks, messageApi, queryState]);
+
+  const handleRerun = useCallback(async (taskId: number) => {
+    setRerunningId(taskId);
+    try {
+      const token = getAccessToken();
+      await apiPost(`/agent-tasks/${taskId}/rerun`, {}, token);
+      messageApi.success("已创建新的重新运行任务，原任务数据保留。");
+      await loadTasks(queryState);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "重新运行 Agent 任务失败。");
+    } finally {
+      setRerunningId(null);
+    }
+  }, [loadTasks, messageApi, queryState]);
 
   const columns = useMemo<ColumnsType<AgentTaskItem>>(
     () => [
@@ -184,18 +199,28 @@ export default function AgentTasksPage() {
       {
         title: "操作",
         key: "actions",
-        width: 220,
+        width: 300,
         render: (_, record) => (
-          <Space size={4}>
+          <Space size={12} className="table-action-links">
             <Link href={`/agent-tasks/${record.id}`}>查看</Link>
             <Link href={`/agent-tasks/new?copyId=${record.id}`}>复制</Link>
+            <Popconfirm
+              title="重新运行会创建一条新任务，原任务数据不会被覆盖。确认重新运行？"
+              okText="重新运行"
+              cancelText="取消"
+              onConfirm={() => void handleRerun(record.id)}
+            >
+              <Button type="link" disabled={rerunningId === record.id}>
+                {rerunningId === record.id ? "运行中" : "重新运行"}
+              </Button>
+            </Popconfirm>
             <Popconfirm
               title="确定删除这个 Agent 任务吗？"
               okText="删除"
               cancelText="取消"
               onConfirm={() => void handleDelete(record.id)}
             >
-              <Button type="link" danger icon={<DeleteOutlined />}>
+              <Button type="link" danger>
                 删除
               </Button>
             </Popconfirm>
@@ -203,7 +228,7 @@ export default function AgentTasksPage() {
         ),
       },
     ],
-    [],
+    [handleDelete, handleRerun, rerunningId],
   );
 
   return (
@@ -285,7 +310,7 @@ export default function AgentTasksPage() {
                 pageSize: pageSize || current.pageSize,
               })),
           }}
-          scroll={{ x: 1080 }}
+          scroll={{ x: 1160 }}
         />
       </Card>
     </AppShell>

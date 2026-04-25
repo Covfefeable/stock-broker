@@ -1,11 +1,11 @@
 "use client";
 
 import { ArrowLeftOutlined } from "@ant-design/icons";
-import { Button, Card, Collapse, Empty, Modal, Space, Table, Tag, Tooltip, Typography, message } from "antd";
+import { Button, Card, Collapse, Empty, Modal, Progress, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import type { AgentIterationItem, AgentTaskDetailResponse, AgentTaskItem } from "@/components/agent-tasks/types";
 import { StrategyPreviewChart } from "@/components/strategy-builder/strategy-preview-chart";
@@ -14,6 +14,23 @@ import { getAccessToken } from "@/lib/auth";
 import { apiGet, apiPost } from "@/lib/api";
 
 const { Title, Text, Paragraph } = Typography;
+
+type TaskSocketMessage =
+  | {
+      type: "snapshot";
+      payload: {
+        tasks: Array<{ taskId: string; entityType?: string | null; entityId?: number | null }>;
+      };
+    }
+  | {
+      type: "task.updated";
+      payload: { taskId: string; entityType?: string | null; entityId?: number | null };
+      userId?: number | null;
+    }
+  | {
+      type: "error";
+      message: string;
+    };
 
 const statusMeta = {
   queued: { label: "排队中", color: "default" },
@@ -33,6 +50,16 @@ function formatDateTime(value: string | null | undefined) {
   return new Date(value).toLocaleString("zh-CN", { hour12: false });
 }
 
+function buildTaskCenterWsUrl(token: string): string {
+  const configuredBase = process.env.NEXT_PUBLIC_WS_BASE_URL?.replace(/\/$/, "");
+  if (configuredBase) {
+    return `${configuredBase}/ws/tasks?token=${encodeURIComponent(token)}`;
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${protocol}://localhost:8000/ws/tasks?token=${encodeURIComponent(token)}`;
+}
+
 export default function AgentTaskDetailPage() {
   const params = useParams<{ id: string }>();
   const [messageApi, contextHolder] = message.useMessage();
@@ -46,9 +73,12 @@ export default function AgentTaskDetailPage() {
   const [dslOpen, setDslOpen] = useState(false);
   const [dslIteration, setDslIteration] = useState<AgentIterationItem | null>(null);
   const [savingBestStrategy, setSavingBestStrategy] = useState(false);
+  const refreshTimerRef = useRef<number | null>(null);
 
-  const loadDetail = useCallback(async () => {
-    setLoading(true);
+  const loadDetail = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true);
+    }
     try {
       const token = getAccessToken();
       const response = await apiGet<AgentTaskDetailResponse>(`/agent-tasks/${params.id}`, token);
@@ -57,13 +87,79 @@ export default function AgentTaskDetailPage() {
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "加载 Agent 任务详情失败。");
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }, [messageApi, params.id]);
 
   useEffect(() => {
     void loadDetail();
   }, [loadDetail]);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    const currentTaskId = Number(params.id);
+    if (!token || Number.isNaN(currentTaskId)) {
+      return;
+    }
+
+    let cancelled = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+
+    const scheduleRefresh = () => {
+      if (refreshTimerRef.current) {
+        window.clearTimeout(refreshTimerRef.current);
+      }
+      refreshTimerRef.current = window.setTimeout(() => {
+        if (!cancelled) {
+          void loadDetail({ silent: true });
+        }
+      }, 350);
+    };
+
+    const connect = () => {
+      if (cancelled) {
+        return;
+      }
+      socket = new WebSocket(buildTaskCenterWsUrl(token));
+      socket.onmessage = (event) => {
+        if (cancelled) {
+          return;
+        }
+        try {
+          const payload = JSON.parse(event.data) as TaskSocketMessage;
+          if (payload.type === "task.updated" && payload.payload.entityType === "agent_task" && payload.payload.entityId === currentTaskId) {
+            scheduleRefresh();
+          }
+        } catch {
+          // Ignore malformed websocket messages; the task center owns user-facing websocket errors.
+        }
+      };
+      socket.onclose = () => {
+        if (!cancelled) {
+          reconnectTimer = window.setTimeout(connect, 2000);
+        }
+      };
+      socket.onerror = () => {
+        socket?.close();
+      };
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (refreshTimerRef.current) {
+        window.clearTimeout(refreshTimerRef.current);
+      }
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
+      socket?.close();
+    };
+  }, [loadDetail, params.id]);
 
   const openIterationPreview = useCallback(
     async (iteration: AgentIterationItem) => {
@@ -151,6 +247,21 @@ export default function AgentTaskDetailPage() {
     [openIterationPreview],
   );
 
+  const bestIteration = useMemo(() => {
+    if (!task?.bestAnnualReturn) {
+      return null;
+    }
+    return (
+      iterations.find(
+        (item) => item.annualReturn !== null && Math.abs(item.annualReturn - task.bestAnnualReturn!) < 0.0001,
+      ) ?? null
+    );
+  }, [iterations, task?.bestAnnualReturn]);
+
+  const bestMaxDrawdown = task?.bestMaxDrawdown ?? bestIteration?.maxDrawdown ?? null;
+  const bestSharpe = task?.bestSharpe ?? bestIteration?.sharpe ?? null;
+  const iterationPercent = task ? Math.min(100, Math.round((task.currentIteration / Math.max(task.maxIterations, 1)) * 100)) : 0;
+
   const handleSaveBestStrategy = useCallback(async () => {
     if (!task?.bestStrategyConfig) {
       messageApi.warning("当前还没有可保存的最佳策略。");
@@ -217,6 +328,27 @@ export default function AgentTaskDetailPage() {
         <>
           <div className="agent-task-detail-grid">
             <Card className="dashboard-card" bordered loading={loading} title="任务概览">
+              <div className="agent-best-performance">
+                <div>
+                  <Text type="secondary">当前最佳年化收益</Text>
+                  <strong className={task.bestAnnualReturn !== null && task.bestAnnualReturn < 0 ? "negative-text" : "positive-text"}>
+                    {formatPercent(task.bestAnnualReturn)}
+                  </strong>
+                </div>
+                <div>
+                  <Text type="secondary">最大回撤</Text>
+                  <strong className="negative-text">{formatPercent(bestMaxDrawdown)}</strong>
+                </div>
+                <div>
+                  <Text type="secondary">Sharpe</Text>
+                  <strong>{bestSharpe !== null && bestSharpe !== undefined ? bestSharpe.toFixed(2) : "-"}</strong>
+                </div>
+                <div className="agent-best-performance-progress">
+                  <Text type="secondary">迭代进度</Text>
+                  <Progress percent={iterationPercent} size="small" />
+                  <span>{task.currentIteration} / {task.maxIterations}</span>
+                </div>
+              </div>
               <div className="agent-task-detail-meta">
                 <div>
                   <Text type="secondary">任务名称</Text>
@@ -242,14 +374,6 @@ export default function AgentTaskDetailPage() {
                   <div>
                     {task.currentIteration} / {task.maxIterations}
                   </div>
-                </div>
-                <div>
-                  <Text type="secondary">当前最佳收益</Text>
-                  <div>{formatPercent(task.bestAnnualReturn)}</div>
-                </div>
-                <div>
-                  <Text type="secondary">当前最佳 Sharpe</Text>
-                  <div>{task.bestSharpe !== null ? task.bestSharpe.toFixed(2) : "-"}</div>
                 </div>
                 <div>
                   <Text type="secondary">最近更新时间</Text>

@@ -10,6 +10,7 @@ from app.services.agent_task_service import (
     preview_agent_iteration,
     list_available_ai_models,
     list_agent_tasks,
+    rerun_agent_task,
 )
 
 agent_task_bp = Blueprint("agent_task", __name__)
@@ -61,6 +62,16 @@ def delete_agent_task_route(task_id: int):
     except AgentTaskError as exc:
         return {"message": str(exc)}, 404
     return {}, 204
+
+
+@agent_task_bp.post("/agent-tasks/<int:task_id>/rerun")
+@auth_required
+def rerun_agent_task_route(task_id: int):
+    try:
+        task = rerun_agent_task(g.current_user, task_id)
+    except AgentTaskError as exc:
+        return {"message": str(exc)}, 400
+    return {"message": "Agent 任务已重新运行，原任务数据已保留。", "task": task.to_dict()}, 201
 
 
 @agent_task_bp.get("/agent-tasks/<int:task_id>/iterations/<int:iteration_id>/preview")

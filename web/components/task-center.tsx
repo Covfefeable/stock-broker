@@ -24,6 +24,8 @@ type TaskFilter = "active" | "finished" | "all";
 
 type TaskItem = {
   taskId: string;
+  entityType?: "agent_task" | null;
+  entityId?: number | null;
   name: string;
   type: TaskType;
   status: TaskStatus;
@@ -34,6 +36,11 @@ type TaskItem = {
   progressText?: string | null;
   recordsAffected?: number | null;
   durationMs?: number | null;
+  assetName?: string | null;
+  assetIdentifier?: string | null;
+  bestAnnualReturn?: number | null;
+  bestMaxDrawdown?: number | null;
+  bestSharpe?: number | null;
   logs: string[];
 };
 
@@ -335,30 +342,75 @@ function TaskCard({ task }: { task: TaskItem }) {
         <Progress percent={percent} size="small" showInfo={false} strokeColor="#6366f1" />
       ) : null}
 
+      {task.type === "agent" ? (
+        <AgentTaskSummary task={task} />
+      ) : (
+        <>
+          {task.progressText ? (
+            <Text className="task-center-progress-text">{normalizeDisplayText(task.progressText)}</Text>
+          ) : null}
+
+          {task.recordsAffected !== undefined && task.recordsAffected !== null ? (
+            <Text className="task-center-progress-text">处理记录：{task.recordsAffected}</Text>
+          ) : null}
+
+          <div className="task-center-log-list">
+            {task.logs.length ? (
+              task.logs.map((log, index) => (
+                <div key={`${task.taskId}-${index}`} className="task-center-log-item">
+                  <span className="task-center-log-dot" />
+                  <span>{normalizeDisplayText(log)}</span>
+                </div>
+              ))
+            ) : (
+              <div className="task-center-log-item">
+                <span className="task-center-log-dot" />
+                <span>暂无日志</span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+    </div>
+  );
+}
+
+function AgentTaskSummary({ task }: { task: TaskItem }) {
+  return (
+    <div className="task-center-agent-summary">
+      <div className="task-center-agent-asset">
+        <Text className="task-center-subtle">标的</Text>
+        <strong>{task.assetName || "-"}</strong>
+        {task.assetIdentifier ? <Text className="task-center-subtle">{task.assetIdentifier}</Text> : null}
+      </div>
+      <div className="task-center-agent-metrics">
+        <AgentSummaryMetric label="最佳收益" value={formatPercent(task.bestAnnualReturn)} positive />
+        <AgentSummaryMetric label="最大回撤" value={formatPercent(task.bestMaxDrawdown)} negative />
+        <AgentSummaryMetric label="Sharpe" value={task.bestSharpe == null ? "-" : task.bestSharpe.toFixed(2)} />
+      </div>
       {task.progressText ? (
         <Text className="task-center-progress-text">{normalizeDisplayText(task.progressText)}</Text>
       ) : null}
+    </div>
+  );
+}
 
-      {task.recordsAffected !== undefined && task.recordsAffected !== null ? (
-        <Text className="task-center-progress-text">处理记录：{task.recordsAffected}</Text>
-      ) : null}
-
-      <div className="task-center-log-list">
-        {task.logs.length ? (
-          task.logs.map((log, index) => (
-            <div key={`${task.taskId}-${index}`} className="task-center-log-item">
-              <span className="task-center-log-dot" />
-              <span>{normalizeDisplayText(log)}</span>
-            </div>
-          ))
-        ) : (
-          <div className="task-center-log-item">
-            <span className="task-center-log-dot" />
-            <span>暂无日志</span>
-          </div>
-        )}
-      </div>
-
+function AgentSummaryMetric({
+  label,
+  value,
+  positive,
+  negative,
+}: {
+  label: string;
+  value: string;
+  positive?: boolean;
+  negative?: boolean;
+}) {
+  return (
+    <div className="task-center-agent-metric">
+      <span>{label}</span>
+      <strong className={positive ? "positive-text" : negative ? "negative-text" : undefined}>{value}</strong>
     </div>
   );
 }
@@ -397,6 +449,10 @@ function dedupeLogs(logs: string[]): string[] {
     result.push(log);
   }
   return result.slice(-6);
+}
+
+function formatPercent(value: number | null | undefined): string {
+  return value == null ? "-" : `${value.toFixed(2)}%`;
 }
 
 function buildTaskCenterWsUrl(token: string): string {

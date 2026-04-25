@@ -165,8 +165,15 @@ def get_agent_task(user: User, task_id: int) -> AgentTask:
 
 def get_agent_task_detail(user: User, task_id: int) -> dict:
     task = get_agent_task(user, task_id)
+    task_payload = task.to_dict()
+    best_iteration = _get_best_iteration(task)
+    task_payload["bestMaxDrawdown"] = (
+        round(float(best_iteration.max_drawdown), 2)
+        if best_iteration and best_iteration.max_drawdown is not None
+        else None
+    )
     return {
-        "task": task.to_dict(),
+        "task": task_payload,
         "iterations": [_serialize_agent_iteration_detail(task, item) for item in task.iterations],
     }
 
@@ -195,6 +202,13 @@ def preview_agent_iteration(user: User, task_id: int, iteration_id: int) -> dict
         raise AgentTaskError("当前标的没有可用于预览收益的历史日线数据。")
 
     return _run_strategy_backtest(bars, iteration.strategy_config or {})
+
+
+def _get_best_iteration(task: AgentTask) -> AgentIteration | None:
+    query = AgentIteration.query.filter(AgentIteration.task_id == task.id)
+    if task.best_annual_return is not None:
+        query = query.filter(AgentIteration.annual_return == task.best_annual_return)
+    return query.order_by(AgentIteration.iteration_number.desc(), AgentIteration.id.desc()).first()
 
 
 def _serialize_agent_iteration_detail(task: AgentTask, iteration: AgentIteration) -> dict:
@@ -304,6 +318,32 @@ def delete_agent_task(user: User, task_id: int) -> None:
     task = get_agent_task(user, task_id)
     db.session.delete(task)
     db.session.commit()
+
+
+def rerun_agent_task(user: User, task_id: int) -> AgentTask:
+    task = get_agent_task(user, task_id)
+    return create_agent_task(
+        user,
+        {
+            "name": f"{task.name}（重新运行）",
+            "countryCode": task.country_code,
+            "assetType": task.asset_type,
+            "assetIdentifier": task.asset_identifier,
+            "aiModel": task.ai_model_config,
+            "note": task.note,
+            "maxIterations": task.max_iterations,
+            "targetAnnualReturn": task.target_annual_return,
+            "maxDrawdownLimit": task.max_drawdown_limit,
+            "minSharpe": task.min_sharpe,
+            "initialCapital": task.initial_capital,
+            "positionSize": task.position_size,
+            "stopLoss": task.stop_loss,
+            "takeProfit": task.take_profit,
+            "maxHoldingDays": task.max_holding_days,
+            "backtestStartDate": task.backtest_start_date.isoformat(),
+            "backtestEndDate": task.backtest_end_date.isoformat(),
+        },
+    )
 
 
 def get_agent_task_asset_options(country_code: str, asset_type: str) -> dict:

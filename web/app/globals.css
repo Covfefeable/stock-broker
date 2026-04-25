@@ -492,6 +492,49 @@ select {
   width: 6px;
 }
 
+.task-center-agent-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.task-center-agent-asset {
+  display: grid;
+  gap: 2px;
+}
+
+.task-center-agent-asset strong {
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.task-center-agent-metrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.task-center-agent-metric {
+  background: rgba(15, 23, 42, 0.34);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.task-center-agent-metric span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.task-center-agent-metric strong {
+  color: var(--text-main);
+  font-family: "General Sans", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.15;
+}
+
 .task-center-action {
   justify-self: flex-start;
   padding-left: 0 !important;
@@ -1189,6 +1232,16 @@ select {
 
 .settings-table-action {
   margin-top: 14px;
+}
+
+.table-action-links {
+  align-items: center;
+  white-space: nowrap;
+}
+
+.table-action-links .ant-btn-link {
+  height: auto;
+  padding: 0;
 }
 
 @media (max-width: 1100px) {
@@ -1957,6 +2010,43 @@ select {
   display: block;
 }
 
+.agent-best-performance {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(99, 102, 241, 0.1));
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  border-radius: 10px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 18px;
+  padding: 16px;
+}
+
+.agent-best-performance > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent-best-performance strong {
+  color: var(--text-main);
+  font-family: "General Sans", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 24px;
+  line-height: 1.12;
+}
+
+.agent-best-performance .ant-typography {
+  font-size: 12px;
+}
+
+.agent-best-performance-progress {
+  align-content: start;
+}
+
+.agent-best-performance-progress span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .agent-task-detail-card-equal {
   height: 760px;
 }
@@ -2061,6 +2151,10 @@ select {
 @media (max-width: 1100px) {
   .agent-task-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .agent-best-performance {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .agent-task-detail-meta {

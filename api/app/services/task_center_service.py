@@ -3,6 +3,7 @@ import time
 from collections import OrderedDict, defaultdict
 
 from app import extensions
+from app.models.agent_iteration import AgentIteration
 from app.models.agent_task import AgentTask
 from app.models.event_log import EventLog
 from app.services.event_log_meta import event_name_label, sync_item_label
@@ -78,15 +79,30 @@ def _build_task_summary(log: EventLog, logs: list[str]) -> dict:
     updated_at = finished_at or created_at
     progress_current = None
     progress_total = None
+    entity_type = None
+    entity_id = None
+    agent_payload: dict = {}
 
     if task_type_from_log(log) == "agent" and log.task_id:
         agent_task = AgentTask.query.filter_by(celery_task_id=log.task_id).first()
         if agent_task:
             progress_current = agent_task.current_iteration
             progress_total = agent_task.max_iterations
+            entity_type = "agent_task"
+            entity_id = agent_task.id
+            best_iteration = best_iteration_for_agent(agent_task)
+            agent_payload = {
+                "assetName": agent_task.asset_name,
+                "assetIdentifier": agent_task.asset_identifier,
+                "bestAnnualReturn": _metric_to_float(agent_task.best_annual_return),
+                "bestMaxDrawdown": _metric_to_float(best_iteration.max_drawdown if best_iteration else None),
+                "bestSharpe": _metric_to_float(agent_task.best_sharpe),
+            }
 
     return {
         "taskId": log.task_id,
+        "entityType": entity_type,
+        "entityId": entity_id,
         "name": task_name_from_log(log),
         "type": task_type_from_log(log),
         "status": task_status_from_log(log),
@@ -98,6 +114,7 @@ def _build_task_summary(log: EventLog, logs: list[str]) -> dict:
         "recordsAffected": log.records_affected,
         "durationMs": log.duration_ms,
         "logs": logs,
+        **agent_payload,
     }
 
 
@@ -130,3 +147,14 @@ def task_status_from_log(log: EventLog) -> str:
     if status == "partial_success":
         return "success"
     return "queued"
+
+
+def best_iteration_for_agent(agent_task: AgentTask) -> AgentIteration | None:
+    query = AgentIteration.query.filter(AgentIteration.task_id == agent_task.id)
+    if agent_task.best_annual_return is not None:
+        query = query.filter(AgentIteration.annual_return == agent_task.best_annual_return)
+    return query.order_by(AgentIteration.iteration_number.desc(), AgentIteration.id.desc()).first()
+
+
+def _metric_to_float(value) -> float | None:
+    return round(float(value), 2) if value is not None else None

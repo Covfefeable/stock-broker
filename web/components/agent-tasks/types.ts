@@ -29,6 +29,7 @@ export type AgentTaskItem = {
   backtestStartDate: string | null;
   backtestEndDate: string | null;
   bestAnnualReturn: number | null;
+  bestMaxDrawdown?: number | null;
   bestSharpe: number | null;
   bestStrategyConfig?: Record<string, unknown> | null;
   bestSummary?: string | null;
