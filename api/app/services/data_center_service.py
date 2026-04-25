@@ -21,6 +21,7 @@ from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
 from app.models.trading_calendar_day import TradingCalendarDay
 from app.models.user import User
+from app.services.event_log_meta import event_log_to_dict, event_types_for_category, sync_event_name, sync_item_label
 from app.services.settings_service import get_or_create_settings
 from app.services.task_center_service import publish_task_event
 
@@ -40,6 +41,10 @@ SYNC_ITEM_INDEX_DAILY_HISTORY = "index_daily_history"
 DATE_MODE_AUTO_FILL = "auto_fill"
 DATE_MODE_CUSTOM = "custom"
 DEFAULT_FULL_HISTORY_SYNC_START_DATE = "2000-01-01"
+
+
+def beijing_today() -> date:
+    return datetime.now(ZoneInfo("Asia/Shanghai")).date()
 
 
 def canghai_stock_url(exchange_code: str) -> str:
@@ -247,24 +252,6 @@ def list_exchange_stock_coverage() -> list[dict]:
     return items
 
 
-def sync_item_label(sync_item: str) -> str:
-    if sync_item == SYNC_ITEM_COUNTRY_LIST:
-        return "国家/地区清单"
-    if sync_item == SYNC_ITEM_EXCHANGE_LIST:
-        return "交易所清单"
-    if sync_item == SYNC_ITEM_STOCK_LIST:
-        return "股票清单"
-    if sync_item == SYNC_ITEM_INDEX_LIST:
-        return "指数清单"
-    if sync_item == SYNC_ITEM_TRADING_CALENDAR:
-        return "交易日历"
-    if sync_item == SYNC_ITEM_STOCK_DAILY_HISTORY:
-        return "股票历史日线"
-    if sync_item == SYNC_ITEM_INDEX_DAILY_HISTORY:
-        return "指数历史日线"
-    return sync_item
-
-
 def sync_country_list(user: User, *, task_id: str | None = None) -> dict:
     return sync_with_token_guard(
         user=user,
@@ -400,6 +387,7 @@ def sync_stock_daily_history(
             extra_params["start_date"] = (latest_trade_date + timedelta(days=1)).isoformat()
         else:
             extra_params["start_date"] = DEFAULT_FULL_HISTORY_SYNC_START_DATE
+        extra_params["end_date"] = beijing_today().isoformat()
 
     return sync_with_token_guard(
         user=user,
@@ -453,6 +441,7 @@ def sync_index_daily_history(
             extra_params["start_date"] = (latest_trade_date + timedelta(days=1)).isoformat()
         else:
             extra_params["start_date"] = DEFAULT_FULL_HISTORY_SYNC_START_DATE
+        extra_params["end_date"] = beijing_today().isoformat()
 
     return sync_with_token_guard(
         user=user,
@@ -499,27 +488,14 @@ def batch_sync_stock_daily_history(user: User, *, task_id: str | None = None, lo
     if not stocks_with_latest:
         raise DataSyncError("当前没有已同步过历史日线的股票，无法执行批量补全。")
 
-    exchange_latest_rows = (
-        db.session.query(
-            StockDailyBar.exchange_code,
-            func.max(StockDailyBar.trade_date).label("latest_trade_date"),
-        )
-        .group_by(StockDailyBar.exchange_code)
-        .all()
-    )
-    exchange_latest_map = {
-        exchange_code: latest_trade_date
-        for exchange_code, latest_trade_date in exchange_latest_rows
-        if exchange_code and latest_trade_date
-    }
+    target_end_date = beijing_today()
 
     pending_stocks: list[tuple[Stock, date, date]] = []
     for stock, latest_trade_date in stocks_with_latest:
-        exchange_latest_date = exchange_latest_map.get(stock.exchange_code)
-        if not latest_trade_date or not exchange_latest_date:
+        if not latest_trade_date:
             continue
-        if latest_trade_date < exchange_latest_date:
-            pending_stocks.append((stock, latest_trade_date, exchange_latest_date))
+        if latest_trade_date < target_end_date:
+            pending_stocks.append((stock, latest_trade_date, target_end_date))
 
     if not pending_stocks:
         if log_result:
@@ -532,7 +508,7 @@ def batch_sync_stock_daily_history(user: User, *, task_id: str | None = None, lo
                 target=SYNC_ITEM_STOCK_DAILY_HISTORY,
                 status="success",
                 level="info",
-                message=f"批量自动补全完成，共扫描 {len(stocks_with_latest)} 只股票，均已追平数据库中的交易所最新日期，无需发起远程请求。",
+                message=f"批量自动补全完成，共扫描 {len(stocks_with_latest)} 只股票，均已追平北京时间今日，无需发起远程请求。",
                 records_affected=0,
                 started_at=datetime.now(timezone.utc),
                 finished_at=datetime.now(timezone.utc),
@@ -582,7 +558,7 @@ def batch_sync_stock_daily_history(user: User, *, task_id: str | None = None, lo
 
     message = (
         f"批量自动补全完成，共扫描 {total} 只股票，发起补全 {len(pending_stocks)} 只，成功 {success_count}，"
-        f"失败 {failed_count}，其中 {skipped_count} 只股票已追平数据库最新日期，"
+        f"失败 {failed_count}，其中 {skipped_count} 只股票已追平北京时间今日，"
         f"新增或更新 {total_records} 条日线记录。"
     )
     if failed_examples:
@@ -653,24 +629,13 @@ def batch_sync_index_daily_history(user: User, *, task_id: str | None = None, lo
     if not indexes_with_latest:
         raise DataSyncError("当前没有已同步过历史日线的指数，无法执行批量补全。")
 
-    country_latest_dates: dict[str, date] = {}
-    for index_asset, _latest_trade_date in indexes_with_latest:
-        cached_latest_date = country_latest_dates.get(index_asset.country_code)
-        if cached_latest_date is None:
-            cached_latest_date = (
-                db.session.query(func.max(IndexDailyBar.trade_date))
-                .filter(IndexDailyBar.country_code == index_asset.country_code)
-                .scalar()
-            )
-            if cached_latest_date is not None:
-                country_latest_dates[index_asset.country_code] = cached_latest_date
+    target_end_date = beijing_today()
 
     pending_indexes = [
-        (index_asset, latest_trade_date, country_latest_dates.get(index_asset.country_code))
+        (index_asset, latest_trade_date, target_end_date)
         for index_asset, latest_trade_date in indexes_with_latest
         if latest_trade_date is not None
-        and country_latest_dates.get(index_asset.country_code) is not None
-        and latest_trade_date < country_latest_dates[index_asset.country_code]
+        and latest_trade_date < target_end_date
     ]
 
     if not pending_indexes:
@@ -684,7 +649,7 @@ def batch_sync_index_daily_history(user: User, *, task_id: str | None = None, lo
                 target=SYNC_ITEM_INDEX_DAILY_HISTORY,
                 status="success",
                 level="info",
-                message=f"批量自动补全完成，共扫描 {len(indexes_with_latest)} 个指数，均已追平数据库中的国家最新日期，无需发起远程请求。",
+                message=f"批量自动补全完成，共扫描 {len(indexes_with_latest)} 个指数，均已追平北京时间今日，无需发起远程请求。",
                 records_affected=0,
                 started_at=datetime.now(timezone.utc),
                 finished_at=datetime.now(timezone.utc),
@@ -732,7 +697,7 @@ def batch_sync_index_daily_history(user: User, *, task_id: str | None = None, lo
     duration_ms = int((perf_counter() - started_perf) * 1000)
     message = (
         f"批量自动补全完成，共扫描 {total} 个指数，发起补全 {len(pending_indexes)} 个，成功 {success_count}，"
-        f"失败 {failed_count}，其中 {skipped_count} 个指数已追平数据库最新日期，新增或更新 {total_records} 条日线记录。"
+        f"失败 {failed_count}，其中 {skipped_count} 个指数已追平北京时间今日，新增或更新 {total_records} 条日线记录。"
     )
     if failed_examples:
         message = f"{message} 失败示例：{'；'.join(failed_examples)}"
@@ -990,10 +955,12 @@ def sync_from_canghai(
     }
 
 
-def list_recent_event_logs(*, offset: int = 0, limit: int = 20) -> dict:
+def list_recent_event_logs(*, offset: int = 0, limit: int = 20, category: str | None = None) -> dict:
+    query = EventLog.query.filter(EventLog.show_in_ui.is_(True))
+    if category:
+        query = query.filter(EventLog.event_type.in_(event_types_for_category(category)))
     rows = (
-        EventLog.query.filter(EventLog.show_in_ui.is_(True))
-        .order_by(EventLog.created_at.desc(), EventLog.id.desc())
+        query.order_by(EventLog.created_at.desc(), EventLog.id.desc())
         .offset(max(offset, 0))
         .limit(max(limit, 1) + 1)
         .all()
@@ -1001,7 +968,7 @@ def list_recent_event_logs(*, offset: int = 0, limit: int = 20) -> dict:
     has_more = len(rows) > limit
     items = rows[:limit]
     return {
-        "items": [row.to_dict() for row in items],
+        "items": [event_log_to_dict(row) for row in items],
         "hasMore": has_more,
         "nextOffset": offset + len(items),
     }

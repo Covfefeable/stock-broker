@@ -5,6 +5,7 @@ from flask import Blueprint, g, request
 
 from app.extensions import celery_app
 from app.routes.auth import auth_required
+from app.services.event_log_meta import EVENT_CATEGORY_SYNC
 from app.services.data_center_service import (
     DATE_MODE_AUTO_FILL,
     SYNC_ITEM_COUNTRY_LIST,
@@ -45,7 +46,7 @@ def overview():
 def event_logs():
     offset = max(int(str(request.args.get("offset") or "0")), 0)
     limit = min(max(int(str(request.args.get("limit") or "20")), 1), 100)
-    return list_recent_event_logs(offset=offset, limit=limit)
+    return list_recent_event_logs(offset=offset, limit=limit, category=EVENT_CATEGORY_SYNC)
 
 
 @data_center_bp.get("/data-center/source-status")

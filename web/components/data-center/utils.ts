@@ -13,51 +13,17 @@ export function mapEventLogRow(item: EventLogItem): TimelineLogRow {
   return {
     key: String(item.id),
     time: formatDisplayTime(item.time),
-    task:
-      item.eventName === "sync_country_list"
-        ? "国家/地区同步"
-        : item.eventName === "sync_exchange_list"
-          ? "交易所同步"
-          : item.eventName === "sync_stock_list"
-            ? "股票清单同步"
-              : item.eventName === "sync_index_list"
-                ? "指数清单同步"
-                : item.eventName === "sync_trading_calendar"
-                  ? "交易日历同步"
-                : item.eventName === "sync_index_daily_history"
-                  ? "指数历史日线同步"
-                : item.eventName === "sync_stock_daily_history"
-                  ? "股票历史日线同步"
-                : item.eventName === "batch_sync_stock_daily_history"
-                  ? "批量同步股票日线"
-                  : item.eventName === "enqueue_sync_task"
-                    ? "同步任务已提交"
-                    : item.eventName === "enqueue_batch_sync_stock_daily_history"
-                      ? "批量任务已提交"
-                      : item.eventName,
-    dataset:
-      item.target === "country_list"
-        ? "国家/地区清单"
-        : item.target === "exchange_list"
-          ? "交易所清单"
-          : item.target === "stock_list"
-            ? "股票清单"
-            : item.target === "index_list"
-              ? "指数清单"
-              : item.target === "trading_calendar"
-                ? "交易日历"
-              : item.target === "index_daily_history"
-                ? "指数历史日线"
-              : item.target === "stock_daily_history"
-                ? "股票历史日线"
-                : item.target || "-",
+    task: item.eventNameLabel || item.eventName,
+    dataset: item.targetLabel || item.target || "-",
     cost: item.durationMs ? `${item.durationMs} ms` : "-",
     status:
       item.status === "success"
         ? "成功"
         : item.status === "running"
           ? "运行中"
-          : item.status === "partial_success" || item.status === "queued"
+          : item.status === "queued"
+            ? "排队中"
+          : item.status === "partial_success"
             ? "部分成功"
             : "失败",
     message: normalizeDisplayText(item.message),

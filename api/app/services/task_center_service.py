@@ -5,6 +5,7 @@ from collections import OrderedDict, defaultdict
 from app import extensions
 from app.models.agent_task import AgentTask
 from app.models.event_log import EventLog
+from app.services.event_log_meta import event_name_label, sync_item_label
 
 TASK_CENTER_CHANNEL = "task_center.events"
 
@@ -108,25 +109,9 @@ def task_name_from_log(log: EventLog) -> str:
     if "agent" in event_type:
         return log.source or "AI Agent 任务"
 
-    if event_name == "enqueue_batch_sync_stock_daily_history":
-        return "批量同步股票日线"
-    if event_name == "batch_sync_stock_daily_history":
-        return "批量同步股票日线"
-    if event_name in {"enqueue_sync_task", "sync_country_list"} or target == "country_list":
-        return "国家/地区清单同步"
-    if event_name == "sync_exchange_list" or target == "exchange_list":
-        return "交易所清单同步"
-    if event_name == "sync_stock_list" or target == "stock_list":
-        return "股票清单同步"
-    if event_name == "sync_index_list" or target == "index_list":
-        return "指数清单同步"
-    if event_name == "sync_trading_calendar" or target == "trading_calendar":
-        return "交易日历同步"
-    if event_name == "sync_index_daily_history" or target == "index_daily_history":
-        return "指数历史日线同步"
-    if event_name == "sync_stock_daily_history" or target == "stock_daily_history":
-        return "股票历史日线同步"
-    return event_name or "任务"
+    if target and (event_name == "enqueue_sync_task" or event_name.startswith("sync_")):
+        return f"{sync_item_label(target)}同步"
+    return event_name_label(event_name) if event_name else "任务"
 
 
 def task_type_from_log(log: EventLog) -> str:

@@ -27,8 +27,13 @@ export type PickerDateValue = {
 export type EventLogItem = {
   id: number;
   time: string | null;
+  eventType?: string;
+  eventCategory?: string;
   eventName: string;
+  eventTypeLabel?: string;
+  eventNameLabel?: string;
   target: string | null;
+  targetLabel?: string | null;
   status: string;
   message: string;
   durationMs: number | null;
@@ -81,7 +86,7 @@ export type TimelineLogRow = {
   task: string;
   dataset: string;
   cost: string;
-  status: "成功" | "失败" | "运行中" | "部分成功";
+  status: "成功" | "失败" | "运行中" | "排队中" | "部分成功";
   message: string;
 };
 

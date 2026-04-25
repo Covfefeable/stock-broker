@@ -4,6 +4,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from app.extensions import celery_app, db
 from app.models.event_log import EventLog
 from app.models.user import User
+from app.services.event_log_meta import sync_event_name, sync_item_label
 from app.services.data_center_service import (
     DataSyncError,
     SYNC_ITEM_COUNTRY_LIST,
@@ -140,7 +141,14 @@ def batch_sync_stock_and_index_daily_history_task(*, user_id: int) -> dict:
     try:
         return batch_sync_stock_and_index_daily_history(user, task_id=task_id)
     except DataSyncError as exc:
-        _log_task_failed(user, task_id, SYNC_ITEM_STOCK_DAILY_HISTORY, str(exc), batch=True)
+        _log_task_failed(
+            user,
+            task_id,
+            SYNC_ITEM_STOCK_DAILY_HISTORY,
+            str(exc),
+            batch=True,
+            batch_event_name="batch_sync_stock_and_index_daily_history",
+        )
         raise
     except SoftTimeLimitExceeded as exc:
         log_event(
@@ -167,66 +175,30 @@ def _log_task_running(
     *,
     batch: bool = False,
 ) -> None:
-    event_name_map = {
-        SYNC_ITEM_COUNTRY_LIST: "sync_country_list",
-        SYNC_ITEM_EXCHANGE_LIST: "sync_exchange_list",
-        SYNC_ITEM_STOCK_LIST: "sync_stock_list",
-        SYNC_ITEM_INDEX_LIST: "sync_index_list",
-        SYNC_ITEM_TRADING_CALENDAR: "sync_trading_calendar",
-        SYNC_ITEM_STOCK_DAILY_HISTORY: "sync_stock_daily_history",
-        SYNC_ITEM_INDEX_DAILY_HISTORY: "sync_index_daily_history",
-    }
-    label_map = {
-        SYNC_ITEM_COUNTRY_LIST: "国家/地区清单",
-        SYNC_ITEM_EXCHANGE_LIST: "交易所清单",
-        SYNC_ITEM_STOCK_LIST: "股票清单",
-        SYNC_ITEM_INDEX_LIST: "指数清单",
-        SYNC_ITEM_TRADING_CALENDAR: "交易日历",
-        SYNC_ITEM_STOCK_DAILY_HISTORY: "股票历史日线",
-        SYNC_ITEM_INDEX_DAILY_HISTORY: "指数历史日线",
-    }
     log_event(
         user=user,
         task_id=task_id,
         event_type="data_sync_batch" if batch else "data_sync",
-        event_name="batch_sync_stock_daily_history" if batch else event_name_map.get(sync_item, sync_item),
+        event_name="batch_sync_stock_daily_history" if batch else sync_event_name(sync_item),
         source="worker",
         target=sync_item,
         status="running",
         level="info",
-        message=f"{label_map.get(sync_item, sync_item)}任务开始执行。",
+        message=f"{sync_item_label(sync_item)}任务开始执行。",
     )
 
 
 def _log_task_timeout(user: User, task_id: str | None, sync_item: str) -> None:
-    label_map = {
-        SYNC_ITEM_COUNTRY_LIST: "国家/地区清单",
-        SYNC_ITEM_EXCHANGE_LIST: "交易所清单",
-        SYNC_ITEM_STOCK_LIST: "股票清单",
-        SYNC_ITEM_INDEX_LIST: "指数清单",
-        SYNC_ITEM_TRADING_CALENDAR: "交易日历",
-        SYNC_ITEM_STOCK_DAILY_HISTORY: "股票历史日线",
-        SYNC_ITEM_INDEX_DAILY_HISTORY: "指数历史日线",
-    }
-    event_name_map = {
-        SYNC_ITEM_COUNTRY_LIST: "sync_country_list",
-        SYNC_ITEM_EXCHANGE_LIST: "sync_exchange_list",
-        SYNC_ITEM_STOCK_LIST: "sync_stock_list",
-        SYNC_ITEM_INDEX_LIST: "sync_index_list",
-        SYNC_ITEM_TRADING_CALENDAR: "sync_trading_calendar",
-        SYNC_ITEM_STOCK_DAILY_HISTORY: "sync_stock_daily_history",
-        SYNC_ITEM_INDEX_DAILY_HISTORY: "sync_index_daily_history",
-    }
     log_event(
         user=user,
         task_id=task_id,
         event_type="data_sync",
-        event_name=event_name_map.get(sync_item, sync_item),
+        event_name=sync_event_name(sync_item),
         source="worker",
         target=sync_item,
         status="failed",
         level="error",
-        message=f"{label_map.get(sync_item, sync_item)}任务执行超时。",
+        message=f"{sync_item_label(sync_item)}任务执行超时。",
     )
 
 
@@ -237,6 +209,7 @@ def _log_task_failed(
     message: str,
     *,
     batch: bool = False,
+    batch_event_name: str = "batch_sync_stock_daily_history",
 ) -> None:
     if task_id:
         existing_failure = (
@@ -247,20 +220,11 @@ def _log_task_failed(
         if existing_failure:
             return
 
-    event_name_map = {
-        SYNC_ITEM_COUNTRY_LIST: "sync_country_list",
-        SYNC_ITEM_EXCHANGE_LIST: "sync_exchange_list",
-        SYNC_ITEM_STOCK_LIST: "sync_stock_list",
-        SYNC_ITEM_INDEX_LIST: "sync_index_list",
-        SYNC_ITEM_TRADING_CALENDAR: "sync_trading_calendar",
-        SYNC_ITEM_STOCK_DAILY_HISTORY: "sync_stock_daily_history",
-        SYNC_ITEM_INDEX_DAILY_HISTORY: "sync_index_daily_history",
-    }
     log_event(
         user=user,
         task_id=task_id,
         event_type="data_sync_batch" if batch else "data_sync",
-        event_name="batch_sync_stock_daily_history" if batch else event_name_map.get(sync_item, sync_item),
+        event_name=batch_event_name if batch else sync_event_name(sync_item),
         source="worker",
         target=sync_item,
         status="failed",
