@@ -23,6 +23,8 @@ class AgentTask(db.Model):
     )
     note = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(32), nullable=False, default="queued", index=True)
+    stop_requested = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    stop_requested_at = db.Column(db.DateTime(timezone=True), nullable=True)
     max_iterations = db.Column(db.Integer, nullable=False, default=10)
     current_iteration = db.Column(db.Integer, nullable=False, default=0)
     target_annual_return = db.Column(db.Numeric(10, 2), nullable=False)
@@ -77,6 +79,8 @@ class AgentTask(db.Model):
             "aiModelConfig": self.ai_model_config or {},
             "note": self.note,
             "status": self.status,
+            "stopRequested": self.stop_requested,
+            "stopRequestedAt": self.stop_requested_at.isoformat() if self.stop_requested_at else None,
             "maxIterations": self.max_iterations,
             "currentIteration": self.current_iteration,
             "targetAnnualReturn": _format_metric(self.target_annual_return),

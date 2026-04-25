@@ -5,6 +5,7 @@ import {
   ClockCircleFilled,
   ExclamationCircleFilled,
   RobotOutlined,
+  StopOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
 import { Drawer, Progress, Segmented, Space, Tag, Typography, notification } from "antd";
@@ -19,7 +20,7 @@ import { apiGet } from "@/lib/api";
 
 const { Text, Title } = Typography;
 
-type TaskStatus = "queued" | "running" | "success" | "failure";
+type TaskStatus = "queued" | "running" | "success" | "failure" | "stopped";
 type TaskType = "sync" | "agent";
 type TaskFilter = "active" | "finished" | "all";
 
@@ -89,6 +90,11 @@ const statusMeta: Record<TaskStatus, { label: string; color: string; icon: React
     color: "error",
     icon: <ExclamationCircleFilled />,
   },
+  stopped: {
+    label: "已停止",
+    color: "warning",
+    icon: <StopOutlined />,
+  },
 };
 
 export function TaskCenter() {
@@ -104,7 +110,7 @@ export function TaskCenter() {
     [tasks],
   );
   const finishedTasks = useMemo(
-    () => tasks.filter((task) => task.status === "success" || task.status === "failure"),
+    () => tasks.filter((task) => task.status === "success" || task.status === "failure" || task.status === "stopped"),
     [tasks],
   );
   const runningCount = activeTasks.length;

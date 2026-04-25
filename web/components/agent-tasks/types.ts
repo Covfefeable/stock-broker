@@ -1,4 +1,4 @@
-export type AgentTaskStatus = "queued" | "running" | "success" | "failure";
+export type AgentTaskStatus = "queued" | "running" | "success" | "failure" | "stopped";
 
 export type AgentTaskItem = {
   id: number;
@@ -16,6 +16,8 @@ export type AgentTaskItem = {
   };
   note?: string | null;
   status: AgentTaskStatus;
+  stopRequested?: boolean;
+  stopRequestedAt?: string | null;
   maxIterations: number;
   currentIteration: number;
   targetAnnualReturn: number | null;

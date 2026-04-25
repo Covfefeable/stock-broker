@@ -140,7 +140,7 @@ def task_type_from_log(log: EventLog) -> str:
 
 def task_status_from_log(log: EventLog) -> str:
     status = (log.status or "").lower()
-    if status in {"queued", "running", "success", "failure"}:
+    if status in {"queued", "running", "success", "failure", "stopped"}:
         return status
     if status == "failed":
         return "failure"

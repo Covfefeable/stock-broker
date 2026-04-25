@@ -34,6 +34,8 @@ EVENT_NAME_META = {
     "agent_task_enqueued": {"label": "Agent 任务已入队", "category": EVENT_CATEGORY_AGENT},
     "agent_task_running": {"label": "Agent 任务开始执行", "category": EVENT_CATEGORY_AGENT},
     "agent_iteration": {"label": "Agent 迭代完成", "category": EVENT_CATEGORY_AGENT},
+    "agent_task_stop_requested": {"label": "Agent 任务停止中", "category": EVENT_CATEGORY_AGENT},
+    "agent_task_stopped": {"label": "Agent 任务已停止", "category": EVENT_CATEGORY_AGENT},
     "agent_task_finished": {"label": "Agent 任务完成", "category": EVENT_CATEGORY_AGENT},
     "agent_task_failed": {"label": "Agent 任务执行失败", "category": EVENT_CATEGORY_AGENT},
     **{

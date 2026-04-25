@@ -33,6 +33,7 @@ const statusMeta: Record<AgentTaskStatus, { label: string; color: string }> = {
   running: { label: "运行中", color: "processing" },
   success: { label: "已完成", color: "success" },
   failure: { label: "失败", color: "error" },
+  stopped: { label: "已停止", color: "warning" },
 };
 
 export default function AgentTasksPage() {
@@ -47,6 +48,7 @@ export default function AgentTasksPage() {
   const [countryCode, setCountryCode] = useState<string | undefined>();
   const [status, setStatus] = useState<AgentTaskStatus | undefined>();
   const [rerunningId, setRerunningId] = useState<number | null>(null);
+  const [stoppingId, setStoppingId] = useState<number | null>(null);
   const [pagination, setPagination] = useState<TablePaginationConfig>({
     current: 1,
     pageSize: 10,
@@ -137,6 +139,20 @@ export default function AgentTasksPage() {
     }
   }, [loadTasks, messageApi, queryState]);
 
+  const handleStop = useCallback(async (taskId: number) => {
+    setStoppingId(taskId);
+    try {
+      const token = getAccessToken();
+      await apiPost(`/agent-tasks/${taskId}/stop`, {}, token);
+      messageApi.success("已发送停止信号，任务会在当前轮结束后停止。");
+      await loadTasks(queryState);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "停止 Agent 任务失败。");
+    } finally {
+      setStoppingId(null);
+    }
+  }, [loadTasks, messageApi, queryState]);
+
   const columns = useMemo<ColumnsType<AgentTaskItem>>(
     () => [
       {
@@ -200,11 +216,23 @@ export default function AgentTasksPage() {
       {
         title: "操作",
         key: "actions",
-        width: 300,
+        width: 360,
         render: (_, record) => (
           <Space size={12} className="table-action-links">
             <Link href={`/agent-tasks/${record.id}`}>查看</Link>
             <Link href={`/agent-tasks/new?copyId=${record.id}`}>复制</Link>
+            {record.status === "queued" || record.status === "running" ? (
+              <Popconfirm
+                title="停止后不会继续新的迭代，当前轮结束后任务会标记为已停止。确认停止？"
+                okText="停止"
+                cancelText="取消"
+                onConfirm={() => void handleStop(record.id)}
+              >
+                <Button type="link" danger disabled={stoppingId === record.id}>
+                  {stoppingId === record.id ? "停止中" : "停止"}
+                </Button>
+              </Popconfirm>
+            ) : null}
             <Popconfirm
               title="重新运行会创建一条新任务，原任务数据不会被覆盖。确认重新运行？"
               okText="重新运行"
@@ -229,7 +257,7 @@ export default function AgentTasksPage() {
         ),
       },
     ],
-    [handleDelete, handleRerun, rerunningId],
+    [handleDelete, handleRerun, handleStop, rerunningId, stoppingId],
   );
 
   return (

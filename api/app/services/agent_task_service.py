@@ -366,6 +366,48 @@ def rerun_agent_task(user: User, task_id: int) -> AgentTask:
     )
 
 
+def request_stop_agent_task(user: User, task_id: int) -> AgentTask:
+    task = get_agent_task(user, task_id)
+    if task.status in {"success", "failure", "stopped"}:
+        raise AgentTaskError("当前 Agent 任务已结束，无法停止。")
+
+    now = datetime.now(timezone.utc)
+    task.stop_requested = True
+    task.stop_requested_at = now
+    task.updated_at = now
+
+    if task.status == "queued":
+        task.status = "stopped"
+        task.finished_at = now
+        db.session.commit()
+        log_event(
+            user=task.user,
+            task_id=task.celery_task_id,
+            event_type="agent",
+            event_name="agent_task_stopped",
+            source=task.name,
+            target=task.asset_name,
+            status="stopped",
+            level="warning",
+            message=f"{task.name} 已在开始前停止。",
+        )
+        return task
+
+    db.session.commit()
+    log_event(
+        user=task.user,
+        task_id=task.celery_task_id,
+        event_type="agent",
+        event_name="agent_task_stop_requested",
+        source=task.name,
+        target=task.asset_name,
+        status="running",
+        level="warning",
+        message=f"{task.name} 已收到停止信号，将在当前轮结束后停止。",
+    )
+    return task
+
+
 def get_agent_task_asset_options(country_code: str, asset_type: str) -> dict:
     try:
         return list_strategy_asset_options(country_code, asset_type)
@@ -374,6 +416,10 @@ def get_agent_task_asset_options(country_code: str, asset_type: str) -> dict:
 
 
 def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict:
+    db.session.refresh(task)
+    if task.stop_requested:
+        return mark_agent_task_stopped(task, task_id=task_id)
+
     task.status = "running"
     task.celery_task_id = task_id
     task.started_at = datetime.now(timezone.utc)
@@ -547,6 +593,10 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             records_affected=iteration,
         )
 
+        db.session.refresh(task)
+        if task.stop_requested:
+            return mark_agent_task_stopped(task, task_id=task_id)
+
     task.status = "success"
     task.finished_at = datetime.now(timezone.utc)
     task.updated_at = datetime.now(timezone.utc)
@@ -566,6 +616,33 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
 
     return {
         "taskId": task.id,
+        "iterations": task.current_iteration,
+        "bestAnnualReturn": float(task.best_annual_return) if task.best_annual_return is not None else None,
+        "bestSharpe": float(task.best_sharpe) if task.best_sharpe is not None else None,
+    }
+
+
+def mark_agent_task_stopped(task: AgentTask, *, task_id: str | None = None) -> dict:
+    task.status = "stopped"
+    task.finished_at = datetime.now(timezone.utc)
+    task.updated_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    log_event(
+        user=task.user,
+        task_id=task_id or task.celery_task_id,
+        event_type="agent",
+        event_name="agent_task_stopped",
+        source=task.name,
+        target=task.asset_name,
+        status="stopped",
+        level="warning",
+        message=f"{task.name} 已停止，共执行 {task.current_iteration} 轮迭代。",
+    )
+
+    return {
+        "taskId": task.id,
+        "status": task.status,
         "iterations": task.current_iteration,
         "bestAnnualReturn": float(task.best_annual_return) if task.best_annual_return is not None else None,
         "bestSharpe": float(task.best_sharpe) if task.best_sharpe is not None else None,

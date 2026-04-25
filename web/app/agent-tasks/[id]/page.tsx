@@ -38,6 +38,7 @@ const statusMeta = {
   running: { label: "运行中", color: "processing" },
   success: { label: "已完成", color: "success" },
   failure: { label: "失败", color: "error" },
+  stopped: { label: "已停止", color: "warning" },
 } as const;
 
 function formatPercent(value: number | null | undefined) {

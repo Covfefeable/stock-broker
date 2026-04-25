@@ -10,6 +10,7 @@ from app.services.agent_task_service import (
     preview_agent_iteration,
     list_available_ai_models,
     list_agent_tasks,
+    request_stop_agent_task,
     rerun_agent_task,
 )
 
@@ -72,6 +73,16 @@ def rerun_agent_task_route(task_id: int):
     except AgentTaskError as exc:
         return {"message": str(exc)}, 400
     return {"message": "Agent 任务已重新运行，原任务数据已保留。", "task": task.to_dict()}, 201
+
+
+@agent_task_bp.post("/agent-tasks/<int:task_id>/stop")
+@auth_required
+def stop_agent_task_route(task_id: int):
+    try:
+        task = request_stop_agent_task(g.current_user, task_id)
+    except AgentTaskError as exc:
+        return {"message": str(exc)}, 400
+    return {"message": "Agent 任务停止信号已发送。", "task": task.to_dict()}
 
 
 @agent_task_bp.get("/agent-tasks/<int:task_id>/iterations/<int:iteration_id>/preview")

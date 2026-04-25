@@ -149,9 +149,10 @@ def check_canghai_data_source_status(*, task_id: str | None = None) -> dict:
         beijing_today = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Shanghai")).date()
         check_date = beijing_today - timedelta(days=1)
         request_url = build_canghai_url(
-            canghai_trading_calendar_url("XNAS"),
+            canghai_stock_daily_url("XNAS"),
             token,
             extra_params={
+                "ticker": "TSLA",
                 "start_date": check_date.isoformat(),
                 "end_date": check_date.isoformat(),
             },
