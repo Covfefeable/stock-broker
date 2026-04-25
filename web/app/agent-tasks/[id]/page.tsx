@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowLeftOutlined, QuestionCircleOutlined, SaveOutlined } from "@ant-design/icons";
-import { Button, Card, Modal, Progress, Space, Table, Tag, Tooltip, Typography, message } from "antd";
+import { ArrowLeftOutlined, CheckOutlined, CloseOutlined, EditOutlined, QuestionCircleOutlined, SaveOutlined } from "@ant-design/icons";
+import { Button, Card, Input, Modal, Progress, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -9,10 +9,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import type { AgentIterationItem, AgentTaskDetailResponse, AgentTaskItem } from "@/components/agent-tasks/types";
+import { RuleReadonlyPreview } from "@/components/strategy-builder/rule-engine";
 import { StrategyPreviewChart } from "@/components/strategy-builder/strategy-preview-chart";
-import type { StrategyPreviewResult } from "@/components/strategy-builder/types";
+import type { StrategyDslConfig, StrategyPreviewResult } from "@/components/strategy-builder/types";
 import { getAccessToken } from "@/lib/auth";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, apiPut } from "@/lib/api";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -62,6 +63,13 @@ function buildTaskCenterWsUrl(token: string): string {
   return `${protocol}://localhost:8000/ws/tasks?token=${encodeURIComponent(token)}`;
 }
 
+function asStrategyDslConfig(value: Record<string, unknown> | null | undefined): StrategyDslConfig | null {
+  if (!value || typeof value !== "object" || !("entry" in value) || !("exit" in value)) {
+    return null;
+  }
+  return value as unknown as StrategyDslConfig;
+}
+
 export default function AgentTaskDetailPage() {
   const params = useParams<{ id: string }>();
   const [messageApi, contextHolder] = message.useMessage();
@@ -77,6 +85,9 @@ export default function AgentTaskDetailPage() {
   const [savingBestAnnualStrategy, setSavingBestAnnualStrategy] = useState(false);
   const [savingBestCompositeStrategy, setSavingBestCompositeStrategy] = useState(false);
   const [savingIterationStrategyId, setSavingIterationStrategyId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [savingName, setSavingName] = useState(false);
   const refreshTimerRef = useRef<number | null>(null);
 
   const loadDetail = useCallback(async (options?: { silent?: boolean }) => {
@@ -87,6 +98,7 @@ export default function AgentTaskDetailPage() {
       const token = getAccessToken();
       const response = await apiGet<AgentTaskDetailResponse>(`/agent-tasks/${params.id}`, token);
       setTask(response.task);
+      setDraftName(response.task.name);
       setIterations(response.iterations);
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : "加载 Agent 任务详情失败。");
@@ -164,6 +176,27 @@ export default function AgentTaskDetailPage() {
       socket?.close();
     };
   }, [loadDetail, params.id]);
+
+  const handleSaveName = useCallback(async () => {
+    const normalizedName = draftName.trim();
+    if (!normalizedName) {
+      messageApi.warning("请输入任务名称。");
+      return;
+    }
+    try {
+      setSavingName(true);
+      const token = getAccessToken();
+      const response = await apiPut<{ task: AgentTaskItem }>(`/agent-tasks/${params.id}`, { name: normalizedName }, token);
+      setTask(response.task);
+      setDraftName(response.task.name);
+      setEditingName(false);
+      messageApi.success("任务名称已更新。");
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "更新任务名称失败。");
+    } finally {
+      setSavingName(false);
+    }
+  }, [draftName, messageApi, params.id]);
 
   const openIterationPreview = useCallback(
     async (iteration: AgentIterationItem) => {
@@ -344,6 +377,9 @@ export default function AgentTaskDetailPage() {
   const bestMaxDrawdown = task?.bestMaxDrawdown ?? bestCompositeIteration?.maxDrawdown ?? null;
   const bestSharpe = task?.bestSharpe ?? bestCompositeIteration?.sharpe ?? null;
   const bestCompositeScore = task?.bestScore ?? bestCompositeIteration?.score ?? null;
+  const bestCompositeStrategyConfig = asStrategyDslConfig(
+    (bestCompositeIteration?.strategyConfig as Record<string, unknown> | undefined) ?? task?.bestStrategyConfig ?? null,
+  );
   const iterationPercent = task ? Math.min(100, Math.round((task.currentIteration / Math.max(task.maxIterations, 1)) * 100)) : 0;
 
   const handleSaveBestAnnualStrategy = useCallback(async () => {
@@ -475,9 +511,48 @@ export default function AgentTaskDetailPage() {
               <div className="agent-task-detail-meta">
                 <div>
                   <Text type="secondary">任务名称</Text>
-                  <Tooltip title={task.name}>
-                    <Title level={4} className="agent-task-name-ellipsis">{task.name}</Title>
-                  </Tooltip>
+                  {editingName ? (
+                    <div className="agent-task-name-editor">
+                      <Input
+                        value={draftName}
+                        autoFocus
+                        onChange={(event) => setDraftName(event.target.value)}
+                        onPressEnter={() => void handleSaveName()}
+                      />
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<CheckOutlined />}
+                        loading={savingName}
+                        onClick={() => void handleSaveName()}
+                      />
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<CloseOutlined />}
+                        disabled={savingName}
+                        onClick={() => {
+                          setDraftName(task.name);
+                          setEditingName(false);
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="agent-task-name-view">
+                      <Tooltip title={task.name}>
+                        <Title level={4} className="agent-task-name-ellipsis">{task.name}</Title>
+                      </Tooltip>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => {
+                          setDraftName(task.name);
+                          setEditingName(true);
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Text type="secondary">状态</Text>
@@ -575,10 +650,8 @@ export default function AgentTaskDetailPage() {
                         </Paragraph>
                       </div>
                       <div className="agent-iteration-thought-block">
-                        <Text type="secondary">记忆</Text>
-                        <Paragraph className="agent-task-detail-paragraph">
-                          {iteration.memory || "本轮未保存记忆，当前展示的是基于策略结果生成的简要记忆。"}
-                        </Paragraph>
+                        <Text type="secondary">规则预览</Text>
+                        <RuleReadonlyPreview value={asStrategyDslConfig(iteration.strategyConfig)} compact />
                       </div>
                     </div>
                   ))}
@@ -593,11 +666,16 @@ export default function AgentTaskDetailPage() {
               bordered
               title="当前最佳综合表现"
             >
-              {task.bestSummary ? (
-                <Paragraph className="agent-task-detail-paragraph">{task.bestSummary}</Paragraph>
-              ) : (
-                <EmptyState title="暂无最佳策略总结" compact />
-              )}
+              <div className="agent-best-composite-content">
+                {task.bestSummary ? (
+                  <Paragraph className="agent-task-detail-paragraph">{task.bestSummary}</Paragraph>
+                ) : (
+                  <EmptyState title="暂无最佳策略总结" compact />
+                )}
+                <div className="agent-best-rule-scroll">
+                  <RuleReadonlyPreview value={bestCompositeStrategyConfig} />
+                </div>
+              </div>
             </Card>
           </div>
 
@@ -660,6 +738,10 @@ export default function AgentTaskDetailPage() {
             </div>
 
             <StrategyPreviewChart preview={previewResult} />
+
+            <Card className="strategy-rule-card" size="small" title="规则预览">
+              <RuleReadonlyPreview value={asStrategyDslConfig(previewIteration?.strategyConfig)} />
+            </Card>
 
             <div className="strategy-preview-range">
               <Text type="secondary">

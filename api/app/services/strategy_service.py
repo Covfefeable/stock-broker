@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import asc, desc, func, or_
 
 from app.extensions import db
+from app.models.country import Country
 from app.models.exchange import Exchange
 from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
@@ -216,6 +217,7 @@ def list_strategies(
     sort_field: str = "updatedAt",
     sort_order: str = "descend",
 ) -> dict:
+    _normalize_user_strategy_country_regions(user.id)
     query = Strategy.query.filter(Strategy.user_id == user.id)
 
     normalized_keyword = keyword.strip()
@@ -230,7 +232,7 @@ def list_strategies(
         )
 
     if country_region:
-        query = query.filter(Strategy.country_region == country_region)
+        query = query.filter(Strategy.country_region == _normalize_country_region(country_region))
     if source:
         query = query.filter(Strategy.source == source)
     if status:
@@ -295,6 +297,10 @@ def get_strategy(user: User, strategy_id: int) -> Strategy:
     ).first()
     if not strategy:
         raise StrategyError("未找到对应的策略。")
+    normalized_country_region = _normalize_country_region(strategy.country_region)
+    if normalized_country_region != strategy.country_region:
+        strategy.country_region = normalized_country_region
+        db.session.commit()
     return strategy
 
 
@@ -334,7 +340,7 @@ def _apply_strategy_payload(strategy: Strategy, payload: dict, *, is_create: boo
     name = str(payload.get("name", "")).strip()
     strategy_type = str(payload.get("type", "")).strip()
     source = str(payload.get("source", "")).strip()
-    country_region = str(payload.get("countryRegion", "")).strip()
+    country_region = _normalize_country_region(str(payload.get("countryRegion", "")).strip())
     asset_type = str(payload.get("assetType", "")).strip()
     asset_identifier = str(payload.get("assetIdentifier", "")).strip()
     asset_name = str(payload.get("assetName", "")).strip()
@@ -371,6 +377,34 @@ def _apply_strategy_payload(strategy: Strategy, payload: dict, *, is_create: boo
     strategy.max_drawdown = max_drawdown
     if is_create and not strategy.status:
         strategy.status = "草稿"
+
+
+def _normalize_user_strategy_country_regions(user_id: int) -> None:
+    changed = False
+    for strategy in Strategy.query.filter(Strategy.user_id == user_id).all():
+        normalized = _normalize_country_region(strategy.country_region)
+        if normalized and normalized != strategy.country_region:
+            strategy.country_region = normalized
+            changed = True
+    if changed:
+        db.session.commit()
+
+
+def _normalize_country_region(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    code_candidate = text.split("-", 1)[0].strip().upper()
+    country = Country.query.filter(Country.country_code == code_candidate).first()
+    if country:
+        return country.country_code
+
+    country = Country.query.filter(Country.country_name == text).first()
+    if country:
+        return country.country_code
+
+    return code_candidate
 
 
 def preview_strategy(user: User, payload: dict) -> dict:

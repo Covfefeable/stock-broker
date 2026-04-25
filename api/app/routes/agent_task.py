@@ -12,6 +12,7 @@ from app.services.agent_task_service import (
     list_agent_tasks,
     request_stop_agent_task,
     rerun_agent_task,
+    update_agent_task_name,
 )
 
 agent_task_bp = Blueprint("agent_task", __name__)
@@ -53,6 +54,17 @@ def get_agent_task_route(task_id: int):
     except AgentTaskError as exc:
         return {"message": str(exc)}, 404
     return payload
+
+
+@agent_task_bp.put("/agent-tasks/<int:task_id>")
+@auth_required
+def put_agent_task_route(task_id: int):
+    payload = request.get_json(silent=True) or {}
+    try:
+        task = update_agent_task_name(g.current_user, task_id, payload.get("name", ""))
+    except AgentTaskError as exc:
+        return {"message": str(exc)}, 400
+    return {"message": "Agent 任务名称已更新。", "task": task.to_dict()}
 
 
 @agent_task_bp.delete("/agent-tasks/<int:task_id>")

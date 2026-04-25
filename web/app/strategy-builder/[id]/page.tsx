@@ -338,7 +338,7 @@ export default function StrategyDetailPage() {
           name: values.name,
           type: values.type,
           source: "人工创建",
-          countryRegion: selectedCountryLabel,
+          countryRegion: values.countryCode,
           assetType: values.assetType,
           assetIdentifier: values.assetIdentifier,
           assetName: selected?.name,

@@ -216,7 +216,8 @@ export default function AgentTasksPage() {
       {
         title: "操作",
         key: "actions",
-        width: 360,
+        width: 300,
+        fixed: "right",
         render: (_, record) => (
           <Space size={12} className="table-action-links">
             <Link href={`/agent-tasks/${record.id}`}>查看</Link>
@@ -341,7 +342,7 @@ export default function AgentTasksPage() {
                 pageSize: pageSize || current.pageSize,
               })),
           }}
-          scroll={{ x: 1160 }}
+          scroll={{ x: 1220 }}
         />
       </Card>
     </AppShell>

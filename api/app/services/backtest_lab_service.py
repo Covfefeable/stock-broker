@@ -245,11 +245,12 @@ def mark_strategy_evaluation_failed(evaluation: StrategyEvaluation, message: str
 
 def build_strategy_evaluation_report(strategy: Strategy, evaluation_id: int, evaluation_payload: dict | None = None) -> dict:
     rng = random.Random(f"strategy-evaluation:{strategy.id}:{evaluation_id}")
+    country_code = strategy_country_code(strategy)
     original_asset = {
         "assetType": strategy.asset_type,
         "assetIdentifier": strategy.asset_identifier,
         "assetName": strategy.asset_name,
-        "countryCode": strategy.country_region,
+        "countryCode": country_code,
     }
 
     cross_asset_targets = list((evaluation_payload or {}).get("selectedCrossAssetTargets") or [])
@@ -265,7 +266,7 @@ def build_strategy_evaluation_report(strategy: Strategy, evaluation_id: int, eva
                 "assetType": strategy.asset_type,
                 "assetIdentifier": strategy.asset_identifier,
                 "assetName": strategy.asset_name,
-                "countryCode": strategy.country_region,
+                "countryCode": country_code,
                 "rangeLabel": item["label"],
                 "startDate": item["startDate"],
                 "endDate": item["endDate"],
@@ -284,11 +285,26 @@ def build_strategy_evaluation_report(strategy: Strategy, evaluation_id: int, eva
         f"跨标的通过率 {generality['passRate']:.2f}%，跨时间通过率 {stability['passRate']:.2f}%，"
         f"交易健康度 {trade_health['score']:.2f}。综合判断：{conclusion}。"
     )
+    ai_advice = generate_evaluation_ai_advice(
+        strategy,
+        {
+            "score": round(score, 2),
+            "conclusion": conclusion,
+            "summary": summary,
+            "fullOriginal": full_original,
+            "generality": generality,
+            "stability": stability,
+            "tradeHealth": trade_health,
+            "crossAssetResults": cross_asset_results,
+            "timeRangeResults": time_results,
+        },
+    )
 
     return {
         "score": round(score, 2),
         "conclusion": conclusion,
         "summary": summary,
+        "aiAdvice": ai_advice,
         "originalAsset": original_asset,
         "fullOriginal": full_original,
         "generality": generality,
@@ -300,6 +316,81 @@ def build_strategy_evaluation_report(strategy: Strategy, evaluation_id: int, eva
     }
 
 
+def generate_evaluation_ai_advice(strategy: Strategy, report: dict) -> dict:
+    model_config = get_default_ai_model_config(strategy.user)
+    if not model_config:
+        return {
+            "status": "skipped",
+            "message": "当前没有可用 AI 模型，暂未生成 AI 建议。",
+        }
+
+    prompt_payload = {
+        "strategy": {
+            "name": strategy.name,
+            "type": strategy.type,
+            "assetType": strategy.asset_type,
+            "assetIdentifier": strategy.asset_identifier,
+            "assetName": strategy.asset_name,
+            "countryRegion": strategy.country_region,
+            "strategyConfig": strategy.strategy_config or {},
+        },
+        "evaluation": {
+            "score": report.get("score"),
+            "conclusion": report.get("conclusion"),
+            "summary": report.get("summary"),
+            "fullOriginal": report.get("fullOriginal"),
+            "generality": report.get("generality"),
+            "stability": report.get("stability"),
+            "tradeHealth": report.get("tradeHealth"),
+            "crossAssetResults": report.get("crossAssetResults"),
+            "timeRangeResults": report.get("timeRangeResults"),
+        },
+        "scoreMethod": "评估总分综合跨标的通过率、跨时间通过率、回撤风险与交易健康度；单样本综合分 = 年化收益 * 0.7 + Sharpe * 10 - 最大回撤 * 0.2。",
+    }
+    prompt = (
+        "你是量化策略评估顾问。请基于策略买入/卖出规则、跨标的评估、跨时间区间评估、交易健康度和评分信息，"
+        "给出面向研究人员的评估建议。必须返回合法 JSON，不要 markdown。字段："
+        "{\"ruleAnalysis\":\"买入卖出规则解析\",\"riskPoints\":[\"潜在风险点\"],\"recommendation\":\"综合建议\"}。\n"
+        f"评估材料：{json.dumps(prompt_payload, ensure_ascii=False)}"
+    )
+    request = Request(
+        f"{model_config['baseUrl'].rstrip('/')}/chat/completions",
+        data=json.dumps(
+            {
+                "model": model_config["model"],
+                "messages": [
+                    {"role": "system", "content": "你只能返回合法 JSON，不要输出 markdown。"},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.25,
+                "response_format": {"type": "json_object"},
+            }
+        ).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {model_config['apiKey']}",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=90) as response:
+            raw_payload = json.loads(response.read().decode("utf-8"))
+        content = raw_payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+        parsed = json.loads(content)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "status": "failed",
+            "message": f"AI 建议生成失败：{exc}",
+        }
+
+    return {
+        "status": "success",
+        "ruleAnalysis": str(parsed.get("ruleAnalysis") or "").strip(),
+        "riskPoints": [str(item).strip() for item in parsed.get("riskPoints") or [] if str(item).strip()],
+        "recommendation": str(parsed.get("recommendation") or "").strip(),
+    }
+
+
 def select_cross_asset_targets(strategy: Strategy, rng: random.Random) -> list[dict]:
     targets = list_cross_asset_candidates(strategy)
     rng.shuffle(targets)
@@ -307,6 +398,7 @@ def select_cross_asset_targets(strategy: Strategy, rng: random.Random) -> list[d
 
 
 def list_cross_asset_candidates(strategy: Strategy) -> list[dict]:
+    country_code = strategy_country_code(strategy)
     if strategy.asset_type == "stock":
         latest_dates = (
             db.session.query(
@@ -320,7 +412,7 @@ def list_cross_asset_candidates(strategy: Strategy) -> list[dict]:
         rows = (
             db.session.query(Stock, latest_dates.c.latest_date)
             .join(latest_dates, and_(Stock.exchange_code == latest_dates.c.exchange_code, Stock.ticker == latest_dates.c.ticker))
-            .filter(Stock.country_code == strategy.country_region)
+            .filter(Stock.country_code == country_code)
             .order_by(Stock.exchange_code.asc(), Stock.ticker.asc())
             .all()
         )
@@ -348,7 +440,7 @@ def list_cross_asset_candidates(strategy: Strategy) -> list[dict]:
         rows = (
             db.session.query(IndexAsset, latest_dates.c.latest_date)
             .join(latest_dates, and_(IndexAsset.country_code == latest_dates.c.country_code, IndexAsset.ticker == latest_dates.c.ticker))
-            .filter(IndexAsset.country_code == strategy.country_region)
+            .filter(IndexAsset.country_code == country_code)
             .order_by(IndexAsset.ticker.asc())
             .all()
         )
@@ -373,7 +465,7 @@ def list_evaluation_candidate_assets(user: User, strategy_id: int) -> dict:
     targets = list_cross_asset_candidates(strategy)
     return {
         "strategy": backtest_lab_strategy_to_dict(strategy, None),
-        "countryCode": strategy.country_region,
+        "countryCode": strategy_country_code(strategy),
         "assetType": strategy.asset_type,
         "items": [candidate_to_option(item) for item in targets],
     }
@@ -534,7 +626,7 @@ def select_similar_assets_with_ai(strategy: Strategy, candidates: list[dict], mo
 
 
 def select_time_ranges(strategy: Strategy, rng: random.Random) -> list[dict]:
-    bars = load_bars_for_range(strategy.asset_type or "", strategy.asset_identifier or "", strategy.country_region, strategy.strategy_config or {})
+    bars = load_bars_for_range(strategy.asset_type or "", strategy.asset_identifier or "", strategy_country_code(strategy), strategy.strategy_config or {})
     if not bars:
         return []
     start_year = bars[0]["date"].year
@@ -557,6 +649,10 @@ def select_time_ranges(strategy: Strategy, rng: random.Random) -> list[dict]:
                 }
             )
     return ranges
+
+
+def strategy_country_code(strategy: Strategy) -> str:
+    return str(strategy.country_region or "").split("-", 1)[0].strip().upper()
 
 
 def run_target_evaluation(strategy: Strategy, target: dict) -> dict:
@@ -598,6 +694,7 @@ def run_target_evaluation(strategy: Strategy, target: dict) -> dict:
             "winRate": preview.get("winRate"),
             "benchmarkWinRate": preview.get("benchmarkWinRate"),
             "volatility": preview.get("volatility"),
+            "detail": preview,
         }
     except Exception as exc:  # noqa: BLE001
         return failed_result(target, str(exc))
@@ -730,6 +827,7 @@ def backtest_lab_strategy_to_dict(strategy: Strategy, evaluation: StrategyEvalua
         "assetName": strategy.asset_name,
         "assetIdentifier": strategy.asset_identifier,
         "assetType": strategy.asset_type,
+        "strategyConfig": strategy.strategy_config or {},
         "updatedAt": strategy.updated_at.isoformat() if strategy.updated_at else None,
         "evaluationStatus": status,
         "evaluationStatusLabel": EVALUATION_STATUS_LABELS.get(status, status),

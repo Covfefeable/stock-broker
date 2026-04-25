@@ -479,6 +479,31 @@ export function RuleEngine({
   );
 }
 
+export function RuleReadonlyPreview({ value, compact = false }: { value?: StrategyDslConfig | null; compact?: boolean }) {
+  if (!value?.entry || !value?.exit) {
+    return <EmptyState title="暂无规则内容" compact />;
+  }
+
+  return (
+    <div className={compact ? "strategy-rule-readonly strategy-rule-readonly-compact" : "strategy-rule-readonly"}>
+      <RuleReadonlySection title="买入规则" group={value.entry} />
+      <RuleReadonlySection title="卖出规则" group={value.exit} />
+    </div>
+  );
+}
+
+function RuleReadonlySection({ title, group }: { title: string; group: RuleGroup }) {
+  return (
+    <div className="strategy-rule-readonly-section">
+      <div className="strategy-rule-readonly-title">
+        <span>{title}</span>
+        <Tag color={group.logic === "and" ? "blue" : "gold"}>{group.logic === "and" ? "满足全部条件" : "满足任一条件"}</Tag>
+      </div>
+      <div className="strategy-rule-readonly-expression">{summarizeGroup(group) || "暂无条件"}</div>
+    </div>
+  );
+}
+
 type GroupEditorProps = {
   value: RuleGroup;
   scope: RuleScope;

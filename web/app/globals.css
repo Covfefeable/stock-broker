@@ -1307,21 +1307,12 @@ select {
   cursor: grab;
   display: inline-flex;
   gap: 6px;
-  min-width: 32px;
+  min-width: 72px;
+  white-space: nowrap;
 }
 
 .settings-drag-handle:active {
   cursor: grabbing;
-}
-
-.settings-default-model {
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  color: var(--accent-color);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 3px 5px;
 }
 
 .settings-dragging-row {
@@ -1356,6 +1347,22 @@ select {
 .table-action-links {
   align-items: center;
   white-space: nowrap;
+}
+
+.agent-task-name-view,
+.agent-task-name-editor {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent-task-name-view .agent-task-name-ellipsis {
+  margin: 0;
+}
+
+.agent-task-name-editor .ant-input {
+  max-width: 320px;
 }
 
 .table-action-links .ant-btn-link {
@@ -1413,6 +1420,27 @@ select {
 
 .backtest-detail-summary {
   margin: 18px 0 0 !important;
+}
+
+.backtest-overview-ai-advice {
+  border-top: 1px solid rgba(110, 126, 183, 0.16);
+  margin-top: 16px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+  padding-top: 16px;
+}
+
+.backtest-score-panel + .empty-state {
+  margin-top: 28px;
+}
+
+.backtest-rule-snapshot {
+  border-top: 1px solid rgba(110, 126, 183, 0.16);
+  margin-top: 14px;
+  max-height: 280px;
+  overflow: auto;
+  padding-top: 14px;
 }
 
 .backtest-detail-metrics {
@@ -1475,6 +1503,29 @@ select {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.backtest-ai-advice {
+  display: grid;
+  gap: 18px;
+}
+
+.backtest-ai-advice .ant-typography {
+  color: rgba(226, 232, 240, 0.94);
+  line-height: 1.8;
+  margin-bottom: 0;
+}
+
+.backtest-ai-advice ul {
+  color: rgba(226, 232, 240, 0.94);
+  line-height: 1.8;
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.app-shell-light .backtest-ai-advice .ant-typography,
+.app-shell-light .backtest-ai-advice ul {
+  color: #111827;
 }
 
 @media (max-width: 1100px) {
@@ -2081,6 +2132,50 @@ select {
   gap: 8px;
 }
 
+.strategy-rule-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.strategy-rule-readonly-section {
+  border: 1px solid rgba(99, 102, 241, 0.16);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.26);
+  padding: 12px;
+  min-width: 0;
+}
+
+.strategy-rule-readonly-title {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.strategy-rule-readonly-title span {
+  color: rgba(226, 232, 240, 0.96);
+  font-weight: 700;
+}
+
+.strategy-rule-readonly-expression {
+  color: rgba(226, 232, 240, 0.9);
+  font-size: 13px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.strategy-rule-readonly-compact {
+  gap: 8px;
+}
+
+.strategy-rule-readonly-compact .strategy-rule-readonly-section {
+  padding: 10px;
+}
+
 .strategy-preview-card .ant-card-body {
   display: grid;
   gap: 16px;
@@ -2386,6 +2481,21 @@ select {
   margin-top: 10px;
 }
 
+.agent-best-composite-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+
+.agent-best-rule-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .strategy-dsl-code-block-compact {
   max-height: 220px;
   overflow: auto;
@@ -2445,6 +2555,7 @@ select {
 .app-shell-light .agent-iteration-thought,
 .app-shell-light .strategy-preview-metric-card,
 .app-shell-light .strategy-preview-next-action-block,
+.app-shell-light .strategy-rule-readonly-section,
 .app-shell-light .strategy-expression-function-arg {
   background: rgba(248, 250, 252, 0.86);
   border-color: rgba(148, 163, 184, 0.24);
@@ -2454,6 +2565,8 @@ select {
 .app-shell-light .agent-task-status-text,
 .app-shell-light .agent-task-detail-paragraph,
 .app-shell-light .agent-task-asset-name,
+.app-shell-light .strategy-rule-readonly-title span,
+.app-shell-light .strategy-rule-readonly-expression,
 .app-shell-light .strategy-preview-metric-values strong,
 .app-shell-light .strategy-preview-next-action-grid strong,
 .app-shell-light .strategy-preview-next-action-block strong {

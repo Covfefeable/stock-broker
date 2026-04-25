@@ -293,6 +293,7 @@ export default function StrategyBuilderPage() {
         title: "操作",
         key: "action",
         width: 220,
+        fixed: "right",
         render: (_value: unknown, record: StrategyRow) => (
           <Space size={4}>
             <Button size="small" type="link" href={`/strategy-builder/${record.id}`}>
@@ -395,7 +396,7 @@ export default function StrategyBuilderPage() {
           }}
           pagination={tablePagination}
           onChange={handleTableChange}
-          scroll={{ x: 1120 }}
+          scroll={{ x: 1280 }}
         />
       </Card>
     </AppShell>

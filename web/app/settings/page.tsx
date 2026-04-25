@@ -16,6 +16,7 @@ import {
   Space,
   Switch,
   Table,
+  Tag,
   Typography,
   message,
 } from "antd";
@@ -126,11 +127,11 @@ export default function SettingsPage() {
     () => [
       {
         title: "",
-        width: 46,
+        width: 86,
         render: (_, record, index) => (
           <span className="settings-drag-handle" title="拖拽排序">
             <HolderOutlined />
-            {index === 0 ? <span className="settings-default-model">默认</span> : null}
+            {index === 0 ? <Tag color="blue">默认</Tag> : null}
           </span>
         ),
       },
@@ -181,6 +182,7 @@ export default function SettingsPage() {
       {
         title: "操作",
         width: 90,
+        fixed: "right",
         render: (_, record) => (
           <Button
             type="link"

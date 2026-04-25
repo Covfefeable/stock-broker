@@ -16,7 +16,7 @@ export const issueColumns: ColumnsType<IssueRow> = [
     ),
   },
   { title: "状态", dataIndex: "status" },
-  { title: "操作", render: () => <Button type="link" size="small">查看</Button> },
+  { title: "操作", fixed: "right", width: 100, render: () => <Button type="link" size="small">查看</Button> },
 ];
 
 export const priceColumns: ColumnsType<PriceRow> = [

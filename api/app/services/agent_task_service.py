@@ -341,6 +341,17 @@ def delete_agent_task(user: User, task_id: int) -> None:
     db.session.commit()
 
 
+def update_agent_task_name(user: User, task_id: int, name: str) -> AgentTask:
+    task = get_agent_task(user, task_id)
+    normalized_name = str(name or "").strip()
+    if not normalized_name:
+        raise AgentTaskError("请输入任务名称。")
+    task.name = normalized_name
+    task.updated_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return task
+
+
 def rerun_agent_task(user: User, task_id: int) -> AgentTask:
     task = get_agent_task(user, task_id)
     return create_agent_task(
