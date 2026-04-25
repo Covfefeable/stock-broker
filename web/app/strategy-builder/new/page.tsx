@@ -54,7 +54,6 @@ export default function NewStrategyPage() {
   const [syncing, setSyncing] = useState(false);
   const [countryOptions, setCountryOptions] = useState<CountryOption[]>([]);
   const [assetOptions, setAssetOptions] = useState<AssetOption[]>([]);
-  const [selectedCountryLabel, setSelectedCountryLabel] = useState<string>();
   const [strategyDsl, setStrategyDsl] = useState<StrategyDslConfig>(() => createDefaultStrategyDslConfig());
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<StrategyPreviewResult | null>(null);
@@ -241,24 +240,19 @@ export default function NewStrategyPage() {
     }
   }, [assetType, countryCode, form, loadAssetOptions]);
 
-  const handleCountryChange = (value: string) => {
-    const match = countryOptions.find((item) => item.value === value);
-    setSelectedCountryLabel(match?.label);
-  };
-
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
       const selected = assetOptions.find((item) => item.value === values.assetIdentifier);
       setSaving(true);
       const token = getAccessToken();
-      await apiPost<{ message: string; strategy: { id: number } }>(
+      const response = await apiPost<{ message: string; strategy: { id: number }; evaluationError?: string | null }>(
         "/strategies",
         {
           name: values.name,
           type: values.type,
           source: "人工创建",
-          countryRegion: selectedCountryLabel,
+          countryRegion: values.countryCode,
           assetType: values.assetType,
           assetIdentifier: values.assetIdentifier,
           assetName: selected?.name,
@@ -268,7 +262,11 @@ export default function NewStrategyPage() {
         },
         token,
       );
-      messageApi.success("策略已保存为草稿。");
+      if (response.evaluationError) {
+        messageApi.warning(`策略已保存，但自动评估提交失败：${response.evaluationError}`);
+      } else {
+        messageApi.success(response.message || "策略已保存，已自动提交全面评估任务。");
+      }
       router.push("/strategy-builder");
     } catch (error) {
       if (error instanceof Error) {
@@ -353,7 +351,6 @@ export default function NewStrategyPage() {
                 options={countryOptions}
                 optionFilterProp="label"
                 placeholder="请选择国家/地区"
-                onChange={handleCountryChange}
               />
             </Form.Item>
 

@@ -1301,6 +1301,58 @@ select {
   margin-top: 14px;
 }
 
+.settings-drag-handle {
+  align-items: center;
+  color: var(--muted-text);
+  cursor: grab;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 32px;
+}
+
+.settings-drag-handle:active {
+  cursor: grabbing;
+}
+
+.settings-default-model {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--accent-color);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 3px 5px;
+}
+
+.settings-dragging-row {
+  opacity: 0.55;
+}
+
+.evaluation-target-panel {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 16px;
+  padding: 14px;
+}
+
+.evaluation-target-panel > div {
+  display: grid;
+  gap: 4px;
+}
+
+.evaluation-select-row {
+  display: flex;
+  margin-bottom: 10px;
+  width: 100%;
+}
+
+.evaluation-select-row .ant-select {
+  flex: 1;
+}
+
 .table-action-links {
   align-items: center;
   white-space: nowrap;
@@ -1311,7 +1363,130 @@ select {
   padding: 0;
 }
 
+.single-line-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.backtest-lab-asset {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.backtest-lab-asset span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backtest-detail-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  margin-bottom: 20px;
+}
+
+.backtest-score-panel {
+  align-items: center;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+}
+
+.backtest-score-panel > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backtest-score-panel strong {
+  color: var(--text);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.backtest-detail-summary {
+  margin: 18px 0 0 !important;
+}
+
+.backtest-detail-metrics {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 20px;
+}
+
+.backtest-detail-metrics .metric-card {
+  min-height: 118px;
+}
+
+.backtest-detail-metrics .metric-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backtest-detail-metrics .metric-card strong {
+  color: var(--text);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.backtest-detail-metrics .metric-card span:last-child {
+  color: var(--muted);
+}
+
+.backtest-detail-card {
+  margin-bottom: 20px;
+}
+
+.backtest-health-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.backtest-compared-cell {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.15;
+}
+
+.backtest-compared-cell > span {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.backtest-compared-cell > small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.backtest-warning-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 @media (max-width: 1100px) {
+  .backtest-detail-grid,
+  .backtest-detail-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .backtest-score-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .dashboard-heading {
     display: block;
   }

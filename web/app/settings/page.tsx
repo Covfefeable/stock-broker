@@ -3,6 +3,7 @@
 import {
   BellOutlined,
   DatabaseOutlined,
+  HolderOutlined,
   LockOutlined,
   RobotOutlined,
   SaveOutlined,
@@ -103,6 +104,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<SettingsState>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [draggingModelKey, setDraggingModelKey] = useState<string | null>(null);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -122,6 +124,16 @@ export default function SettingsPage() {
 
   const aiModelColumns = useMemo<ColumnsType<AiModelRow>>(
     () => [
+      {
+        title: "",
+        width: 46,
+        render: (_, record, index) => (
+          <span className="settings-drag-handle" title="拖拽排序">
+            <HolderOutlined />
+            {index === 0 ? <span className="settings-default-model">默认</span> : null}
+          </span>
+        ),
+      },
       {
         title: "名称",
         dataIndex: "name",
@@ -190,6 +202,24 @@ export default function SettingsPage() {
     ],
     [settings.ai.models.length],
   );
+
+  const moveAiModel = (fromKey: string, toKey: string) => {
+    if (fromKey === toKey) return;
+    setSettings((current) => {
+      const rows = [...current.ai.models];
+      const fromIndex = rows.findIndex((row) => row.key === fromKey);
+      const toIndex = rows.findIndex((row) => row.key === toKey);
+      if (fromIndex < 0 || toIndex < 0) return current;
+      const [moving] = rows.splice(fromIndex, 1);
+      rows.splice(toIndex, 0, moving);
+      return {
+        ...current,
+        ai: {
+          models: rows,
+        },
+      };
+    });
+  };
 
   const updateAiModel = (key: string, field: keyof Omit<AiModelRow, "key">, value: string) => {
     setSettings((current) => ({
@@ -349,6 +379,19 @@ export default function SettingsPage() {
                   dataSource={settings.ai.models}
                   pagination={false}
                   rowKey="key"
+                  rowClassName={(record) => (record.key === draggingModelKey ? "settings-dragging-row" : "")}
+                  onRow={(record) => ({
+                    draggable: true,
+                    onDragStart: () => setDraggingModelKey(record.key),
+                    onDragOver: (event) => event.preventDefault(),
+                    onDrop: () => {
+                      if (draggingModelKey) {
+                        moveAiModel(draggingModelKey, record.key);
+                      }
+                      setDraggingModelKey(null);
+                    },
+                    onDragEnd: () => setDraggingModelKey(null),
+                  })}
                   scroll={{ x: 980 }}
                 />
                 <Button

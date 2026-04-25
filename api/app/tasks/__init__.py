@@ -1,1 +1,1 @@
-from app.tasks import agent, data_center, scheduled  # noqa: F401
+from app.tasks import agent, backtest_lab, data_center, scheduled  # noqa: F401

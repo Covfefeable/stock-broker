@@ -16,6 +16,7 @@ from app.models.index_asset import IndexAsset
 from app.models.stock import Stock
 from app.models.user import User
 from app.services.data_center_service import log_event
+from app.services.performance_score import calculate_performance_score
 from app.services.settings_service import get_or_create_settings
 from app.services.strategy_service import (
     StrategyError,
@@ -876,10 +877,10 @@ def _summarize_outcome(best_item: dict) -> dict:
 
 
 def _score_result(result: dict) -> float:
-    return (
-        float(result.get("annualReturn") or 0) * 0.7
-        + float(result.get("sharpe") or 0) * 10
-        - float(result.get("maxDrawdown") or 0) * 0.2
+    return calculate_performance_score(
+        result.get("annualReturn"),
+        result.get("sharpe"),
+        result.get("maxDrawdown"),
     )
 
 

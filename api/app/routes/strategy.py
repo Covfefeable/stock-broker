@@ -44,9 +44,21 @@ def post_strategy():
     except StrategyError as exc:
         return {"message": str(exc)}, 400
 
+    evaluation = None
+    evaluation_error = None
+    try:
+        from app.services.backtest_lab_service import evaluate_strategy
+
+        evaluation = evaluate_strategy(g.current_user, strategy.id)
+    except Exception as exc:  # noqa: BLE001
+        evaluation_error = str(exc)
+
     return {
-        "message": "策略基础信息已保存为草稿。",
+        "message": "策略基础信息已保存为草稿，已自动提交全面评估任务。" if evaluation else "策略基础信息已保存为草稿。",
         "strategy": strategy.to_dict(),
+        "evaluation": evaluation.to_dict() if evaluation else None,
+        "evaluationTaskId": evaluation.celery_task_id if evaluation else None,
+        "evaluationError": evaluation_error,
     }, 201
 
 

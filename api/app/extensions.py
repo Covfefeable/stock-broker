@@ -41,6 +41,10 @@ def init_celery(app):
                     "soft_time_limit": sync_task_timeout,
                     "time_limit": sync_task_timeout + 30,
                 },
+                "app.tasks.backtest_lab.run_strategy_evaluation_task": {
+                    "soft_time_limit": sync_task_timeout,
+                    "time_limit": sync_task_timeout + 30,
+                },
             },
             "beat_schedule": {
                 "check-canghai-data-source-status-every-5-minutes": {

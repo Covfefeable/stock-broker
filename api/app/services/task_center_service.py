@@ -125,6 +125,8 @@ def task_name_from_log(log: EventLog) -> str:
 
     if "agent" in event_type:
         return log.source or "AI Agent 任务"
+    if "backtest" in event_type:
+        return log.source or "策略评估"
 
     if target and (event_name == "enqueue_sync_task" or event_name.startswith("sync_")):
         return f"{sync_item_label(target)}同步"
@@ -135,6 +137,8 @@ def task_type_from_log(log: EventLog) -> str:
     event_type = (log.event_type or "").lower()
     if "agent" in event_type:
         return "agent"
+    if "backtest" in event_type:
+        return "backtest"
     return "sync"
 
 

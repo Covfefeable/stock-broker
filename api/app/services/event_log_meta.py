@@ -17,6 +17,7 @@ EVENT_TYPE_META = {
     "data_sync": {"label": "数据同步", "category": EVENT_CATEGORY_SYNC},
     "data_sync_batch": {"label": "批量数据同步", "category": EVENT_CATEGORY_SYNC},
     "agent": {"label": "AI Agent", "category": EVENT_CATEGORY_AGENT},
+    "backtest": {"label": "回测评估", "category": EVENT_CATEGORY_AGENT},
 }
 
 EVENT_NAME_META = {
@@ -38,6 +39,10 @@ EVENT_NAME_META = {
     "agent_task_stopped": {"label": "Agent 任务已停止", "category": EVENT_CATEGORY_AGENT},
     "agent_task_finished": {"label": "Agent 任务完成", "category": EVENT_CATEGORY_AGENT},
     "agent_task_failed": {"label": "Agent 任务执行失败", "category": EVENT_CATEGORY_AGENT},
+    "strategy_evaluation_enqueued": {"label": "策略评估已入队", "category": EVENT_CATEGORY_AGENT},
+    "strategy_evaluation_running": {"label": "策略评估开始执行", "category": EVENT_CATEGORY_AGENT},
+    "strategy_evaluation_finished": {"label": "策略评估完成", "category": EVENT_CATEGORY_AGENT},
+    "strategy_evaluation_failed": {"label": "策略评估失败", "category": EVENT_CATEGORY_AGENT},
     **{
         meta["eventName"]: {"label": f"{meta['label']}同步", "category": EVENT_CATEGORY_SYNC}
         for meta in SYNC_ITEM_META.values()

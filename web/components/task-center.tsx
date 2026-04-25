@@ -4,6 +4,7 @@ import {
   CheckCircleFilled,
   ClockCircleFilled,
   ExclamationCircleFilled,
+  FundProjectionScreenOutlined,
   RobotOutlined,
   StopOutlined,
   SyncOutlined,
@@ -21,7 +22,7 @@ import { apiGet } from "@/lib/api";
 const { Text, Title } = Typography;
 
 type TaskStatus = "queued" | "running" | "success" | "failure" | "stopped";
-type TaskType = "sync" | "agent";
+type TaskType = "sync" | "agent" | "backtest";
 type TaskFilter = "active" | "finished" | "all";
 
 type TaskItem = {
@@ -129,6 +130,7 @@ export function TaskCenter() {
     () => ({
       sync: visibleTasks.filter((task) => task.type === "sync"),
       agent: visibleTasks.filter((task) => task.type === "agent"),
+      backtest: visibleTasks.filter((task) => task.type === "backtest"),
     }),
     [visibleTasks],
   );
@@ -282,6 +284,12 @@ export function TaskCenter() {
             tasks={groupedTasks.agent}
             emptyText="当前筛选下暂无 AI Agent 任务"
           />
+          <TaskSection
+            title="回测评估"
+            helper={filter !== "active" ? `已完成仅展示最新 ${FINISHED_TASK_LIMIT} 个` : undefined}
+            tasks={groupedTasks.backtest}
+            emptyText="当前筛选下暂无回测评估任务"
+          />
         </div>
       </Drawer>
     </>
@@ -332,7 +340,7 @@ function TaskCard({ task }: { task: TaskItem }) {
     <div className="task-center-card">
       <div className="task-center-card-head">
         <div className="task-center-card-title">
-          {task.type === "agent" ? <RobotOutlined /> : <SyncOutlined />}
+          {task.type === "agent" ? <RobotOutlined /> : task.type === "backtest" ? <FundProjectionScreenOutlined /> : <SyncOutlined />}
           <strong>{task.name}</strong>
         </div>
         <Tag icon={meta.icon} color={meta.color}>

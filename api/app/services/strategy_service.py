@@ -786,6 +786,8 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     benchmark_sharpe_ratio = _calculate_sharpe_ratio(benchmark_daily_returns)
     benchmark_max_drawdown_ratio = _calculate_max_drawdown(benchmark_curve)
     sell_trades = [trade for trade in trades if trade["side"] == "sell"]
+    benchmark_up_days = sum(1 for item in benchmark_daily_returns if item > 0)
+    benchmark_win_rate = (benchmark_up_days / len(benchmark_daily_returns) * 100) if benchmark_daily_returns else 0.0
 
     return {
         "annualReturn": round(annual_return_ratio * 100, 2),
@@ -796,7 +798,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
         "tradeCount": len(sell_trades),
         "benchmarkTradeCount": 1 if benchmark_curve else 0,
         "winRate": round((wins / len(sell_trades) * 100), 2) if sell_trades else 0.0,
-        "benchmarkWinRate": 100.0 if benchmark_curve and benchmark_return_ratio > 0 else 0.0,
+        "benchmarkWinRate": round(benchmark_win_rate, 2),
         "initialCapital": round(initial_capital, 2),
         "finalEquity": round(final_equity, 2),
         "benchmarkReturn": round(benchmark_return_ratio * 100, 2),
