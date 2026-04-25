@@ -1,11 +1,14 @@
 "use client";
 
 import { DeleteOutlined, PlusOutlined, QuestionCircleOutlined } from "@ant-design/icons";
-import { Button, Card, Input, InputNumber, Radio, Select, Switch, Table, Tabs, Tag, Tooltip, Typography } from "antd";
-import { useMemo } from "react";
+import { Button, Card, Input, InputNumber, Modal, Popover, Radio, Select, Switch, Table, Tabs, Tag, Tooltip, Typography } from "antd";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { StrategyPreviewChart } from "@/components/strategy-builder/strategy-preview-chart";
 import type {
+  ExpressionFunctionName,
+  ExpressionOperator,
+  ExpressionToken,
   RiskBacktestConfig,
   RuleCondition,
   RuleFieldValue,
@@ -98,6 +101,26 @@ const LOGIC_OPTIONS: Array<{ label: string; value: RuleLogic }> = [
   { label: "满足任一条件", value: "or" },
 ];
 
+const EXPRESSION_OPERATOR_OPTIONS: Array<{ label: string; value: ExpressionOperator }> = [
+  { label: "+", value: "+" },
+  { label: "-", value: "-" },
+  { label: "*", value: "*" },
+  { label: "/", value: "/" },
+];
+
+const FUNCTION_OPTIONS: Array<{ label: string; value: ExpressionFunctionName; help: string }> = [
+  { label: "abs(x)", value: "abs", help: "绝对值。" },
+  { label: "min(a, b)", value: "min", help: "取两个表达式中的较小值。" },
+  { label: "max(a, b)", value: "max", help: "取两个表达式中的较大值。" },
+  { label: "sum(x, n)", value: "sum", help: "最近 n 根 K 线的表达式求和。" },
+  { label: "avg(x, n)", value: "avg", help: "最近 n 根 K 线的表达式均值。" },
+  { label: "std(x, n)", value: "std", help: "最近 n 根 K 线的表达式标准差。" },
+  { label: "highest(x, n)", value: "highest", help: "最近 n 根 K 线的表达式最大值。" },
+  { label: "lowest(x, n)", value: "lowest", help: "最近 n 根 K 线的表达式最小值。" },
+  { label: "change(x, n)", value: "change", help: "当前表达式值减去 n 根 K 线前的表达式值。" },
+  { label: "pct_change(x, n)", value: "pct_change", help: "当前表达式值相对 n 根 K 线前表达式值的变化率。" },
+];
+
 const PREVIEW_METRICS: PreviewMetricConfig[] = [
   {
     key: "annualReturn",
@@ -158,11 +181,9 @@ function createCondition(): RuleCondition {
   return {
     id: createId("condition"),
     type: "condition",
-    leftField: "close",
+    leftExpression: [{ type: "variable", name: "close" }],
     operator: ">",
-    rightMode: "field",
-    rightField: "ma20",
-    rightValue: undefined,
+    rightExpression: [{ type: "variable", name: "ma20" }],
   };
 }
 
@@ -560,66 +581,447 @@ type ConditionRowProps = {
 };
 
 function RuleConditionRow({ value, availableFields, onChange, onDelete }: ConditionRowProps) {
-  const fieldOptions = availableFields.map((item) => ({ label: renderFieldOptionLabel(item), value: item.value }));
-  const isCrossOperator = value.operator === "cross_over" || value.operator === "cross_under";
-
   return (
     <div className="strategy-condition-row">
       <div className="strategy-condition-cell">
-        <span className="strategy-condition-label">左值</span>
-        <Select className="strategy-condition-field" options={fieldOptions} value={value.leftField} onChange={(next) => onChange({ ...value, leftField: next })} />
+        <span className="strategy-condition-label">左表达式</span>
+        <ExpressionEditor value={value.leftExpression} availableFields={availableFields} onChange={(next) => onChange({ ...value, leftExpression: next })} />
       </div>
       <div className="strategy-condition-cell">
         <span className="strategy-condition-label">运算符</span>
-        <Select
-          className="strategy-condition-operator"
-          options={OPERATOR_OPTIONS}
-          value={value.operator}
-          onChange={(next) =>
-            onChange({
-              ...value,
-              operator: next,
-              rightMode: next === "cross_over" || next === "cross_under" ? "field" : value.rightMode,
-            })
-          }
-        />
+        <Select className="strategy-condition-operator" options={OPERATOR_OPTIONS} value={value.operator} onChange={(next) => onChange({ ...value, operator: next })} />
       </div>
       <div className="strategy-condition-cell">
-        <span className="strategy-condition-label">右值类型</span>
-        <Radio.Group
-          className="strategy-condition-mode"
-          size="small"
-          optionType="button"
-          buttonStyle="solid"
-          options={[
-            { label: "指标", value: "field" },
-            { label: "数值", value: "constant" },
-          ]}
-          value={isCrossOperator ? "field" : value.rightMode}
-          disabled={isCrossOperator}
-          onChange={(event) =>
-            onChange({
-              ...value,
-              rightMode: event.target.value,
-              rightField: event.target.value === "field" ? value.rightField ?? "ma20" : undefined,
-              rightValue: event.target.value === "constant" ? value.rightValue ?? 0 : undefined,
-            })
-          }
-        />
-      </div>
-      <div className="strategy-condition-cell">
-        <span className="strategy-condition-label">右值</span>
-        {isCrossOperator || value.rightMode === "field" ? (
-          <Select className="strategy-condition-field" options={fieldOptions} value={value.rightField} onChange={(next) => onChange({ ...value, rightField: next })} />
-        ) : (
-          <InputNumber className="strategy-condition-value" value={value.rightValue} onChange={(next) => onChange({ ...value, rightValue: Number(next ?? 0) })} />
-        )}
+        <span className="strategy-condition-label">右表达式</span>
+        <ExpressionEditor value={value.rightExpression} availableFields={availableFields} onChange={(next) => onChange({ ...value, rightExpression: next })} />
       </div>
       <div className="strategy-condition-remove">
         <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={onDelete} />
       </div>
     </div>
   );
+}
+
+type ExpressionEditorProps = {
+  value: ExpressionToken[];
+  availableFields: RuleFieldOption[];
+  onChange: (nextValue: ExpressionToken[]) => void;
+};
+
+function ExpressionEditor({ value, availableFields, onChange }: ExpressionEditorProps) {
+  const tokens = Array.isArray(value) ? value : [];
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [draftToken, setDraftToken] = useState<ExpressionToken | null>(null);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [dragPreviewIndex, setDragPreviewIndex] = useState<number | null>(null);
+
+  const openAddModal = () => {
+    setEditingIndex(null);
+    setDraftToken({ type: "variable", name: availableFields[0]?.value ?? "close" });
+  };
+
+  const openEditModal = (index: number) => {
+    setEditingIndex(index);
+    setDraftToken(cloneExpressionToken(tokens[index]));
+  };
+
+  const closeModal = () => {
+    setEditingIndex(null);
+    setDraftToken(null);
+  };
+
+  const saveDraft = () => {
+    if (!draftToken) {
+      return;
+    }
+    if (editingIndex == null) {
+      onChange([...tokens, draftToken]);
+    } else {
+      onChange(tokens.map((token, index) => (index === editingIndex ? draftToken : token)));
+    }
+    closeModal();
+  };
+
+  const removeToken = (index: number) => {
+    onChange(tokens.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const moveToken = (fromIndex: number, targetIndex: number) => {
+    if (fromIndex < 0 || targetIndex < 0 || fromIndex >= tokens.length || targetIndex >= tokens.length) {
+      return;
+    }
+    const toIndex = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    if (fromIndex === toIndex) {
+      return;
+    }
+    const nextTokens = [...tokens];
+    const [movedToken] = nextTokens.splice(fromIndex, 1);
+    nextTokens.splice(toIndex, 0, movedToken);
+    onChange(nextTokens);
+  };
+
+  return (
+    <div className="strategy-expression-editor">
+      <div className="strategy-expression-token-list">
+        {tokens.length ? (
+          tokens.map((token, index) => (
+            <ExpressionTokenView
+              key={`${token.type}_${index}`}
+              index={index}
+              token={token}
+              availableFields={availableFields}
+              issue={getTokenIssue(tokens, token, index, availableFields)}
+              dragging={draggingIndex === index}
+              dropBefore={dragPreviewIndex === index && draggingIndex !== null && draggingIndex !== index}
+              onDragStart={() => {
+                setDraggingIndex(index);
+                setDragPreviewIndex(index);
+              }}
+              onDragPreview={(targetIndex) => {
+                if (draggingIndex != null && draggingIndex !== targetIndex) {
+                  setDragPreviewIndex(targetIndex);
+                }
+              }}
+              onDragEnd={() => {
+                setDraggingIndex(null);
+                setDragPreviewIndex(null);
+              }}
+              onDrop={(targetIndex) => {
+                if (draggingIndex != null) {
+                  moveToken(draggingIndex, targetIndex);
+                  setDraggingIndex(null);
+                  setDragPreviewIndex(null);
+                }
+              }}
+              onEdit={() => openEditModal(index)}
+              onRemove={() => removeToken(index)}
+            />
+          ))
+        ) : (
+          <span className="strategy-expression-empty">请添加变量、数字或函数</span>
+        )}
+        {dragPreviewIndex === tokens.length && draggingIndex !== null ? <span className="strategy-expression-drop-preview strategy-expression-drop-preview-end" /> : null}
+        <Button size="small" type="primary" className="strategy-expression-add-button" icon={<PlusOutlined />} onClick={openAddModal}>
+          添加
+        </Button>
+      </div>
+
+      <Modal
+        title={editingIndex == null ? "添加表达式片段" : "编辑表达式片段"}
+        open={Boolean(draftToken)}
+        onCancel={closeModal}
+        onOk={saveDraft}
+        okText="保存"
+        cancelText="取消"
+        width={720}
+        destroyOnHidden
+      >
+        {draftToken ? <ExpressionTokenForm token={draftToken} availableFields={availableFields} onChange={setDraftToken} /> : null}
+      </Modal>
+    </div>
+  );
+}
+
+type ExpressionTokenViewProps = {
+  index: number;
+  token: ExpressionToken;
+  availableFields: RuleFieldOption[];
+  issue?: string;
+  dragging: boolean;
+  dropBefore: boolean;
+  onDragStart: () => void;
+  onDragPreview: (targetIndex: number) => void;
+  onDragEnd: () => void;
+  onDrop: (targetIndex: number) => void;
+  onEdit: () => void;
+  onRemove: () => void;
+};
+
+function ExpressionTokenView({
+  index,
+  token,
+  availableFields,
+  issue,
+  dragging,
+  dropBefore,
+  onDragStart,
+  onDragPreview,
+  onDragEnd,
+  onDrop,
+  onEdit,
+  onRemove,
+}: ExpressionTokenViewProps) {
+  const content = (
+    <div className="strategy-expression-token-popover">
+      <div>
+        <strong>{formatTokenLabel(token, availableFields)}</strong>
+        {issue ? <Text type="danger">{issue}</Text> : <Text type="secondary">拖拽可调整顺序</Text>}
+      </div>
+      <div>
+        <Button size="small" type="primary" onClick={onEdit}>
+          编辑
+        </Button>
+        <Button size="small" danger onClick={onRemove}>
+          删除
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <Popover trigger="hover" placement="top" content={content}>
+      <span
+        className={`strategy-expression-token ${getTokenClassName(token)}${issue ? " strategy-expression-token-error" : ""}${
+          dragging ? " strategy-expression-token-dragging" : ""
+        }${dropBefore ? " strategy-expression-token-drop-before" : ""}`}
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", String(index));
+          onDragStart();
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          const target = event.currentTarget;
+          const rect = target.getBoundingClientRect();
+          const afterCurrent = event.clientX > rect.left + rect.width / 2;
+          onDragPreview(afterCurrent ? index + 1 : index);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          onDrop(index);
+        }}
+        onDragEnd={onDragEnd}
+      >
+        <span className="strategy-expression-token-grip">⋮⋮</span>
+        {issue ? <span className="strategy-expression-token-warning">!</span> : null}
+        <strong>{formatTokenLabel(token, availableFields)}</strong>
+      </span>
+    </Popover>
+  );
+}
+
+type ExpressionTokenFormProps = {
+  token: ExpressionToken;
+  availableFields: RuleFieldOption[];
+  onChange: (nextToken: ExpressionToken) => void;
+};
+
+function ExpressionTokenForm({ token, availableFields, onChange }: ExpressionTokenFormProps) {
+  const tokenType = token.type;
+  const fieldOptions = availableFields.map((item) => ({ label: renderFieldOptionLabel(item), value: item.value }));
+
+  const changeType = (nextType: ExpressionToken["type"]) => {
+    if (nextType === "variable") {
+      onChange({ type: "variable", name: availableFields[0]?.value ?? "close" });
+    } else if (nextType === "number") {
+      onChange({ type: "number", value: 1 });
+    } else if (nextType === "operator") {
+      onChange({ type: "operator", value: "+" });
+    } else if (nextType === "groupStart") {
+      onChange({ type: "groupStart" });
+    } else if (nextType === "groupEnd") {
+      onChange({ type: "groupEnd" });
+    } else {
+      onChange(createFunctionToken("avg"));
+    }
+  };
+
+  return (
+    <div className="strategy-expression-modal-form">
+      <label>
+        <span>片段类型</span>
+        <Select
+          value={tokenType}
+          onChange={changeType}
+          options={[
+            { label: "变量", value: "variable" },
+            { label: "数字", value: "number" },
+            { label: "运算符", value: "operator" },
+            { label: "左括号", value: "groupStart" },
+            { label: "右括号", value: "groupEnd" },
+            { label: "函数", value: "function" },
+          ]}
+        />
+      </label>
+
+      {token.type === "variable" ? (
+        <>
+          <label>
+            <span>变量</span>
+            <Select options={fieldOptions} value={token.name} onChange={(name) => onChange({ ...token, name: name as unknown as RuleFieldValue })} />
+          </label>
+          <label>
+            <span>历史偏移</span>
+            <InputNumber min={-10000} max={0} step={1} value={token.offset ?? 0} onChange={(offset) => onChange({ ...token, offset: Number(offset ?? 0) })} />
+          </label>
+        </>
+      ) : null}
+
+      {token.type === "number" ? (
+        <label>
+          <span>数值</span>
+          <InputNumber value={token.value} onChange={(value) => onChange({ ...token, value: Number(value ?? 0) })} />
+        </label>
+      ) : null}
+
+      {token.type === "operator" ? (
+        <label>
+          <span>运算符</span>
+          <Select
+            options={EXPRESSION_OPERATOR_OPTIONS}
+            value={token.value}
+            onChange={(value) => onChange({ ...token, value: value as unknown as ExpressionOperator })}
+          />
+        </label>
+      ) : null}
+
+      {token.type === "function" ? <FunctionTokenForm token={token} availableFields={availableFields} onChange={onChange} /> : null}
+    </div>
+  );
+}
+
+type FunctionTokenFormProps = {
+  token: Extract<ExpressionToken, { type: "function" }>;
+  availableFields: RuleFieldOption[];
+  onChange: (nextToken: ExpressionToken) => void;
+};
+
+function FunctionTokenForm({ token, availableFields, onChange }: FunctionTokenFormProps) {
+  const setFunctionName = (name: ExpressionFunctionName) => {
+    onChange(createFunctionToken(name));
+  };
+
+  const updateArg = (argIndex: number, nextArg: ExpressionToken[]) => {
+    onChange({ ...token, args: token.args.map((arg, index) => (index === argIndex ? nextArg : arg)) });
+  };
+
+  return (
+    <>
+      <label>
+        <span>函数</span>
+        <Select
+          value={token.name}
+          options={FUNCTION_OPTIONS.map((item) => ({ label: renderFunctionOptionLabel(item), value: item.value }))}
+          onChange={(name) => setFunctionName(name as unknown as ExpressionFunctionName)}
+        />
+      </label>
+      <div className="strategy-expression-function-args">
+        {token.args.map((arg, index) => (
+          <div key={index} className="strategy-expression-function-arg">
+            <span>参数 {index + 1}</span>
+            <ExpressionEditor value={arg} availableFields={availableFields} onChange={(nextArg) => updateArg(index, nextArg)} />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function cloneExpressionToken(token: ExpressionToken): ExpressionToken {
+  return JSON.parse(JSON.stringify(token)) as ExpressionToken;
+}
+
+function getTokenClassName(token: ExpressionToken) {
+  if (token.type === "variable") {
+    return "strategy-expression-token-variable";
+  }
+  if (token.type === "number") {
+    return "strategy-expression-token-number";
+  }
+  if (token.type === "operator") {
+    return "strategy-expression-token-operator";
+  }
+  if (token.type === "groupStart" || token.type === "groupEnd") {
+    return "strategy-expression-token-group";
+  }
+  return "strategy-expression-token-function";
+}
+
+function getTokenIssue(tokens: ExpressionToken[], token: ExpressionToken, index: number, availableFields: RuleFieldOption[]) {
+  const previousToken = tokens[index - 1];
+  const nextToken = tokens[index + 1];
+  const valueTokenTypes = new Set<ExpressionToken["type"]>(["variable", "number", "function"]);
+  const previousIsValue = previousToken ? valueTokenTypes.has(previousToken.type) || previousToken.type === "groupEnd" : false;
+  const nextIsValue = nextToken ? valueTokenTypes.has(nextToken.type) || nextToken.type === "groupStart" : false;
+
+  if (token.type === "variable") {
+    if (!availableFields.some((field) => field.value === token.name)) {
+      return "当前规则不可使用这个变量";
+    }
+    if ((token.offset ?? 0) > 0) {
+      return "不允许引用未来数据";
+    }
+    if (previousIsValue) {
+      return "前面缺少运算符";
+    }
+  }
+  if (token.type === "number" || token.type === "function") {
+    if (previousIsValue) {
+      return "前面缺少运算符";
+    }
+  }
+  if (token.type === "operator") {
+    if (!previousIsValue) {
+      return "运算符前缺少值";
+    }
+    if (!nextIsValue) {
+      return "运算符后缺少值";
+    }
+  }
+  if (token.type === "groupStart" && previousIsValue) {
+    return "左括号前缺少运算符";
+  }
+  if (token.type === "groupEnd" && (!previousIsValue || nextIsValue)) {
+    return "右括号位置不正确";
+  }
+  return undefined;
+}
+
+function formatTokenLabel(token: ExpressionToken, availableFields: RuleFieldOption[]) {
+  if (token.type === "variable") {
+    const label = availableFields.find((item) => item.value === token.name)?.label ?? token.name;
+    return token.offset ? `${label}[${token.offset}]` : label;
+  }
+  if (token.type === "number") {
+    return String(token.value);
+  }
+  if (token.type === "operator") {
+    return token.value;
+  }
+  if (token.type === "groupStart") {
+    return "(";
+  }
+  if (token.type === "groupEnd") {
+    return ")";
+  }
+  return formatFunctionToken(token, availableFields);
+}
+
+function createFunctionToken(name: ExpressionFunctionName): ExpressionToken {
+  if (name === "abs") {
+    return { type: "function", name, args: [[{ type: "variable", name: "close" }]] };
+  }
+  if (name === "min" || name === "max") {
+    return { type: "function", name, args: [[{ type: "variable", name: "close" }], [{ type: "variable", name: "ma20" }]] };
+  }
+  return { type: "function", name, args: [[{ type: "variable", name: "close" }], [{ type: "number", value: 20 }]] };
+}
+
+function renderFunctionOptionLabel(option: { label: string; help: string }): ReactNode {
+  return (
+    <span className="strategy-field-option-label">
+      <span>{option.label}</span>
+      <Tooltip title={option.help}>
+        <QuestionCircleOutlined className="strategy-preview-metric-help" />
+      </Tooltip>
+    </span>
+  );
+}
+
+function formatFunctionToken(token: Extract<ExpressionToken, { type: "function" }>, availableFields: RuleFieldOption[]) {
+  return `${token.name}(${token.args.map((arg) => formatExpression(arg, availableFields)).join(", ")})`;
 }
 
 function renderFieldOptionLabel(option: RuleFieldOption): ReactNode {
@@ -641,13 +1043,35 @@ function summarizeGroup(group: RuleGroup): string {
       if (child.type === "group") {
         return `(${summarizeGroup(child)})`;
       }
-      const leftLabel = FIELD_OPTIONS.find((item) => item.value === child.leftField)?.label ?? child.leftField;
       const operatorLabel = OPERATOR_OPTIONS.find((item) => item.value === child.operator)?.label ?? child.operator;
-      const rightLabel =
-        child.rightMode === "field"
-          ? FIELD_OPTIONS.find((item) => item.value === child.rightField)?.label ?? child.rightField ?? "-"
-          : String(child.rightValue ?? 0);
-      return `${leftLabel} ${operatorLabel} ${rightLabel}`;
+      return `${formatExpression(child.leftExpression, FIELD_OPTIONS)} ${operatorLabel} ${formatExpression(child.rightExpression, FIELD_OPTIONS)}`;
     })
     .join(joiner);
+}
+
+function formatExpression(tokens: ExpressionToken[] | undefined, availableFields: RuleFieldOption[]): string {
+  if (!Array.isArray(tokens) || !tokens.length) {
+    return "-";
+  }
+  return tokens
+    .map((token) => {
+      if (token.type === "variable") {
+        const label = availableFields.find((item) => item.value === token.name)?.label ?? token.name;
+        return token.offset ? `${label}[${token.offset}]` : label;
+      }
+      if (token.type === "number") {
+        return String(token.value);
+      }
+      if (token.type === "operator") {
+        return token.value;
+      }
+      if (token.type === "groupStart") {
+        return "(";
+      }
+      if (token.type === "groupEnd") {
+        return ")";
+      }
+      return formatFunctionToken(token, availableFields);
+    })
+    .join(" ");
 }

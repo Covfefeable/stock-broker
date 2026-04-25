@@ -1,7 +1,8 @@
 export type RuleLogic = "and" | "or";
 export type RuleOperator = ">" | ">=" | "<" | "<=" | "==" | "!=" | "cross_over" | "cross_under";
-export type RuleRightMode = "field" | "constant";
 export type RuleScope = "entry" | "exit";
+export type ExpressionOperator = "+" | "-" | "*" | "/";
+export type ExpressionFunctionName = "abs" | "min" | "max" | "sum" | "avg" | "std" | "highest" | "lowest" | "change" | "pct_change";
 
 export type RuleFieldValue =
   | "open"
@@ -39,14 +40,20 @@ export type RuleFieldValue =
   | "position_return"
   | "holding_days";
 
+export type ExpressionToken =
+  | { type: "variable"; name: RuleFieldValue; offset?: number }
+  | { type: "number"; value: number }
+  | { type: "operator"; value: ExpressionOperator }
+  | { type: "groupStart" }
+  | { type: "groupEnd" }
+  | { type: "function"; name: ExpressionFunctionName; args: ExpressionToken[][] };
+
 export type RuleCondition = {
   id: string;
   type: "condition";
-  leftField: RuleFieldValue;
+  leftExpression: ExpressionToken[];
   operator: RuleOperator;
-  rightMode: RuleRightMode;
-  rightField?: RuleFieldValue;
-  rightValue?: number;
+  rightExpression: ExpressionToken[];
 };
 
 export type RuleGroup = {

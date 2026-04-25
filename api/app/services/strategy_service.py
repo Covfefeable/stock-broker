@@ -21,6 +21,61 @@ class StrategyError(Exception):
     pass
 
 
+RULE_FIELD_VALUES = {
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "ma5",
+    "ma10",
+    "ma20",
+    "ma60",
+    "ma120",
+    "kdj_k",
+    "kdj_d",
+    "macd_dif",
+    "macd_dea",
+    "rsi14",
+    "bias_ma20",
+    "return_5d",
+    "return_20d",
+    "return_60d",
+    "volume_ratio_5",
+    "volume_ratio_20",
+    "atr14",
+    "volatility_20d",
+    "close_pct_of_20d_range",
+    "close_pct_of_60d_range",
+    "distance_to_20d_high",
+    "distance_to_20d_low",
+    "body_pct",
+    "upper_shadow_pct",
+    "lower_shadow_pct",
+    "gap_up",
+    "gap_down",
+    "position_return",
+    "holding_days",
+    "position_ratio",
+}
+RULE_OPERATOR_VALUES = {">", ">=", "<", "<=", "==", "!=", "cross_over", "cross_under"}
+EXPRESSION_OPERATOR_VALUES = {"+", "-", "*", "/"}
+EXPRESSION_FUNCTION_ARITY = {
+    "abs": 1,
+    "min": 2,
+    "max": 2,
+    "sum": 2,
+    "avg": 2,
+    "std": 2,
+    "highest": 2,
+    "lowest": 2,
+    "change": 2,
+    "pct_change": 2,
+}
+WINDOW_FUNCTIONS = {"sum", "avg", "std", "highest", "lowest"}
+CHANGE_FUNCTIONS = {"change", "pct_change"}
+
+
 def _parse_optional_metric(value: Any) -> Decimal | None:
     if value in (None, ""):
         return None
@@ -262,7 +317,11 @@ def _apply_strategy_payload(strategy: Strategy, payload: dict, *, is_create: boo
     strategy.asset_type = asset_type
     strategy.asset_identifier = asset_identifier
     strategy.asset_name = asset_name or None
-    strategy.strategy_config = strategy_config if isinstance(strategy_config, dict) else {}
+    if not isinstance(strategy_config, dict):
+        raise StrategyError("规则配置格式无效。")
+    _validate_strategy_config(strategy_config)
+
+    strategy.strategy_config = strategy_config
     strategy.annual_return = annual_return
     strategy.max_drawdown = max_drawdown
     if is_create and not strategy.status:
@@ -284,6 +343,7 @@ def preview_strategy(user: User, payload: dict) -> dict:
         raise StrategyError("请选择国家/地区。")
     if not isinstance(strategy_config, dict):
         raise StrategyError("规则配置格式无效。")
+    _validate_strategy_config(strategy_config)
 
     bars = _load_asset_bars(asset_type, asset_identifier, country_code, strategy_config)
     if not bars:
@@ -351,6 +411,123 @@ def _to_float(value: Any) -> float | None:
     return float(value) if value is not None else None
 
 
+def _validate_strategy_config(strategy_config: dict) -> None:
+    entry_group = strategy_config.get("entry")
+    exit_group = strategy_config.get("exit")
+    risk = strategy_config.get("risk")
+    if not isinstance(entry_group, dict) or not isinstance(exit_group, dict) or not isinstance(risk, dict):
+        raise StrategyError("规则配置缺少买入规则、卖出规则或风控参数。")
+    _validate_rule_group(entry_group, "买入规则")
+    _validate_rule_group(exit_group, "卖出规则")
+
+
+def _validate_rule_group(group: dict, label: str) -> None:
+    if group.get("type") != "group":
+        raise StrategyError(f"{label}条件组格式无效。")
+    if group.get("logic") not in {"and", "or"}:
+        raise StrategyError(f"{label}条件组逻辑无效。")
+    children = group.get("children")
+    if not isinstance(children, list) or not children:
+        raise StrategyError(f"{label}不能为空。")
+    for index, child in enumerate(children, start=1):
+        if not isinstance(child, dict):
+            raise StrategyError(f"{label}第 {index} 个条件格式无效。")
+        if child.get("type") == "group":
+            _validate_rule_group(child, f"{label}第 {index} 个子组")
+            continue
+        if child.get("type") != "condition":
+            raise StrategyError(f"{label}第 {index} 个条件类型无效。")
+        if child.get("operator") not in RULE_OPERATOR_VALUES:
+            raise StrategyError(f"{label}第 {index} 个条件运算符无效。")
+        _validate_expression_tokens(child.get("leftExpression"), f"{label}第 {index} 个条件左表达式")
+        _validate_expression_tokens(child.get("rightExpression"), f"{label}第 {index} 个条件右表达式")
+
+
+def _validate_expression_tokens(tokens: Any, label: str) -> None:
+    if not isinstance(tokens, list) or not tokens:
+        raise StrategyError(f"{label}不能为空。")
+    balance = 0
+    previous_kind: str | None = None
+    for index, token in enumerate(tokens, start=1):
+        if not isinstance(token, dict):
+            raise StrategyError(f"{label}第 {index} 个片段格式无效。")
+        token_type = token.get("type")
+        if token_type == "variable":
+            _validate_variable_token(token, f"{label}第 {index} 个变量")
+            current_kind = "value"
+        elif token_type == "number":
+            _parse_number_token(token.get("value"), f"{label}第 {index} 个数字")
+            current_kind = "value"
+        elif token_type == "function":
+            _validate_function_token(token, f"{label}第 {index} 个函数")
+            current_kind = "value"
+        elif token_type == "operator":
+            if token.get("value") not in EXPRESSION_OPERATOR_VALUES:
+                raise StrategyError(f"{label}第 {index} 个运算符无效。")
+            if previous_kind not in {"value", "groupEnd"}:
+                raise StrategyError(f"{label}第 {index} 个运算符前缺少值。")
+            current_kind = "operator"
+        elif token_type == "groupStart":
+            balance += 1
+            current_kind = "groupStart"
+        elif token_type == "groupEnd":
+            balance -= 1
+            if balance < 0:
+                raise StrategyError(f"{label}括号不匹配。")
+            if previous_kind not in {"value", "groupEnd"}:
+                raise StrategyError(f"{label}第 {index} 个右括号前缺少值。")
+            current_kind = "groupEnd"
+        else:
+            raise StrategyError(f"{label}第 {index} 个片段类型无效。")
+
+        if current_kind in {"value", "groupStart"} and previous_kind in {"value", "groupEnd"}:
+            raise StrategyError(f"{label}第 {index} 个片段前缺少运算符。")
+        previous_kind = current_kind
+
+    if balance != 0:
+        raise StrategyError(f"{label}括号不匹配。")
+    if previous_kind in {"operator", "groupStart"}:
+        raise StrategyError(f"{label}结尾缺少值。")
+
+
+def _validate_variable_token(token: dict, label: str) -> None:
+    name = token.get("name")
+    if name not in RULE_FIELD_VALUES:
+        raise StrategyError(f"{label}不支持：{name}。")
+    offset = int(token.get("offset") or 0)
+    if offset > 0:
+        raise StrategyError(f"{label}不允许引用未来数据。")
+
+
+def _validate_function_token(token: dict, label: str) -> None:
+    name = token.get("name")
+    expected_arity = EXPRESSION_FUNCTION_ARITY.get(name)
+    if expected_arity is None:
+        raise StrategyError(f"{label}不支持：{name}。")
+    args = token.get("args")
+    if not isinstance(args, list) or len(args) != expected_arity:
+        raise StrategyError(f"{label}参数数量无效。")
+    for index, arg in enumerate(args, start=1):
+        _validate_expression_tokens(arg, f"{label}第 {index} 个参数")
+    if name in WINDOW_FUNCTIONS | CHANGE_FUNCTIONS:
+        window = _literal_number_arg(args[1])
+        if window is None or window <= 0 or int(window) != window:
+            raise StrategyError(f"{label}窗口周期必须是正整数。")
+
+
+def _literal_number_arg(tokens: Any) -> float | None:
+    if isinstance(tokens, list) and len(tokens) == 1 and isinstance(tokens[0], dict) and tokens[0].get("type") == "number":
+        return _parse_number_token(tokens[0].get("value"), "窗口周期")
+    return None
+
+
+def _parse_number_token(value: Any, label: str) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise StrategyError(f"{label}格式无效。") from exc
+
+
 def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     indicators = _calculate_indicators(bars)
     risk = strategy_config.get("risk") or {}
@@ -377,6 +554,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
 
     equity_curve: list[float] = []
     benchmark_curve: list[float] = []
+    context_history: list[dict[str, Any]] = []
     benchmark_entry_price = bars[0]["open"] if bars and bars[0]["open"] is not None else (bars[0]["close"] if bars else None)
     benchmark_shares = (initial_capital / benchmark_entry_price) if benchmark_entry_price and benchmark_entry_price > 0 else 0.0
 
@@ -457,15 +635,8 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             "holding_days": (index - entry_index) if shares > 0 and entry_index is not None else None,
             "position_ratio": ((shares * close_price) / (cash + shares * close_price)) if shares > 0 and (cash + shares * close_price) > 0 else 0.0,
         }
-        previous_context = None
-        if index > 0:
-            previous_bar = bars[index - 1]
-            previous_context = {
-                **previous_bar,
-                **{name: series[index - 1] for name, series in indicators.items()},
-                "position_return": None,
-                "holding_days": None,
-            }
+        evaluation_contexts = [*context_history, context]
+        current_context_index = len(evaluation_contexts) - 1
 
         if shares > 0:
             position_return = context["position_return"]
@@ -478,17 +649,18 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             if max_holding_days and holding_days is not None and holding_days >= max_holding_days:
                 risk_reason = "最大持仓天数触发"
 
-            if risk_reason or _evaluate_group(exit_group, context, previous_context):
+            if risk_reason or _evaluate_group(exit_group, evaluation_contexts, current_context_index):
                 pending_sell_signal = True
                 pending_exit_reason = risk_reason or "卖出规则触发"
 
-        if not pending_sell_signal and _evaluate_group(entry_group, context, previous_context):
+        if not pending_sell_signal and shares <= 0 and _evaluate_group(entry_group, evaluation_contexts, current_context_index):
             pending_buy_signal = True
             pending_entry_reason = "买入规则触发"
 
         total_equity = cash + shares * close_price
         equity_curve.append(total_equity)
         benchmark_curve.append(benchmark_shares * close_price if benchmark_shares > 0 else initial_capital)
+        context_history.append(context.copy())
 
     live_close_price = bars[-1]["close"] if bars else None
     current_position = {
@@ -962,7 +1134,7 @@ def _kdj(
     return k_values, d_values
 
 
-def _evaluate_group(group: dict, context: dict[str, Any], previous_context: dict[str, Any] | None) -> bool:
+def _evaluate_group(group: dict, contexts: list[dict[str, Any]], context_index: int) -> bool:
     children = group.get("children") or []
     logic = group.get("logic", "and")
     if not children:
@@ -971,23 +1143,24 @@ def _evaluate_group(group: dict, context: dict[str, Any], previous_context: dict
     results: list[bool] = []
     for child in children:
         if child.get("type") == "group":
-            results.append(_evaluate_group(child, context, previous_context))
+            results.append(_evaluate_group(child, contexts, context_index))
         else:
-            results.append(_evaluate_condition(child, context, previous_context))
+            results.append(_evaluate_condition(child, contexts, context_index))
     return all(results) if logic == "and" else any(results)
 
 
-def _evaluate_condition(condition: dict, context: dict[str, Any], previous_context: dict[str, Any] | None) -> bool:
-    left_value = context.get(condition.get("leftField"))
+def _evaluate_condition(condition: dict, contexts: list[dict[str, Any]], context_index: int) -> bool:
+    left_tokens = condition.get("leftExpression") or []
+    right_tokens = condition.get("rightExpression") or []
+    left_value = _evaluate_expression(left_tokens, contexts, context_index)
     operator = condition.get("operator")
-    right_mode = condition.get("rightMode")
-    right_value = context.get(condition.get("rightField")) if right_mode == "field" else condition.get("rightValue")
+    right_value = _evaluate_expression(right_tokens, contexts, context_index)
 
     if operator in {"cross_over", "cross_under"}:
-        if previous_context is None:
+        if context_index <= 0:
             return False
-        previous_left = previous_context.get(condition.get("leftField"))
-        previous_right = previous_context.get(condition.get("rightField"))
+        previous_left = _evaluate_expression(left_tokens, contexts, context_index - 1)
+        previous_right = _evaluate_expression(right_tokens, contexts, context_index - 1)
         if None in {left_value, right_value, previous_left, previous_right}:
             return False
         if operator == "cross_over":
@@ -1009,3 +1182,143 @@ def _evaluate_condition(condition: dict, context: dict[str, Any], previous_conte
     if operator == "!=":
         return left_value != right_value
     return False
+
+
+def _evaluate_expression(tokens: list[dict], contexts: list[dict[str, Any]], context_index: int) -> float | None:
+    output: list[float] = []
+    operators: list[str] = []
+    precedence = {"+": 1, "-": 1, "*": 2, "/": 2}
+
+    def apply_operator() -> bool:
+        if len(output) < 2 or not operators:
+            return False
+        operator = operators.pop()
+        right = output.pop()
+        left = output.pop()
+        if operator == "+":
+            output.append(left + right)
+        elif operator == "-":
+            output.append(left - right)
+        elif operator == "*":
+            output.append(left * right)
+        elif operator == "/":
+            if right == 0:
+                return False
+            output.append(left / right)
+        else:
+            return False
+        return True
+
+    for token in tokens:
+        token_type = token.get("type")
+        if token_type in {"variable", "number", "function"}:
+            value = _evaluate_value_token(token, contexts, context_index)
+            if value is None:
+                return None
+            output.append(value)
+        elif token_type == "operator":
+            operator = token.get("value")
+            while operators and operators[-1] != "(" and precedence[operators[-1]] >= precedence.get(operator, 0):
+                if not apply_operator():
+                    return None
+            operators.append(operator)
+        elif token_type == "groupStart":
+            operators.append("(")
+        elif token_type == "groupEnd":
+            while operators and operators[-1] != "(":
+                if not apply_operator():
+                    return None
+            if not operators or operators[-1] != "(":
+                return None
+            operators.pop()
+        else:
+            return None
+
+    while operators:
+        if operators[-1] == "(":
+            return None
+        if not apply_operator():
+            return None
+    return output[0] if len(output) == 1 else None
+
+
+def _evaluate_value_token(token: dict, contexts: list[dict[str, Any]], context_index: int) -> float | None:
+    token_type = token.get("type")
+    if token_type == "number":
+        try:
+            return float(token.get("value"))
+        except (TypeError, ValueError):
+            return None
+    if token_type == "variable":
+        return _resolve_variable_value(token, contexts, context_index)
+    if token_type == "function":
+        return _evaluate_function_token(token, contexts, context_index)
+    return None
+
+
+def _resolve_variable_value(token: dict, contexts: list[dict[str, Any]], context_index: int) -> float | None:
+    name = token.get("name")
+    offset = int(token.get("offset") or 0)
+    if name not in RULE_FIELD_VALUES or offset > 0:
+        return None
+    target_index = context_index + offset
+    if target_index < 0 or target_index >= len(contexts):
+        return None
+    value = contexts[target_index].get(name)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _evaluate_function_token(token: dict, contexts: list[dict[str, Any]], context_index: int) -> float | None:
+    name = token.get("name")
+    args = token.get("args") or []
+    if name == "abs":
+        value = _evaluate_expression(args[0], contexts, context_index)
+        return abs(value) if value is not None else None
+    if name in {"min", "max"}:
+        left = _evaluate_expression(args[0], contexts, context_index)
+        right = _evaluate_expression(args[1], contexts, context_index)
+        if left is None or right is None:
+            return None
+        return min(left, right) if name == "min" else max(left, right)
+    if name in WINDOW_FUNCTIONS:
+        window = _evaluate_window_arg(args[1], contexts, context_index)
+        if window is None or context_index - window + 1 < 0:
+            return None
+        values = [_evaluate_expression(args[0], contexts, index) for index in range(context_index - window + 1, context_index + 1)]
+        if any(value is None for value in values):
+            return None
+        numeric_values = [float(value) for value in values if value is not None]
+        if name == "sum":
+            return sum(numeric_values)
+        if name == "avg":
+            return sum(numeric_values) / len(numeric_values)
+        if name == "highest":
+            return max(numeric_values)
+        if name == "lowest":
+            return min(numeric_values)
+        average = sum(numeric_values) / len(numeric_values)
+        return sqrt(sum((value - average) ** 2 for value in numeric_values) / len(numeric_values))
+    if name in CHANGE_FUNCTIONS:
+        window = _evaluate_window_arg(args[1], contexts, context_index)
+        if window is None or context_index - window < 0:
+            return None
+        current = _evaluate_expression(args[0], contexts, context_index)
+        previous = _evaluate_expression(args[0], contexts, context_index - window)
+        if current is None or previous is None:
+            return None
+        if name == "change":
+            return current - previous
+        return (current - previous) / previous if previous != 0 else None
+    return None
+
+
+def _evaluate_window_arg(tokens: list[dict], contexts: list[dict[str, Any]], context_index: int) -> int | None:
+    value = _evaluate_expression(tokens, contexts, context_index)
+    if value is None or value <= 0 or int(value) != value:
+        return None
+    return int(value)

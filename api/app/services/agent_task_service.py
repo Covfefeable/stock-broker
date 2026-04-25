@@ -18,8 +18,10 @@ from app.models.user import User
 from app.services.data_center_service import log_event
 from app.services.settings_service import get_or_create_settings
 from app.services.strategy_service import (
+    StrategyError,
     _load_asset_bars,
     _run_strategy_backtest,
+    _validate_strategy_config as _validate_token_strategy_config,
     list_strategy_asset_options,
 )
 
@@ -77,6 +79,18 @@ RULE_OPERATORS = [
 ]
 RULE_FIELD_VALUES = {item["value"] for item in RULE_FIELDS}
 RULE_OPERATOR_VALUES = {item["value"] for item in RULE_OPERATORS}
+RULE_FUNCTIONS = [
+    {"name": "abs", "args": "x", "description": "绝对值。"},
+    {"name": "min", "args": "a, b", "description": "两个表达式取较小值。"},
+    {"name": "max", "args": "a, b", "description": "两个表达式取较大值。"},
+    {"name": "sum", "args": "x, n", "description": "最近 n 根 K 线的表达式求和。"},
+    {"name": "avg", "args": "x, n", "description": "最近 n 根 K 线的表达式均值。"},
+    {"name": "std", "args": "x, n", "description": "最近 n 根 K 线的表达式标准差。"},
+    {"name": "highest", "args": "x, n", "description": "最近 n 根 K 线的表达式最大值。"},
+    {"name": "lowest", "args": "x, n", "description": "最近 n 根 K 线的表达式最小值。"},
+    {"name": "change", "args": "x, n", "description": "当前表达式值减去 n 根 K 线前的表达式值。"},
+    {"name": "pct_change", "args": "x, n", "description": "当前表达式相对 n 根 K 线前的变化率。"},
+]
 
 AI_DSL_GENERATION_RETRY_COUNT = 3
 
@@ -612,6 +626,9 @@ def _build_generation_prompt(task: AgentTask, recent_memories: list[str], benchm
 可用运算符：
 {json.dumps(RULE_OPERATORS, ensure_ascii=False)}
 
+可用函数：
+{json.dumps(RULE_FUNCTIONS, ensure_ascii=False)}
+
 风险参数必须固定为：
 {json.dumps({
     "initialCapital": float(task.initial_capital),
@@ -657,15 +674,33 @@ def _build_generation_prompt(task: AgentTask, recent_memories: list[str], benchm
 条件节点格式：
 {{
   "type": "condition",
-  "leftField": "close",
+  "leftExpression": [
+    {{"type": "variable", "name": "close"}}
+  ],
   "operator": ">",
-  "rightMode": "field" 或 "constant",
-  "rightField": "ma20",
-  "rightValue": 70
+  "rightExpression": [
+    {{
+      "type": "function",
+      "name": "highest",
+      "args": [
+        [{{"type": "variable", "name": "close"}}],
+        [{{"type": "number", "value": 60}}]
+      ]
+    }}
+  ]
 }}
+
+表达式 token 只能使用：
+- {{"type": "variable", "name": "close", "offset": -1}}，offset 可省略，且必须 <= 0
+- {{"type": "number", "value": 20}}
+- {{"type": "operator", "value": "+"}}，value 只能是 + - * /
+- {{"type": "groupStart"}} 和 {{"type": "groupEnd"}}
+- {{"type": "function", "name": "avg", "args": [[表达式 tokens], [{{"type": "number", "value": 20}}]]}}
 
 要求：
 - 买入规则里不要使用持仓收益率和持仓天数
+- 不允许引用未来数据，任何变量 offset 都必须小于等于 0
+- 窗口函数的窗口参数 n 必须是正整数数字 token
 - 可以选择简单规则或复杂规则，不要被固定模板束缚
 - 可以尝试趋势、突破、反转、动量、震荡过滤等不同思路
 - 条件数量建议 1 到 6 个，必要时允许使用嵌套条件组
@@ -697,44 +732,10 @@ def _parse_strategy_generation_payload(content: str) -> dict[str, str | dict]:
 
 
 def _validate_strategy_config(strategy_config: dict) -> None:
-    entry = strategy_config.get("entry")
-    exit_group = strategy_config.get("exit")
-    risk = strategy_config.get("risk")
-    if not isinstance(entry, dict) or not isinstance(exit_group, dict) or not isinstance(risk, dict):
-        raise AgentTaskError("AI 返回的策略 DSL 缺少 entry / exit / risk。")
-    if not entry.get("children") or not exit_group.get("children"):
-        raise AgentTaskError("AI 返回的策略 DSL 条件不能为空。")
-    _validate_rule_group(entry)
-    _validate_rule_group(exit_group)
-
-
-def _validate_rule_group(group: dict) -> None:
-    if group.get("type") != "group":
-        raise AgentTaskError("AI 返回的条件组结构无效。")
-    if group.get("logic") not in {"and", "or"}:
-        raise AgentTaskError("AI 返回的条件组逻辑无效。")
-    children = group.get("children")
-    if not isinstance(children, list) or not children:
-        raise AgentTaskError("AI 返回的条件组不能为空。")
-    for child in children:
-        if not isinstance(child, dict):
-            raise AgentTaskError("AI 返回的条件节点结构无效。")
-        if child.get("type") == "group":
-            _validate_rule_group(child)
-            continue
-        if child.get("type") != "condition":
-            raise AgentTaskError("AI 返回的条件节点类型无效。")
-        left_field = child.get("leftField")
-        right_mode = child.get("rightMode")
-        operator = child.get("operator")
-        if left_field not in RULE_FIELD_VALUES:
-            raise AgentTaskError(f"AI 返回了不支持的字段：{left_field}")
-        if operator not in RULE_OPERATOR_VALUES:
-            raise AgentTaskError(f"AI 返回了不支持的运算符：{operator}")
-        if right_mode not in {"field", "constant"}:
-            raise AgentTaskError("AI 返回的右值类型无效。")
-        if right_mode == "field" and child.get("rightField") not in RULE_FIELD_VALUES:
-            raise AgentTaskError(f"AI 返回了不支持的右值字段：{child.get('rightField')}")
+    try:
+        _validate_token_strategy_config(strategy_config)
+    except StrategyError as exc:
+        raise AgentTaskError(f"AI 返回的策略 DSL 无效：{exc}") from exc
 
 
 def _parse_decimal(value: Any, field_label: str) -> Decimal:
@@ -943,10 +944,9 @@ def _build_noop_strategy_config(task: AgentTask) -> dict:
             "children": [
                 {
                     "type": "condition",
-                    "leftField": "close",
+                    "leftExpression": [{"type": "variable", "name": "close"}],
                     "operator": ">",
-                    "rightMode": "constant",
-                    "rightValue": 999999999,
+                    "rightExpression": [{"type": "number", "value": 999999999}],
                 }
             ],
         },
@@ -956,10 +956,9 @@ def _build_noop_strategy_config(task: AgentTask) -> dict:
             "children": [
                 {
                     "type": "condition",
-                    "leftField": "close",
+                    "leftExpression": [{"type": "variable", "name": "close"}],
                     "operator": "<",
-                    "rightMode": "constant",
-                    "rightValue": -1,
+                    "rightExpression": [{"type": "number", "value": -1}],
                 }
             ],
         },
@@ -990,13 +989,32 @@ def _describe_group(group: dict) -> str:
 
 
 def _describe_condition(condition: dict) -> str:
-    left = FIELD_LABELS_BY_VALUE.get(condition.get("leftField"), condition.get("leftField") or "")
+    left = _describe_expression(condition.get("leftExpression") or [])
     operator = OPERATOR_LABELS.get(condition.get("operator"), condition.get("operator") or "")
-    if condition.get("rightMode") == "field":
-        right = FIELD_LABELS_BY_VALUE.get(condition.get("rightField"), condition.get("rightField") or "")
-    else:
-        right = str(condition.get("rightValue"))
+    right = _describe_expression(condition.get("rightExpression") or [])
     return f"{left}{operator}{right}"
+
+
+def _describe_expression(tokens: list[dict]) -> str:
+    parts: list[str] = []
+    for token in tokens:
+        token_type = token.get("type")
+        if token_type == "variable":
+            label = FIELD_LABELS_BY_VALUE.get(token.get("name"), token.get("name") or "")
+            offset = int(token.get("offset") or 0)
+            parts.append(f"{label}[{offset}]" if offset else label)
+        elif token_type == "number":
+            parts.append(str(token.get("value")))
+        elif token_type == "operator":
+            parts.append(str(token.get("value")))
+        elif token_type == "groupStart":
+            parts.append("(")
+        elif token_type == "groupEnd":
+            parts.append(")")
+        elif token_type == "function":
+            args = token.get("args") or []
+            parts.append(f"{token.get('name')}({', '.join(_describe_expression(arg) for arg in args)})")
+    return " ".join(parts) if parts else "-"
 
 
 FIELD_LABELS_BY_VALUE = {item["value"]: item["label"] for item in RULE_FIELDS}
