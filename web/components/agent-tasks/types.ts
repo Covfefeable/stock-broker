@@ -27,6 +27,7 @@ export type AgentTaskItem = {
   positionSize: number | null;
   stopLoss: number | null;
   takeProfit: number | null;
+  minAddPositionInterval: number;
   maxHoldingDays: number;
   backtestStartDate: string | null;
   backtestEndDate: string | null;
@@ -52,7 +53,10 @@ export type AgentIterationItem = {
   sharpe: number | null;
   score?: number | null;
   strategyConfig: Record<string, unknown>;
+  intent?: string | null;
+  intentLabel?: string | null;
   memory?: string | null;
+  timeRobustness?: Record<string, unknown> | null;
   analysis?: string | null;
   actionPlan?: string | null;
   summary: string;

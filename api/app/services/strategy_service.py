@@ -646,6 +646,11 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     risk = strategy_config.get("risk") or {}
     initial_capital = float(risk.get("initialCapital") or 100000)
     position_size = float(risk.get("positionSize") or 1.0)
+    min_add_position_interval_value = risk.get("minAddPositionInterval", 3)
+    min_add_position_interval = max(
+        int(min_add_position_interval_value if min_add_position_interval_value not in (None, "") else 3),
+        0,
+    )
     stop_loss = float(risk.get("stopLoss") or 0)
     take_profit = float(risk.get("takeProfit") or 0)
     max_holding_days = int(risk.get("maxHoldingDays") or 0)
@@ -658,6 +663,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     shares = 0.0
     entry_price: float | None = None
     entry_index: int | None = None
+    last_buy_index: int | None = None
     trades: list[dict[str, Any]] = []
     wins = 0
     pending_buy_signal = False
@@ -718,7 +724,8 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             pending_sell_signal = False
             pending_exit_reason = None
 
-        if pending_buy_signal and open_price is not None:
+        can_execute_buy_by_interval = last_buy_index is None or index - last_buy_index >= min_add_position_interval
+        if pending_buy_signal and open_price is not None and can_execute_buy_by_interval:
             normalized_position_size = max(min(position_size, 1.0), 0.0)
             total_equity_at_open = cash + shares * open_price
             current_position_ratio = (
@@ -727,10 +734,15 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                 else 0.0
             )
             available_position_ratio = max(0.0, 1.0 - current_position_ratio)
-            order_position_ratio = min(normalized_position_size, available_position_ratio)
+            order_position_ratio = normalized_position_size
             investable_cash = total_equity_at_open * order_position_ratio
 
-            if order_position_ratio > 0 and cash >= investable_cash and investable_cash > 0:
+            if (
+                order_position_ratio > 0
+                and available_position_ratio + 1e-6 >= order_position_ratio
+                and cash + 1e-6 >= investable_cash
+                and investable_cash > 0
+            ):
                 new_shares = investable_cash / open_price
                 existing_cost = (entry_price or 0.0) * shares
                 total_shares = shares + new_shares
@@ -741,6 +753,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                 entry_price = total_cost / total_shares if total_shares > 0 else None
                 if entry_index is None:
                     entry_index = index
+                last_buy_index = index
 
                 trades.append(
                     {
@@ -782,7 +795,20 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                 pending_sell_signal = True
                 pending_exit_reason = risk_reason or "卖出规则触发"
 
-        if not pending_sell_signal and shares <= 0 and _evaluate_group(entry_group, evaluation_contexts, current_context_index):
+        total_equity_for_signal = cash + shares * close_price
+        current_position_ratio_for_signal = (
+            (shares * close_price) / total_equity_for_signal
+            if shares > 0 and total_equity_for_signal > 0
+            else 0.0
+        )
+        normalized_position_size_for_signal = max(min(position_size, 1.0), 0.0)
+        can_add_by_interval = last_buy_index is None or index + 1 - last_buy_index >= min_add_position_interval
+        can_add_position = (
+            normalized_position_size_for_signal > 0
+            and current_position_ratio_for_signal + normalized_position_size_for_signal <= 1.0 + 1e-6
+            and can_add_by_interval
+        )
+        if not pending_sell_signal and can_add_position and _evaluate_group(entry_group, evaluation_contexts, current_context_index):
             pending_buy_signal = True
             pending_entry_reason = "买入规则触发"
 
@@ -809,6 +835,11 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
         next_action = {
             "action": "下一个交易日开盘卖出",
             "reason": pending_exit_reason or "卖出规则触发",
+        }
+    elif shares > 0 and pending_buy_signal:
+        next_action = {
+            "action": "下一个交易日开盘加仓",
+            "reason": pending_entry_reason or "买入规则触发",
         }
     elif shares > 0:
         next_action = {

@@ -20,7 +20,13 @@ class AgentIteration(db.Model):
         nullable=False,
         default=dict,
     )
+    intent = db.Column(db.String(64), nullable=True)
     memory = db.Column(db.Text, nullable=True)
+    time_robustness = db.Column(
+        JSONB().with_variant(db.JSON(), "sqlite"),
+        nullable=True,
+        default=dict,
+    )
     analysis = db.Column(db.Text, nullable=True)
     action_plan = db.Column(db.Text, nullable=True)
     summary = db.Column(db.Text, nullable=False)
@@ -41,7 +47,9 @@ class AgentIteration(db.Model):
             "maxDrawdown": _format_metric(self.max_drawdown),
             "sharpe": _format_metric(self.sharpe),
             "strategyConfig": self.strategy_config or {},
+            "intent": self.intent,
             "memory": self.memory,
+            "timeRobustness": self.time_robustness or {},
             "analysis": self.analysis,
             "actionPlan": self.action_plan,
             "summary": self.summary,

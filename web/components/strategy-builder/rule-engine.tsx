@@ -206,6 +206,7 @@ export function createDefaultStrategyDslConfig(): StrategyDslConfig {
       positionSize: 1,
       stopLoss: 0.08,
       takeProfit: 0.2,
+      minAddPositionInterval: 3,
       maxHoldingDays: 30,
       forceCloseOnEnd: true,
       backtestStartDate: "2020-01-01",
@@ -280,6 +281,10 @@ export function RuleEngine({
                     <label>
                       <span>止盈比例</span>
                       <InputNumber min={0} max={2} step={0.01} value={value.risk.takeProfit} onChange={(next) => updateRisk("takeProfit", Number(next ?? 0))} />
+                    </label>
+                    <label>
+                      <span>最小加仓间隔</span>
+                      <InputNumber min={0} step={1} value={value.risk.minAddPositionInterval ?? 3} onChange={(next) => updateRisk("minAddPositionInterval", Number(next ?? 0))} />
                     </label>
                     <label>
                       <span>最大持仓天数</span>
@@ -390,6 +395,12 @@ export function RuleEngine({
                       },
                       { title: "价格", dataIndex: "price", width: 100 },
                       { title: "数量", dataIndex: "shares", width: 100 },
+                      {
+                        title: "仓位",
+                        dataIndex: "positionRatio",
+                        width: 100,
+                        render: (value?: number) => (value == null ? "--" : `${Number(value).toFixed(2)}%`),
+                      },
                       {
                         title: "收益率",
                         dataIndex: "return",

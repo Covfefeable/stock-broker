@@ -101,7 +101,12 @@ def stop_agent_task_route(task_id: int):
 @auth_required
 def preview_agent_iteration_route(task_id: int, iteration_id: int):
     try:
-        payload = preview_agent_iteration(g.current_user, task_id, iteration_id)
+        payload = preview_agent_iteration(
+            g.current_user,
+            task_id,
+            iteration_id,
+            range_key=request.args.get("range"),
+        )
     except AgentTaskError as exc:
         return {"message": str(exc)}, 400
     return payload

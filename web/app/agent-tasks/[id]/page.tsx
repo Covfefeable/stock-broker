@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeftOutlined, CheckOutlined, CloseOutlined, EditOutlined, QuestionCircleOutlined, SaveOutlined } from "@ant-design/icons";
-import { Button, Card, Input, Modal, Progress, Space, Table, Tag, Tooltip, Typography, message } from "antd";
+import { Button, Card, Input, Modal, Progress, Space, Table, Tabs, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -42,6 +42,13 @@ const statusMeta = {
   stopped: { label: "已停止", color: "warning" },
 } as const;
 
+const previewRangeOptions = [
+  { key: "current", label: "当前回测区间" },
+  { key: "recent_1y", label: "近一年" },
+  { key: "recent_3y", label: "近三年" },
+  { key: "recent_5y", label: "近五年" },
+];
+
 function formatPercent(value: number | null | undefined) {
   return value === null || value === undefined ? "-" : `${value.toFixed(2)}%`;
 }
@@ -81,6 +88,104 @@ function renderPerformanceScoreTooltip() {
   );
 }
 
+function AgentIterationPreviewPanel({
+  preview,
+  strategyConfig,
+}: {
+  preview: StrategyPreviewResult;
+  strategyConfig?: Record<string, unknown> | null;
+}) {
+  return (
+    <div className="strategy-preview-panel">
+      <div className="strategy-preview-metrics">
+        {[
+          ["年化收益", `${preview.annualReturn.toFixed(2)}%`, `${preview.benchmarkAnnualReturn.toFixed(2)}%`],
+          ["总收益", `${preview.totalReturn.toFixed(2)}%`, `${preview.benchmarkReturn.toFixed(2)}%`],
+          ["最大回撤", `${preview.maxDrawdown.toFixed(2)}%`, `${preview.benchmarkMaxDrawdown.toFixed(2)}%`],
+          ["波动率", `${preview.volatility.toFixed(2)}%`, `${preview.benchmarkVolatility.toFixed(2)}%`],
+          ["Sharpe", preview.sharpe.toFixed(2), preview.benchmarkSharpe.toFixed(2)],
+          ["胜率", `${preview.winRate.toFixed(2)}%`, `${preview.benchmarkWinRate.toFixed(2)}%`],
+          ["交易次数", String(preview.tradeCount), String(preview.benchmarkTradeCount)],
+        ].map(([label, strategyValue, benchmarkValue]) => (
+          <div key={label} className="strategy-preview-metric-card">
+            <div className="strategy-preview-metric-header">
+              <span>{label}</span>
+            </div>
+            <div className="strategy-preview-metric-values">
+              <div>
+                <small>策略</small>
+                <strong>{strategyValue}</strong>
+              </div>
+              <div>
+                <small>持续持有</small>
+                <strong>{benchmarkValue}</strong>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <StrategyPreviewChart preview={preview} />
+
+      <Card className="strategy-rule-card" size="small" title="规则预览">
+        <RuleReadonlyPreview value={asStrategyDslConfig(strategyConfig)} />
+      </Card>
+
+      <div className="strategy-preview-range">
+        <Text type="secondary">
+          回测区间：{preview.dateRange.start ?? "--"} 至 {preview.dateRange.end ?? "--"}
+        </Text>
+      </div>
+
+      <Table
+        className="strategy-preview-trades"
+        size="small"
+        pagination={false}
+        scroll={{ y: 240 }}
+        rowKey={(record) => `${record.date}_${record.side}_${record.price}`}
+        dataSource={preview.trades}
+        locale={{
+          emptyText: <EmptyState title="暂无成交记录" compact />,
+        }}
+        columns={[
+          { title: "日期", dataIndex: "date", width: 120 },
+          {
+            title: "方向",
+            dataIndex: "side",
+            width: 80,
+            render: (value: "buy" | "sell") => (
+              <Tag color={value === "buy" ? "blue" : "volcano"}>{value === "buy" ? "买入" : "卖出"}</Tag>
+            ),
+          },
+          { title: "价格", dataIndex: "price", width: 100 },
+          { title: "数量", dataIndex: "shares", width: 100 },
+          {
+            title: "仓位",
+            dataIndex: "positionRatio",
+            width: 100,
+            render: (value?: number) => (value == null ? "--" : `${Number(value).toFixed(2)}%`),
+          },
+          {
+            title: "收益率",
+            dataIndex: "return",
+            render: (value?: number) => (value == null ? "--" : `${value.toFixed(2)}%`),
+          },
+          {
+            title: "触发原因",
+            dataIndex: "reason",
+            ellipsis: true,
+            render: (value: string) => (
+              <Tooltip title={value}>
+                <span>{value}</span>
+              </Tooltip>
+            ),
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
 export default function AgentTaskDetailPage() {
   const params = useParams<{ id: string }>();
   const [messageApi, contextHolder] = message.useMessage();
@@ -91,6 +196,7 @@ export default function AgentTaskDetailPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<StrategyPreviewResult | null>(null);
   const [previewIteration, setPreviewIteration] = useState<AgentIterationItem | null>(null);
+  const [previewRange, setPreviewRange] = useState("current");
   const [dslOpen, setDslOpen] = useState(false);
   const [dslIteration, setDslIteration] = useState<AgentIterationItem | null>(null);
   const [savingBestAnnualStrategy, setSavingBestAnnualStrategy] = useState(false);
@@ -209,15 +315,13 @@ export default function AgentTaskDetailPage() {
     }
   }, [draftName, messageApi, params.id]);
 
-  const openIterationPreview = useCallback(
-    async (iteration: AgentIterationItem) => {
+  const loadIterationPreview = useCallback(
+    async (iteration: AgentIterationItem, rangeKey: string) => {
       try {
         setPreviewLoading(true);
-        setPreviewIteration(iteration);
-        setPreviewOpen(true);
         const token = getAccessToken();
         const response = await apiGet<StrategyPreviewResult>(
-          `/agent-tasks/${params.id}/iterations/${iteration.id}/preview`,
+          `/agent-tasks/${params.id}/iterations/${iteration.id}/preview?range=${encodeURIComponent(rangeKey)}`,
           token,
         );
         setPreviewResult(response);
@@ -228,6 +332,29 @@ export default function AgentTaskDetailPage() {
       }
     },
     [messageApi, params.id],
+  );
+
+  const openIterationPreview = useCallback(
+    async (iteration: AgentIterationItem) => {
+      setPreviewIteration(iteration);
+      setPreviewRange("current");
+      setPreviewResult(null);
+      setPreviewOpen(true);
+      await loadIterationPreview(iteration, "current");
+    },
+    [loadIterationPreview],
+  );
+
+  const handlePreviewRangeChange = useCallback(
+    async (rangeKey: string) => {
+      if (!previewIteration) {
+        return;
+      }
+      setPreviewRange(rangeKey);
+      setPreviewResult(null);
+      await loadIterationPreview(previewIteration, rangeKey);
+    },
+    [loadIterationPreview, previewIteration],
   );
 
   const saveStrategyFromIteration = useCallback(
@@ -278,6 +405,15 @@ export default function AgentTaskDetailPage() {
           const meta = statusMeta[value as keyof typeof statusMeta];
           return <Tag color={meta?.color ?? "default"}>{meta?.label ?? value}</Tag>;
         },
+      },
+      {
+        title: "交易风格",
+        dataIndex: "intentLabel",
+        key: "intentLabel",
+        width: 130,
+        render: (value: string | null | undefined, record) => (
+          <Tag color="blue">{value || record.intent || "未记录"}</Tag>
+        ),
       },
       {
         title: "年化收益",
@@ -644,9 +780,12 @@ export default function AgentTaskDetailPage() {
                     <div key={iteration.id} className="agent-iteration-thought-card">
                       <div className="agent-iteration-thought-head">
                         <strong>第 {iteration.iterationNumber} 轮</strong>
-                        <Tag color={statusMeta[iteration.status as keyof typeof statusMeta]?.color ?? "default"}>
-                          {statusMeta[iteration.status as keyof typeof statusMeta]?.label ?? iteration.status}
-                        </Tag>
+                        <Space size={8}>
+                          <Tag color="blue">{iteration.intentLabel || iteration.intent || "未记录"}</Tag>
+                          <Tag color={statusMeta[iteration.status as keyof typeof statusMeta]?.color ?? "default"}>
+                            {statusMeta[iteration.status as keyof typeof statusMeta]?.label ?? iteration.status}
+                          </Tag>
+                        </Space>
                       </div>
                       <div className="agent-iteration-thought-block">
                         <Text type="secondary">分析</Text>
@@ -699,7 +838,7 @@ export default function AgentTaskDetailPage() {
               locale={{
                 emptyText: <EmptyState title="暂无迭代记录" compact />,
               }}
-              scroll={{ x: 1180 }}
+              scroll={{ x: 1310 }}
             />
           </Card>
         </>
@@ -712,97 +851,21 @@ export default function AgentTaskDetailPage() {
           setPreviewOpen(false);
           setPreviewResult(null);
           setPreviewIteration(null);
+          setPreviewRange("current");
         }}
         footer={null}
         width={1120}
       >
-        {previewLoading ? (
-          <Card loading bordered={false} />
-        ) : previewResult ? (
-          <div className="strategy-preview-panel">
-            <div className="strategy-preview-metrics">
-              {[
-                ["年化收益", `${previewResult.annualReturn.toFixed(2)}%`, `${previewResult.benchmarkAnnualReturn.toFixed(2)}%`],
-                ["总收益", `${previewResult.totalReturn.toFixed(2)}%`, `${previewResult.benchmarkReturn.toFixed(2)}%`],
-                ["最大回撤", `${previewResult.maxDrawdown.toFixed(2)}%`, `${previewResult.benchmarkMaxDrawdown.toFixed(2)}%`],
-                ["波动率", `${previewResult.volatility.toFixed(2)}%`, `${previewResult.benchmarkVolatility.toFixed(2)}%`],
-                ["Sharpe", previewResult.sharpe.toFixed(2), previewResult.benchmarkSharpe.toFixed(2)],
-                ["胜率", `${previewResult.winRate.toFixed(2)}%`, `${previewResult.benchmarkWinRate.toFixed(2)}%`],
-                ["交易次数", String(previewResult.tradeCount), String(previewResult.benchmarkTradeCount)],
-              ].map(([label, strategyValue, benchmarkValue]) => (
-                <div key={label} className="strategy-preview-metric-card">
-                  <div className="strategy-preview-metric-header">
-                    <span>{label}</span>
-                  </div>
-                  <div className="strategy-preview-metric-values">
-                    <div>
-                      <small>策略</small>
-                      <strong>{strategyValue}</strong>
-                    </div>
-                    <div>
-                      <small>持续持有</small>
-                      <strong>{benchmarkValue}</strong>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <StrategyPreviewChart preview={previewResult} />
-
-            <Card className="strategy-rule-card" size="small" title="规则预览">
-              <RuleReadonlyPreview value={asStrategyDslConfig(previewIteration?.strategyConfig)} />
-            </Card>
-
-            <div className="strategy-preview-range">
-              <Text type="secondary">
-                回测区间：{previewResult.dateRange.start ?? "--"} 至 {previewResult.dateRange.end ?? "--"}
-              </Text>
-            </div>
-
-            <Table
-              className="strategy-preview-trades"
-              size="small"
-              pagination={false}
-              scroll={{ y: 240 }}
-              rowKey={(record) => `${record.date}_${record.side}_${record.price}`}
-              dataSource={previewResult.trades}
-              locale={{
-                emptyText: <EmptyState title="暂无成交记录" compact />,
-              }}
-              columns={[
-                { title: "日期", dataIndex: "date", width: 120 },
-                {
-                  title: "方向",
-                  dataIndex: "side",
-                  width: 80,
-                  render: (value: "buy" | "sell") => (
-                    <Tag color={value === "buy" ? "blue" : "volcano"}>{value === "buy" ? "买入" : "卖出"}</Tag>
-                  ),
-                },
-                { title: "价格", dataIndex: "price", width: 100 },
-                { title: "数量", dataIndex: "shares", width: 100 },
-                {
-                  title: "收益率",
-                  dataIndex: "return",
-                  render: (value?: number) => (value == null ? "--" : `${value.toFixed(2)}%`),
-                },
-                {
-                  title: "触发原因",
-                  dataIndex: "reason",
-                  ellipsis: true,
-                  render: (value: string) => (
-                    <Tooltip title={value}>
-                      <span>{value}</span>
-                    </Tooltip>
-                  ),
-                },
-              ]}
-            />
-          </div>
-        ) : (
-          <EmptyState title="暂无收益预览" compact />
-        )}
+        <Tabs
+          activeKey={previewRange}
+          items={previewRangeOptions.map((item) => ({ key: item.key, label: item.label }))}
+          onChange={(key) => void handlePreviewRangeChange(key)}
+        />
+        {previewLoading ? <Card loading bordered={false} /> : null}
+        {!previewLoading && previewResult ? (
+          <AgentIterationPreviewPanel preview={previewResult} strategyConfig={previewIteration?.strategyConfig} />
+        ) : null}
+        {!previewLoading && !previewResult ? <EmptyState title="暂无收益预览" compact /> : null}
       </Modal>
 
       <Modal

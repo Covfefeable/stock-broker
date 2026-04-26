@@ -70,6 +70,7 @@ export type RiskBacktestConfig = {
   positionSize: number;
   stopLoss: number;
   takeProfit: number;
+  minAddPositionInterval: number;
   maxHoldingDays: number;
   forceCloseOnEnd: boolean;
   backtestStartDate: string;
@@ -106,6 +107,7 @@ export type StrategyPreviewResult = {
     side: "buy" | "sell";
     price: number;
     shares: number;
+    positionRatio?: number;
     return?: number;
     reason: string;
   }>;

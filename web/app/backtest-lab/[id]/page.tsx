@@ -590,6 +590,12 @@ function EvaluationResultDetail({ result }: { result: EvaluationResult }) {
           { title: "价格", dataIndex: "price", width: 100 },
           { title: "数量", dataIndex: "shares", width: 100 },
           {
+            title: "仓位",
+            dataIndex: "positionRatio",
+            width: 100,
+            render: (value?: number) => (value == null ? "--" : `${Number(value).toFixed(2)}%`),
+          },
+          {
             title: "收益率",
             dataIndex: "return",
             render: (value?: number) => (value == null ? "--" : `${value.toFixed(2)}%`),

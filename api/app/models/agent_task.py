@@ -34,6 +34,7 @@ class AgentTask(db.Model):
     position_size = db.Column(db.Numeric(8, 4), nullable=False)
     stop_loss = db.Column(db.Numeric(8, 4), nullable=False)
     take_profit = db.Column(db.Numeric(8, 4), nullable=False)
+    min_add_position_interval = db.Column(db.Integer, nullable=False, default=3)
     max_holding_days = db.Column(db.Integer, nullable=False)
     backtest_start_date = db.Column(db.Date, nullable=False)
     backtest_end_date = db.Column(db.Date, nullable=False)
@@ -90,6 +91,7 @@ class AgentTask(db.Model):
             "positionSize": float(self.position_size) if self.position_size is not None else None,
             "stopLoss": float(self.stop_loss) if self.stop_loss is not None else None,
             "takeProfit": float(self.take_profit) if self.take_profit is not None else None,
+            "minAddPositionInterval": self.min_add_position_interval,
             "maxHoldingDays": self.max_holding_days,
             "backtestStartDate": self.backtest_start_date.isoformat() if isinstance(self.backtest_start_date, date) else None,
             "backtestEndDate": self.backtest_end_date.isoformat() if isinstance(self.backtest_end_date, date) else None,

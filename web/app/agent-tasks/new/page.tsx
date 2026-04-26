@@ -49,6 +49,7 @@ type CreateAgentTaskFormValues = {
   positionSize: number;
   stopLoss: number;
   takeProfit: number;
+  minAddPositionInterval: number;
   maxHoldingDays: number;
   backtestStartDate: { format: (template: string) => string };
   backtestEndDate: { format: (template: string) => string };
@@ -138,6 +139,7 @@ export default function NewAgentTaskPage() {
           positionSize: sourceTask.positionSize ?? 0.25,
           stopLoss: sourceTask.stopLoss ?? 0.08,
           takeProfit: sourceTask.takeProfit ?? 0.2,
+          minAddPositionInterval: sourceTask.minAddPositionInterval ?? 3,
           maxHoldingDays: sourceTask.maxHoldingDays,
           backtestStartDate: sourceTask.backtestStartDate ? dayjs(sourceTask.backtestStartDate) : dayjs().subtract(5, "year"),
           backtestEndDate: sourceTask.backtestEndDate ? dayjs(sourceTask.backtestEndDate) : dayjs(),
@@ -372,6 +374,7 @@ export default function NewAgentTaskPage() {
           positionSize: 0.25,
           stopLoss: 0.08,
           takeProfit: 0.2,
+          minAddPositionInterval: 3,
           maxHoldingDays: 30,
           backtestStartDate: dayjs().subtract(5, "year"),
           backtestEndDate: dayjs(),
@@ -476,6 +479,10 @@ export default function NewAgentTaskPage() {
 
             <Form.Item label="止盈比例" name="takeProfit" rules={[{ required: true, message: "请输入止盈比例" }]}>
               <InputNumber min={0} step={0.01} className="strategy-number-input" />
+            </Form.Item>
+
+            <Form.Item label="最小加仓间隔" name="minAddPositionInterval" rules={[{ required: true, message: "请输入最小加仓间隔" }]}>
+              <InputNumber min={0} step={1} className="strategy-number-input" />
             </Form.Item>
 
             <Form.Item label="最大持仓天数" name="maxHoldingDays" rules={[{ required: true, message: "请输入最大持仓天数" }]}>

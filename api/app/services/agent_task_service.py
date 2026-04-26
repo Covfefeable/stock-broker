@@ -97,6 +97,17 @@ AI_DSL_GENERATION_RETRY_COUNT = 3
 AGENT_RECENT_MEMORY_LIMIT = 5
 AGENT_RECENT_PROMPT_MEMORY_LIMIT = 10
 AGENT_BEST_PROMPT_MEMORY_LIMIT = 3
+AGENT_STRATEGY_INTENTS = {
+    "trend_following": "趋势跟随",
+    "trend_pullback": "趋势回踩",
+    "breakout": "突破追涨",
+    "mean_reversion": "均值回归",
+    "dip_buying": "低吸抄底",
+    "momentum_acceleration": "动能加速",
+    "volatility_breakout": "波动突破",
+    "defensive_timing": "防守择时",
+    "range_trading": "区间高抛低吸",
+}
 
 
 def list_agent_tasks(
@@ -184,7 +195,13 @@ def get_agent_task_detail(user: User, task_id: int) -> dict:
     }
 
 
-def preview_agent_iteration(user: User, task_id: int, iteration_id: int) -> dict:
+def preview_agent_iteration(
+    user: User,
+    task_id: int,
+    iteration_id: int,
+    *,
+    range_key: str | None = None,
+) -> dict:
     task = get_agent_task(user, task_id)
     iteration = AgentIteration.query.filter(
         AgentIteration.id == iteration_id,
@@ -193,21 +210,25 @@ def preview_agent_iteration(user: User, task_id: int, iteration_id: int) -> dict
     if not iteration:
         raise AgentTaskError("未找到对应的迭代记录。")
 
+    range_config = _resolve_preview_range(task, range_key)
     bars = _load_asset_bars(
         task.asset_type,
         task.asset_identifier,
         task.country_code,
         {
             "risk": {
-                "backtestStartDate": task.backtest_start_date.isoformat(),
-                "backtestEndDate": task.backtest_end_date.isoformat(),
+                "backtestStartDate": range_config["startDate"].isoformat(),
+                "backtestEndDate": range_config["endDate"].isoformat(),
             }
         },
     )
     if not bars:
         raise AgentTaskError("当前标的没有可用于预览收益的历史日线数据。")
 
-    return _run_strategy_backtest(bars, iteration.strategy_config or {})
+    preview = _run_strategy_backtest(bars, iteration.strategy_config or {})
+    preview["rangeKey"] = range_config["key"]
+    preview["rangeLabel"] = range_config["label"]
+    return preview
 
 
 def _get_best_iteration(task: AgentTask, *, score_weights: dict[str, float] | None = None) -> AgentIteration | None:
@@ -232,6 +253,7 @@ def _get_best_iteration(task: AgentTask, *, score_weights: dict[str, float] | No
 def _serialize_agent_iteration_detail(task: AgentTask, iteration: AgentIteration, *, score_weights: dict[str, float] | None = None) -> dict:
     payload = iteration.to_dict()
     payload["score"] = _score_iteration(iteration, weights=score_weights)
+    payload["intentLabel"] = _agent_intent_label(payload.get("intent")) if payload.get("intent") else None
     analysis = (payload.get("analysis") or "").strip()
     action_plan = (payload.get("actionPlan") or "").strip()
     memory = (payload.get("memory") or "").strip()
@@ -320,6 +342,7 @@ def create_agent_task(user: User, payload: dict) -> AgentTask:
         position_size=_parse_decimal(payload.get("positionSize"), "每次买入仓位"),
         stop_loss=_parse_decimal(payload.get("stopLoss"), "止损比例"),
         take_profit=_parse_decimal(payload.get("takeProfit"), "止盈比例"),
+        min_add_position_interval=_parse_int(payload.get("minAddPositionInterval", 3), "最小加仓间隔"),
         max_holding_days=_parse_int(payload.get("maxHoldingDays"), "最大持仓天数"),
         backtest_start_date=_parse_date(payload.get("backtestStartDate"), "回测开始日期"),
         backtest_end_date=_parse_date(payload.get("backtestEndDate"), "回测结束日期"),
@@ -385,6 +408,7 @@ def rerun_agent_task(user: User, task_id: int) -> AgentTask:
             "positionSize": task.position_size,
             "stopLoss": task.stop_loss,
             "takeProfit": task.take_profit,
+            "minAddPositionInterval": task.min_add_position_interval,
             "maxHoldingDays": task.max_holding_days,
             "backtestStartDate": task.backtest_start_date.isoformat(),
             "backtestEndDate": task.backtest_end_date.isoformat(),
@@ -510,6 +534,11 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
         strategy_config = generation_result["strategyConfig"]
         preview = _run_strategy_backtest(bars, strategy_config)
         curve_diagnostics = _build_equity_curve_diagnostics(preview)
+        time_robustness = _build_time_robustness_summary(
+            task,
+            strategy_config,
+            score_weights=score_weights,
+        )
         analysis_text = generation_result.get("analysis") or _build_analysis_fallback(
             task,
             preview,
@@ -536,6 +565,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             analysis_text,
             action_plan_text,
             generation_result.get("mode"),
+            generation_result.get("intent"),
             score_weights=score_weights,
         )
         memory_text = _build_iteration_memory(
@@ -549,6 +579,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             generation_result,
             research_state,
             curve_diagnostics,
+            time_robustness,
             score_weights=score_weights,
         )
 
@@ -560,7 +591,9 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             max_drawdown=Decimal(str(preview["maxDrawdown"])),
             sharpe=Decimal(str(preview["sharpe"])),
             strategy_config=strategy_config,
+            intent=generation_result.get("intent"),
             memory=memory_text,
+            time_robustness=time_robustness,
             analysis=analysis_text,
             action_plan=action_plan_text,
             summary=summary,
@@ -579,6 +612,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             {
                 "iteration": iteration,
                 "mode": generation_result.get("mode") or "explore_new",
+                "intent": generation_result.get("intent") or "trend_following",
                 "score": _score_result(preview, weights=score_weights),
                 "isBest": is_best_result,
                 "annualReturn": preview["annualReturn"],
@@ -586,6 +620,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
                 "maxDrawdown": preview["maxDrawdown"],
                 "sharpe": preview["sharpe"],
                 "tradeCount": preview.get("tradeCount"),
+                "timeRobustness": time_robustness.get("summary") or {},
                 "entry": _describe_group(strategy_config.get("entry") or {}),
                 "exit": _describe_group(strategy_config.get("exit") or {}),
             }
@@ -755,26 +790,10 @@ def _build_agent_research_state(
     best_result: dict | None,
     benchmark_metrics: dict[str, float],
 ) -> dict:
-    stagnation_rounds = _count_stagnation_rounds(iteration_results)
-    recent_outcomes = iteration_results[-AGENT_RECENT_MEMORY_LIMIT:]
-    best_outcome = _summarize_best_outcome(iteration_results)
-    top_outcomes = _summarize_ranked_outcomes(iteration_results, reverse=True)
-    bottom_outcomes = _summarize_ranked_outcomes(iteration_results, reverse=False)
-    recent_best_score = max((float(item.get("score") or 0) for item in recent_outcomes), default=None)
-    best_score = float(best_outcome.get("score") or 0) if best_outcome else None
-    score_trend = _build_score_trend(iteration_results, best_score, recent_best_score)
+    del iteration_results, best_result, benchmark_metrics
     return {
         "iteration": iteration,
-        "completedIterations": len(iteration_results),
-        "availableModes": ["continue_best", "refine_recent", "explore_new", "mutate"],
-        "stagnationRounds": stagnation_rounds,
-        "recentBestScore": recent_best_score,
-        "recentBestScoreRatio": round(recent_best_score / best_score, 4) if best_score and recent_best_score is not None else None,
-        "scoreTrend": score_trend,
-        "recentOutcomes": recent_outcomes,
-        "bestOutcome": best_outcome,
-        "topOutcomes": top_outcomes,
-        "bottomOutcomes": bottom_outcomes,
+        "maxIterations": task.max_iterations,
     }
 
 
@@ -802,6 +821,7 @@ def _format_agent_memory_item(item: dict) -> str:
     strategy_digest = payload.get("strategyDigest") or {}
     reflection = payload.get("reflection") or {}
     diagnostics_text = _format_curve_diagnostics_for_memory(payload.get("curveDiagnostics") or {})
+    time_robustness_text = _format_time_robustness_for_memory(payload.get("timeRobustness") or {})
     return (
         f"第 {payload.get('round', item.get('iteration', '-'))} 轮："
         f"score={payload.get('score', '-')}，"
@@ -809,12 +829,28 @@ def _format_agent_memory_item(item: dict) -> str:
         f"回撤={metrics.get('maxDrawdown', '-')}%，"
         f"Sharpe={metrics.get('sharpe', '-')}，"
         f"交易={metrics.get('tradeCount', '-')} 次，"
-        f"模式={payload.get('modeLabel', payload.get('mode', '-'))}。\n"
+        f"模式={payload.get('modeLabel', payload.get('mode', '-'))}，"
+        f"交易风格={payload.get('intentLabel', payload.get('intent', '-'))}。\n"
         f"  买入：{strategy_digest.get('entry', '-')}\n"
         f"  卖出：{strategy_digest.get('exit', '-')}\n"
         f"  曲线诊断：{diagnostics_text}\n"
+        f"  跨时间验证：{time_robustness_text}\n"
         f"  分析：{reflection.get('analysis', '-')}\n"
         f"  决策：{reflection.get('plan', '-')}"
+    )
+
+
+def _format_time_robustness_for_memory(time_robustness: dict) -> str:
+    summary = time_robustness.get("summary") or {}
+    if not summary:
+        return "暂无"
+    return (
+        f"样本 {summary.get('sampleCount', 0)} 个，"
+        f"跑赢持续持有 {summary.get('beatBenchmarkCount', 0)} 个，"
+        f"通过率 {summary.get('passRate', 0)}%，"
+        f"平均分差 {summary.get('averageScoreDiff', 0)}，"
+        f"最差区间 {summary.get('worstRange') or '-'}，"
+        f"原因 {summary.get('worstReason') or '-'}"
     )
 
 
@@ -852,58 +888,6 @@ def _format_curve_diagnostics_for_memory(diagnostics: dict) -> str:
     return "；".join(parts)
 
 
-def _count_stagnation_rounds(iteration_results: list[dict]) -> int:
-    stagnation_rounds = 0
-    for item in reversed(iteration_results):
-        if item.get("isBest"):
-            break
-        stagnation_rounds += 1
-    return stagnation_rounds
-
-
-def _build_score_trend(iteration_results: list[dict], best_score: float | None, recent_best_score: float | None) -> dict:
-    recent_scores = [round(float(item.get("score") or 0), 2) for item in iteration_results[-AGENT_RECENT_MEMORY_LIMIT:]]
-    unique_recent_scores = {score for score in recent_scores}
-    return {
-        "recentScores": recent_scores,
-        "isPlateau": len(recent_scores) >= 3 and len(unique_recent_scores) <= 2,
-        "bestScore": round(best_score, 2) if best_score is not None else None,
-        "recentBestScore": round(recent_best_score, 2) if recent_best_score is not None else None,
-        "gapToBest": round(best_score - recent_best_score, 2) if best_score is not None and recent_best_score is not None else None,
-    }
-
-
-def _summarize_best_outcome(iteration_results: list[dict]) -> dict | None:
-    if not iteration_results:
-        return None
-    best_item = max(iteration_results, key=lambda item: item.get("score", float("-inf")))
-    return _summarize_outcome(best_item)
-
-
-def _summarize_ranked_outcomes(iteration_results: list[dict], *, reverse: bool) -> list[dict]:
-    sorted_items = sorted(
-        iteration_results,
-        key=lambda item: item.get("score", float("-inf")),
-        reverse=reverse,
-    )
-    return [_summarize_outcome(item) for item in sorted_items[:5]]
-
-
-def _summarize_outcome(best_item: dict) -> dict:
-    return {
-        "iteration": best_item.get("iteration"),
-        "mode": best_item.get("mode"),
-        "score": best_item.get("score"),
-        "annualReturn": best_item.get("annualReturn"),
-        "totalReturn": best_item.get("totalReturn"),
-        "maxDrawdown": best_item.get("maxDrawdown"),
-        "sharpe": best_item.get("sharpe"),
-        "tradeCount": best_item.get("tradeCount"),
-        "entry": best_item.get("entry"),
-        "exit": best_item.get("exit"),
-    }
-
-
 def _score_result(result: dict, *, weights: dict[str, float] | None = None) -> float:
     return calculate_performance_score(
         result.get("annualReturn"),
@@ -911,6 +895,151 @@ def _score_result(result: dict, *, weights: dict[str, float] | None = None) -> f
         result.get("maxDrawdown"),
         weights=weights,
     )
+
+
+TIME_ROBUSTNESS_RANGES = (
+    ("recent_1y", "近一年", 1),
+    ("recent_3y", "近三年", 3),
+    ("recent_5y", "近五年", 5),
+)
+
+
+def _resolve_preview_range(task: AgentTask, range_key: str | None) -> dict:
+    normalized_key = str(range_key or "current").strip()
+    end_date = task.backtest_end_date or date.today()
+    if normalized_key in {"", "current"}:
+        start_date = task.backtest_start_date
+        if not start_date:
+            raise AgentTaskError("Agent 任务缺少回测开始日期。")
+        return {
+            "key": "current",
+            "label": "当前回测区间",
+            "startDate": start_date,
+            "endDate": end_date,
+        }
+
+    for key, label, years in TIME_ROBUSTNESS_RANGES:
+        if normalized_key == key:
+            return {
+                "key": key,
+                "label": label,
+                "startDate": _shift_year(end_date, -years),
+                "endDate": end_date,
+            }
+    raise AgentTaskError("不支持的收益预览区间。")
+
+
+def _shift_year(value: date, years: int) -> date:
+    try:
+        return value.replace(year=value.year + years)
+    except ValueError:
+        return value.replace(year=value.year + years, day=28)
+
+
+def _build_time_robustness_summary(
+    task: AgentTask,
+    strategy_config: dict,
+    *,
+    score_weights: dict[str, float] | None = None,
+) -> dict:
+    samples: list[dict] = []
+    for key, label, _years in TIME_ROBUSTNESS_RANGES:
+        range_config = _resolve_preview_range(task, key)
+        try:
+            bars = _load_asset_bars(
+                task.asset_type,
+                task.asset_identifier,
+                task.country_code,
+                {
+                    "risk": {
+                        "backtestStartDate": range_config["startDate"].isoformat(),
+                        "backtestEndDate": range_config["endDate"].isoformat(),
+                    }
+                },
+            )
+            if len([bar for bar in bars if not bar.get("isWarmup")]) < 60:
+                samples.append(
+                    {
+                        "key": key,
+                        "label": label,
+                        "status": "skipped",
+                        "reason": "可用 K 线少于 60 条。",
+                    }
+                )
+                continue
+            preview = _run_strategy_backtest(bars, strategy_config)
+            strategy_score = _score_result(preview, weights=score_weights)
+            benchmark_score = calculate_performance_score(
+                preview.get("benchmarkAnnualReturn"),
+                preview.get("benchmarkSharpe"),
+                preview.get("benchmarkMaxDrawdown"),
+                weights=score_weights,
+            )
+            samples.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "status": "success",
+                    "dateRange": preview.get("dateRange"),
+                    "score": round(strategy_score, 2),
+                    "benchmarkScore": round(benchmark_score, 2),
+                    "scoreDiff": round(strategy_score - benchmark_score, 2),
+                    "annualReturn": round(float(preview.get("annualReturn") or 0), 2),
+                    "benchmarkAnnualReturn": round(float(preview.get("benchmarkAnnualReturn") or 0), 2),
+                    "maxDrawdown": round(float(preview.get("maxDrawdown") or 0), 2),
+                    "benchmarkMaxDrawdown": round(float(preview.get("benchmarkMaxDrawdown") or 0), 2),
+                    "sharpe": round(float(preview.get("sharpe") or 0), 2),
+                    "benchmarkSharpe": round(float(preview.get("benchmarkSharpe") or 0), 2),
+                    "tradeCount": preview.get("tradeCount"),
+                    "benchmarkTradeCount": preview.get("benchmarkTradeCount"),
+                    "diagnostics": _build_equity_curve_diagnostics(preview),
+                    "diagnosis": _build_time_sample_diagnosis(preview, strategy_score, benchmark_score),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            samples.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "status": "failed",
+                    "reason": str(exc),
+                }
+            )
+
+    success_samples = [item for item in samples if item.get("status") == "success"]
+    diffs = [float(item.get("scoreDiff") or 0) for item in success_samples]
+    scores = [float(item.get("score") or 0) for item in success_samples]
+    beat_count = sum(1 for diff in diffs if diff >= 0)
+    worst = min(success_samples, key=lambda item: float(item.get("scoreDiff") or 0), default=None)
+    return {
+        "summary": {
+            "sampleCount": len(success_samples),
+            "beatBenchmarkCount": beat_count,
+            "passRate": round((beat_count / len(success_samples)) * 100, 2) if success_samples else 0.0,
+            "averageScore": round(sum(scores) / len(scores), 2) if scores else 0.0,
+            "averageScoreDiff": round(sum(diffs) / len(diffs), 2) if diffs else 0.0,
+            "worstRange": worst.get("label") if worst else None,
+            "worstScoreDiff": worst.get("scoreDiff") if worst else None,
+            "worstReason": worst.get("diagnosis") if worst else None,
+        },
+        "samples": samples,
+    }
+
+
+def _build_time_sample_diagnosis(preview: dict, strategy_score: float, benchmark_score: float) -> str:
+    problems: list[str] = []
+    if strategy_score < benchmark_score:
+        problems.append("综合分弱于持续持有")
+    if float(preview.get("annualReturn") or 0) < float(preview.get("benchmarkAnnualReturn") or 0):
+        problems.append("收益不足")
+    if float(preview.get("maxDrawdown") or 0) > float(preview.get("benchmarkMaxDrawdown") or 0):
+        problems.append("回撤更高")
+    trade_count = int(preview.get("tradeCount") or 0)
+    if trade_count < 2:
+        problems.append("交易次数过低")
+    elif trade_count > 120:
+        problems.append("交易次数过高")
+    return "、".join(problems) if problems else "表现优于或接近持续持有"
 
 
 def _build_equity_curve_diagnostics(preview: dict) -> dict:
@@ -972,11 +1101,10 @@ def _build_holding_flags(dates: list[str], trades: list[dict]) -> list[bool]:
     for current_date in dates:
         day_trades = trades_by_date.get(current_date, [])
         for trade in day_trades:
-            if trade.get("side") == "sell":
-                holding = False
-        for trade in day_trades:
             if trade.get("side") == "buy":
                 holding = True
+            elif trade.get("side") == "sell":
+                holding = False
         flags.append(holding)
     return flags
 
@@ -1107,6 +1235,11 @@ def _agent_mode_label(mode: str | None) -> str:
         "mutate": "突变",
     }.get(str(mode or "").strip().lower(), "探索新结构")
 
+
+def _agent_intent_label(intent: str | None) -> str:
+    return AGENT_STRATEGY_INTENTS.get(str(intent or "").strip().lower(), "趋势跟随")
+
+
 def _enrich_agent_thoughts(
     analysis: str,
     action_plan: str,
@@ -1114,8 +1247,10 @@ def _enrich_agent_thoughts(
     research_state: dict,
 ) -> tuple[str, str]:
     mode = generation_result.get("mode") or "explore_new"
+    intent = generation_result.get("intent") or "trend_following"
     analysis_parts = [
         f"本轮模式：{_agent_mode_label(mode)}。",
+        f"交易风格：{_agent_intent_label(intent)}。",
         analysis.strip(),
     ]
 
@@ -1163,7 +1298,9 @@ def _generate_strategy_with_ai(
             )
             generation_payload = _parse_strategy_generation_payload(content)
             strategy_config = generation_payload["strategyConfig"]
+            strategy_config["risk"] = _build_fixed_risk_config(task)
             _validate_strategy_config(strategy_config)
+            generation_payload["strategyConfig"] = strategy_config
             return generation_payload
         except AIClientError as exc:
             last_error = AgentTaskError(str(exc))
@@ -1184,6 +1321,10 @@ def _compact_rule_items(items: list[dict], *, include_description: bool = False)
         suffix = f"：{description}" if include_description and description else ""
         lines.append(f"- {value}: {label}{suffix}")
     return "\n".join(lines)
+
+
+def _compact_agent_intents() -> str:
+    return "\n".join(f"- {value}: {label}" for value, label in AGENT_STRATEGY_INTENTS.items())
 
 
 def _format_agent_memory_block(items: list[str]) -> str:
@@ -1210,7 +1351,7 @@ def _build_generation_prompt(
 - 标的标识：{task.asset_identifier}
 - 国家/地区：{task.country_code}
 - 标的类型：{task.asset_type}
-- 当前迭代：第 {current_iteration} / {task.max_iterations} 轮
+- 当前是第 {current_iteration} 轮迭代，共 {task.max_iterations} 轮
 - 目标年化收益率：{float(task.target_annual_return):.2f}%
 - 最大可接受回撤：{float(task.max_drawdown_limit):.2f}%
 - 最低 Sharpe：{float(task.min_sharpe):.2f}
@@ -1232,12 +1373,16 @@ def _build_generation_prompt(
 可用函数：
 {_compact_rule_items(RULE_FUNCTIONS, include_description=True)}
 
+交易风格枚举 intent，只能选择以下值之一：
+{_compact_agent_intents()}
+
 风险参数必须固定为：
 {json.dumps({
     "initialCapital": float(task.initial_capital),
     "positionSize": float(task.position_size),
     "stopLoss": float(task.stop_loss),
     "takeProfit": float(task.take_profit),
+    "minAddPositionInterval": task.min_add_position_interval,
     "maxHoldingDays": task.max_holding_days,
     "forceCloseOnEnd": True,
     "backtestStartDate": task.backtest_start_date.isoformat(),
@@ -1256,6 +1401,8 @@ def _build_generation_prompt(
 - explore_new：探索新结构。
 - mutate：突变。
 - 你可以自由选择任何研究动作，也可以参考、组合或反驳历史记忆里的经验。
+- 每轮必须先选择一个 intent。intent 表示本轮交易范式，plan 表示该范式如何落到 DSL，二者不能互相替代。
+- 如果连续多轮同一 intent 效果不好，应主动考虑切换 intent；如果某个 intent 在历史最佳中表现好，可以沿用，但必须说明原因。
 - 如果历史最佳仍未达到目标年化收益率，优先考虑 explore_new 或 mutate，用新结构寻找更高上限。
 - 如果历史最佳已经达到目标年化收益率，再优先考虑 continue_best 或 refine_recent，用于巩固收益、降低回撤、提升 Sharpe。
 - 重点判断本轮 DSL 是否可能改变真实交易行为，而不只是字面变化。
@@ -1263,12 +1410,19 @@ def _build_generation_prompt(
 - 不要把交易次数当成硬性阈值；请结合回测区间、标的波动、收益、回撤和 Sharpe 自行判断触发频率是否健康。
 - 分析目标达标情况时，请基于历史迭代里的策略表现；持续持有对照只能作为基准参考，不要写成“持续持有未达目标所以策略未达标”。
 - 历史记忆中的“曲线诊断”用于描述收益曲线形态，请关注是否长期空仓、是否错过主升段、是否只在下跌段避险但趋势参与不足。
+- 历史记忆中的“timeRobustness”是同一策略在近一年、近三年、近五年的轻量跨时间验证，请重点关注哪些区间失败、是否只适配单一行情阶段，以及失败原因是收益不足、回撤过大还是交易次数异常。
+- 每次 analysis 必须总结历史记忆中的 timeRobustness：近一年/近三年/近五年通过率或跑赢持续持有比例、最差区间、最差原因、是否存在只适配主回测区间的过拟合迹象。
+- 如果 timeRobustness 长期较差或最差区间反复集中在某类行情，不要只做细小阈值微调；应主动判断是否需要探索新结构或突变，避免陷入局部最优。
+- 不要总是默认使用 close、MA5、MA20、MA60 这类基础价量条件。除非你能说明它们在历史记忆中确实有效，否则应主动探索更丰富的因子和函数。
+- 优先考虑把基础趋势因子与波动率、区间位置、量能变化、收益率变化、RSI、MACD、KDJ、ATR、BIAS、highest/lowest、std、pct_change 等组合起来，寻找更不容易过拟合的结构。
+- 每次 analysis 必须说明本轮是否使用了非基础因子；如果仍然主要使用 close/MA，必须解释为什么这样比使用其他因子更合理。
 
 返回 JSON，结构必须为：
 {{
   "mode": "continue_best 或 refine_recent 或 explore_new 或 mutate",
-  "analysis": "先思考历史表现、持续持有对照、当前目标和本轮选择原因；必须额外分析历史 tradeCount 是否过低、过密，是否说明过往规则触发频率不健康",
-  "plan": "本轮准备怎样设计 DSL，以及它预计会怎样改变交易行为",
+  "intent": "trend_following 或 trend_pullback 或 breakout 或 mean_reversion 或 dip_buying 或 momentum_acceleration 或 volatility_breakout 或 defensive_timing 或 range_trading",
+  "analysis": "先思考历史表现、持续持有对照、当前目标和本轮选择原因；必须额外分析历史 tradeCount 是否过低、过密；必须总结 timeRobustness 的通过率、最差区间和失败原因，并判断是否过拟合或陷入局部最优；必须说明本轮是否使用非基础因子，若仍以 close/MA 为主则解释原因",
+  "plan": "基于本轮 intent 说明准备怎样设计 DSL，以及它预计会怎样改变交易行为",
   "strategy": {{
     "entry": {{
       "type": "group",
@@ -1285,6 +1439,7 @@ def _build_generation_prompt(
       "positionSize": number,
       "stopLoss": number,
       "takeProfit": number,
+      "minAddPositionInterval": number,
       "maxHoldingDays": number,
       "backtestStartDate": "YYYY-MM-DD",
       "backtestEndDate": "YYYY-MM-DD"
@@ -1348,6 +1503,7 @@ def _parse_strategy_generation_payload(content: str) -> dict:
     plan = str(data.get("plan", data.get("actionPlan", ""))).strip()
     return {
         "mode": _normalize_agent_mode(data.get("mode")),
+        "intent": _normalize_agent_intent(data.get("intent")),
         "analysis": str(data.get("analysis", "")).strip(),
         "actionPlan": plan,
         "strategyConfig": strategy,
@@ -1365,6 +1521,25 @@ def _normalize_agent_mode(value: Any) -> str:
     if mode in {"continue_best", "refine_recent", "explore_new", "mutate"}:
         return mode
     return "explore_new"
+
+
+def _normalize_agent_intent(value: Any) -> str:
+    intent = str(value or "").strip().lower()
+    return intent if intent in AGENT_STRATEGY_INTENTS else "trend_following"
+
+
+def _build_fixed_risk_config(task: AgentTask) -> dict:
+    return {
+        "initialCapital": float(task.initial_capital),
+        "positionSize": float(task.position_size),
+        "stopLoss": float(task.stop_loss),
+        "takeProfit": float(task.take_profit),
+        "minAddPositionInterval": task.min_add_position_interval,
+        "maxHoldingDays": task.max_holding_days,
+        "forceCloseOnEnd": True,
+        "backtestStartDate": task.backtest_start_date.isoformat(),
+        "backtestEndDate": task.backtest_end_date.isoformat(),
+    }
 
 
 def _normalize_string_list(value: Any) -> list[str]:
@@ -1428,6 +1603,7 @@ def _build_iteration_summary(
     analysis: str | None = None,
     action_plan: str | None = None,
     mode: str | None = None,
+    intent: str | None = None,
     score_weights: dict[str, float] | None = None,
 ) -> str:
     entry_desc = _describe_group(strategy_config.get("entry") or {})
@@ -1435,6 +1611,7 @@ def _build_iteration_summary(
 
     summary_parts = [
         f"本轮模式：{_agent_mode_label(mode)}。",
+        f"交易风格：{_agent_intent_label(intent)}。",
         f"本轮买入规则为“{entry_desc}”，卖出规则为“{exit_desc}”。",
         f"回测结果：年化收益 {preview['annualReturn']:.2f}% ，最大回撤 {preview['maxDrawdown']:.2f}% ，Sharpe {preview['sharpe']:.2f}。",
         f"持续持有对照：年化收益 {benchmark_metrics['benchmarkAnnualReturn']:.2f}% ，总收益 {benchmark_metrics['benchmarkReturn']:.2f}% 。",
@@ -1493,14 +1670,18 @@ def _build_iteration_memory(
     generation_result: dict,
     research_state: dict,
     curve_diagnostics: dict,
+    time_robustness: dict,
     score_weights: dict[str, float] | None = None,
 ) -> str:
     del benchmark_metrics, summary, research_state
     mode = generation_result.get("mode") or "explore_new"
+    intent = generation_result.get("intent") or "trend_following"
     memory_payload = {
         "round": iteration,
         "mode": mode,
         "modeLabel": _agent_mode_label(mode),
+        "intent": intent,
+        "intentLabel": _agent_intent_label(intent),
         "score": round(_score_result(preview, weights=score_weights), 2),
         "metrics": {
             "annualReturn": round(float(preview["annualReturn"]), 2),
@@ -1514,6 +1695,7 @@ def _build_iteration_memory(
             "exit": _describe_group(strategy_config.get("exit") or {}),
         },
         "curveDiagnostics": curve_diagnostics,
+        "timeRobustness": time_robustness,
         "reflection": {
             "analysis": analysis,
             "plan": action_plan,
@@ -1635,6 +1817,7 @@ def _build_noop_strategy_config(task: AgentTask) -> dict:
             "positionSize": float(task.position_size),
             "stopLoss": float(task.stop_loss),
             "takeProfit": float(task.take_profit),
+            "minAddPositionInterval": task.min_add_position_interval,
             "maxHoldingDays": task.max_holding_days,
             "backtestStartDate": task.backtest_start_date.isoformat(),
             "backtestEndDate": task.backtest_end_date.isoformat(),
