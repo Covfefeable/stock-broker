@@ -553,7 +553,7 @@ function EvaluationResultDetail({ result }: { result: EvaluationResult }) {
                 <strong>{strategyValue}</strong>
               </div>
               <div>
-                <small>持续持有</small>
+                <small>买入持有基准</small>
                 <strong>{benchmarkValue}</strong>
               </div>
             </div>
@@ -799,8 +799,8 @@ function buildTotalScoreTooltip(report: EvaluationReport): ReactNode {
 function buildGroupScoreTooltip(group: EvaluationGroup | undefined, label: string): ReactNode {
   return (
     <>
-      <div>{label}得分衡量策略相对持续持有的平均优势，并对样本间波动做轻微惩罚。</div>
-      <div>单样本分 = clamp(50 + (策略综合分 - 持续持有综合分) * 2, 0, 100)。</div>
+      <div>{label}得分衡量策略相对买入持有基准的平均优势，并对样本间波动做轻微惩罚。</div>
+      <div>单样本分 = clamp(50 + (策略综合分 - 买入持有基准综合分) * 2, 0, 100)。</div>
       <div>分组得分 = 平均样本分 - 样本分标准差 * 0.2。</div>
       <div>
         实际：{formatNumber(group?.averageSampleScore)} - {formatNumber(group?.sampleScoreStd)} * 0.2 = {formatNumber(group?.score)}

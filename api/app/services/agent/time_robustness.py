@@ -14,7 +14,7 @@ def _format_time_robustness_for_memory(time_robustness: dict) -> str:
         return "暂无"
     return (
         f"样本 {summary.get('sampleCount', 0)} 个，"
-        f"跑赢持续持有 {summary.get('beatBenchmarkCount', 0)} 个，"
+        f"跑赢买入持有基准 {summary.get('beatBenchmarkCount', 0)} 个，"
         f"通过率 {summary.get('passRate', 0)}%，"
         f"平均分差 {summary.get('averageScoreDiff', 0)}，"
         f"最差区间 {summary.get('worstRange') or '-'}，"
@@ -155,7 +155,7 @@ def _build_time_robustness_summary(
 def _build_time_sample_diagnosis(preview: dict, strategy_score: float, benchmark_score: float) -> str:
     problems: list[str] = []
     if strategy_score < benchmark_score:
-        problems.append("综合分弱于持续持有")
+        problems.append("综合分弱于买入持有基准")
     if float(preview.get("annualReturn") or 0) < float(preview.get("benchmarkAnnualReturn") or 0):
         problems.append("收益不足")
     if float(preview.get("maxDrawdown") or 0) > float(preview.get("benchmarkMaxDrawdown") or 0):
@@ -165,6 +165,5 @@ def _build_time_sample_diagnosis(preview: dict, strategy_score: float, benchmark
         problems.append("交易次数过低")
     elif trade_count > 120:
         problems.append("交易次数过高")
-    return "、".join(problems) if problems else "表现优于或接近持续持有"
-
+    return "、".join(problems) if problems else "表现优于或接近买入持有基准"
 

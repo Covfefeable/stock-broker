@@ -359,7 +359,7 @@ export function RuleEngine({
                             <strong>{previewResult ? metric.strategyValue(previewResult) : "--"}</strong>
                           </div>
                           <div>
-                            <small>持续持有</small>
+                            <small>买入持有基准</small>
                             <strong>{previewResult ? metric.benchmarkValue(previewResult) : "--"}</strong>
                           </div>
                         </div>

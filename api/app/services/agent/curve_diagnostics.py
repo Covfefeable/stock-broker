@@ -16,10 +16,10 @@ def _format_curve_diagnostics_for_memory(diagnostics: dict) -> str:
     diagnosis = diagnostics.get("diagnosis") or {}
     regimes = diagnostics.get("marketRegimes") or []
     parts = [
-        f"总收益 策略 {overview.get('strategyReturn', '-')}% / 持续持有 {overview.get('benchmarkReturn', '-')}%",
+        f"总收益 策略 {overview.get('strategyReturn', '-')}% / 买入持有基准 {overview.get('benchmarkReturn', '-')}%",
         f"相对强弱 {relative.get('trend', '-')}（相对收益 {relative.get('relativeReturn', '-')}%，相对回撤 {relative.get('relativeMaxDrawdown', '-')}%）",
         f"持仓占比 {diagnostics.get('holdingRatio', 0)}%",
-        f"跑赢持续持有天数占比 {diagnostics.get('outperformRatio', 0)}%",
+        f"跑赢买入持有基准天数占比 {diagnostics.get('outperformRatio', 0)}%",
     ]
     if longest_cash.get("tradingDays"):
         parts.append(
@@ -31,7 +31,7 @@ def _format_curve_diagnostics_for_memory(diagnostics: dict) -> str:
         parts.append(
             "最大错失上涨 "
             f"{item.get('startDate')} 至 {item.get('endDate')}："
-            f"持续持有 {item.get('benchmarkReturn')}%，策略 {item.get('strategyReturn')}%，"
+            f"买入持有基准 {item.get('benchmarkReturn')}%，策略 {item.get('strategyReturn')}%，"
             f"差距 {item.get('gap')}%，持仓占比 {item.get('holdingRatio')}%，"
             f"均仓 {item.get('averagePosition')}%，原因：{item.get('reason')}"
         )
@@ -40,7 +40,7 @@ def _format_curve_diagnostics_for_memory(diagnostics: dict) -> str:
         parts.append(
             "最有效避险 "
             f"{item.get('startDate')} 至 {item.get('endDate')}："
-            f"持续持有 {item.get('benchmarkReturn')}%，策略 {item.get('strategyReturn')}%，"
+            f"买入持有基准 {item.get('benchmarkReturn')}%，策略 {item.get('strategyReturn')}%，"
             f"优势 {item.get('advantage')}%，持仓占比 {item.get('holdingRatio')}%，"
             f"原因：{item.get('reason')}"
         )
@@ -49,7 +49,7 @@ def _format_curve_diagnostics_for_memory(diagnostics: dict) -> str:
         parts.append(
             f"关键行情段 {worst_regime.get('startDate')} 至 {worst_regime.get('endDate')}"
             f"（{worst_regime.get('regimeLabel')}）：策略 {worst_regime.get('strategyReturn')}%，"
-            f"持续持有 {worst_regime.get('benchmarkReturn')}%，诊断：{worst_regime.get('diagnosis')}"
+            f"买入持有基准 {worst_regime.get('benchmarkReturn')}%，诊断：{worst_regime.get('diagnosis')}"
         )
     parts.append(
         f"入场质量：{entry_quality.get('diagnosis', '暂无')}，"
@@ -628,7 +628,7 @@ def _diagnose_position_behavior(position_ratios: list[float], holding_flags: lis
     if avg_position < 35:
         return "平均仓位偏低，上涨参与度可能不足"
     if full_ratio >= 70:
-        return "长期高仓位，接近持续持有"
+        return "长期高仓位，接近买入持有基准"
     return "仓位节奏相对均衡"
 
 

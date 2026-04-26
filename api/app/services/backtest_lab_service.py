@@ -434,7 +434,7 @@ def generate_improved_strategy(user: User, strategy_id: int) -> dict:
         "不要大改、不要重写成全新策略；必须以当前策略为主体，保留原来的核心指标族、主要买入卖出结构和风控框架。"
         "必须先从评估数据中判断当前策略的优势，并保留这些优势；再针对评估中暴露的劣势做补强，不能为了修补劣势牺牲已有优势。"
         "只允许根据 aiAdvice 中的规则解析、潜在风险点、综合建议微调 1 到 3 个核心点，例如略微放宽/收紧阈值、增加一个轻量过滤条件、调整止盈止损或最大持仓天数。"
-        "如果评估中暴露跨时间失效、交易次数过低或过高、回撤过大、持续持有对比弱，也只能做针对这些问题的小步修正。"
+        "如果评估中暴露跨时间失效、交易次数过低或过高、回撤过大、买入持有基准对比弱，也只能做针对这些问题的小步修正。"
         "规则 DSL 只能使用材料 requirements.allowedRuleFields 里的变量，不能编造任何未列出的指标。"
         "必须返回合法 JSON，不要 markdown。格式："
         "{\"name\":\"...\",\"type\":\"趋势\",\"strategyConfig\":{...}}。\n"
@@ -853,8 +853,8 @@ def result_passes(sample_score: float) -> bool:
 def build_result_reason(preview: dict, passed: bool, strategy_score: float, benchmark_score: float, sample_score: float) -> str:
     prefix = "通过" if passed else "未通过"
     return (
-        f"{prefix}：样本分 {sample_score:.2f}，策略综合分 {strategy_score:.2f}，持续持有 {benchmark_score:.2f}；"
-        f"年化 {preview.get('annualReturn')}%，持续持有 {preview.get('benchmarkAnnualReturn')}%，"
+        f"{prefix}：样本分 {sample_score:.2f}，策略综合分 {strategy_score:.2f}，买入持有基准 {benchmark_score:.2f}；"
+        f"年化 {preview.get('annualReturn')}%，买入持有基准 {preview.get('benchmarkAnnualReturn')}%，"
         f"回撤 {preview.get('maxDrawdown')}%，Sharpe {preview.get('sharpe')}，交易 {preview.get('tradeCount')} 次。"
     )
 

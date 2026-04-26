@@ -36,9 +36,10 @@ def _build_generation_prompt(
     current_iteration = research_state.get("iteration")
     best_memory_block = _format_agent_memory_block(recent_memories.get("best") or [])
     recent_memory_block = _format_agent_memory_block(recent_memories.get("recent") or [])
+    user_note = str(task.note or "").strip() or "无"
     return f"""
 请围绕单一标的生成一套策略 JSON DSL，并采用 ReAct 风格：先分析，再决策，最后输出策略。
-本轮由你自主选择研究动作。代码不会限制你的模式选择，但研究方向应以探索为主：在策略综合表现没有明确站上持续持有之前，不要沉迷微调已有结构。
+本轮由你自主选择研究动作。代码不会限制你的模式选择，但研究方向应以探索为主：在策略综合表现没有明确站上买入持有基准之前，不要沉迷微调已有结构。
 
 任务信息：
 - 标的名称：{task.asset_name}
@@ -50,13 +51,19 @@ def _build_generation_prompt(
 - 最大可接受回撤：{float(task.max_drawdown_limit):.2f}%
 - 最低 Sharpe：{float(task.min_sharpe):.2f}
 
-持续持有对照（benchmark，仅用于参考；含义是从回测开始日开盘全仓买入该标的，并一直持有到回测结束，不执行任何买卖规则）：
-- 持续持有总收益：{benchmark_metrics["benchmarkReturn"]:.2f}%
-- 持续持有年化收益：{benchmark_metrics["benchmarkAnnualReturn"]:.2f}%
-- 持续持有最大回撤：{benchmark_metrics["benchmarkMaxDrawdown"]:.2f}%
-- 持续持有 Sharpe：{benchmark_metrics["benchmarkSharpe"]:.2f}
-- 持续持有波动率：{benchmark_metrics["benchmarkVolatility"]:.2f}%
-- 这些数值不是当前策略表现，也不是目标约束是否达标的判定对象，只用于判断主动策略相比“什么都不做、一直持有”是否有改进。
+用户备注说明：
+{user_note}
+- 用户备注说明是人工补充的研究意图、偏好或观察点，生成策略时必须认真参考。
+- 如果备注说明与可用字段、固定风险参数、DSL 格式或不得使用未来数据的要求冲突，必须以后者为准。
+
+买入持有基准（Buy-and-Hold Benchmark，仅作为对照基准）：
+- 定义：在回测开始日按初始资金一次性全仓买入该标的，并一直持有到回测结束；期间不执行买入、卖出、止损、止盈、加仓、减仓或择时规则。
+- 用途：它不是当前策略，不是目标约束，也不是你要模仿的交易规则；它只用于衡量主动策略相比“什么都不做的被动持有”是否创造了额外价值。
+- 买入持有基准总收益：{benchmark_metrics["benchmarkReturn"]:.2f}%
+- 买入持有基准年化收益：{benchmark_metrics["benchmarkAnnualReturn"]:.2f}%
+- 买入持有基准最大回撤：{benchmark_metrics["benchmarkMaxDrawdown"]:.2f}%
+- 买入持有基准 Sharpe：{benchmark_metrics["benchmarkSharpe"]:.2f}
+- 买入持有基准波动率：{benchmark_metrics["benchmarkVolatility"]:.2f}%
 
 可用字段：
 {_compact_rule_items(RULE_FIELDS, include_description=True)}
@@ -94,22 +101,22 @@ def _build_generation_prompt(
 - refine_recent：优化近期。
 - explore_new：探索新结构。
 - mutate：突变。
-- 你可以自由选择任何研究动作，也可以参考、组合或反驳历史记忆里的经验；但必须把“是否已经超过持续持有”作为选择优化类动作的重要依据。
+- 你可以自由选择任何研究动作，也可以参考、组合或反驳历史记忆里的经验；但必须把“是否已经超过买入持有基准”作为选择优化类动作的重要依据。
 - 每轮必须先选择一个 intent。intent 表示本轮交易范式，plan 表示该范式如何落到 DSL，二者不能互相替代。
 - 如果连续多轮同一 intent 效果不好，应主动考虑切换 intent；如果某个 intent 在历史最佳中表现好，可以沿用，但必须说明原因。
 - 默认优先 explore_new 或 mutate，用不同交易范式、不同因子组合、不同入场/出场结构寻找更高上限。
-- 只有当历史记忆里已经出现 scoreDiff > 0 的轮次，也就是策略综合分明确高于持续持有综合分时，才适合选择 continue_best 或 refine_recent。
-- refine_recent 只能用于近期表现已经站上持续持有、且问题主要是回撤、Sharpe、交易频率或跨时间稳定性仍需改善的场景；否则应选择 explore_new 或 mutate。
-- continue_best 只能用于当前最佳已经站上持续持有、且它的结构值得保留时；如果当前最佳仍弱于持续持有，只能把它当成参考或反例，不要围绕它做小修小补。
+- 只有当历史记忆里已经出现 scoreDiff > 0 的轮次，也就是策略综合分明确高于买入持有基准综合分时，才适合选择 continue_best 或 refine_recent。
+- refine_recent 只能用于近期表现已经站上买入持有基准、且问题主要是回撤、Sharpe、交易频率或跨时间稳定性仍需改善的场景；否则应选择 explore_new 或 mutate。
+- continue_best 只能用于当前最佳已经站上买入持有基准、且它的结构值得保留时；如果当前最佳仍弱于买入持有基准，只能把它当成参考或反例，不要围绕它做小修小补。
 - 如果历史最佳仍未达到目标年化收益率，或 scoreDiff 仍小于等于 0，必须偏向 explore_new 或 mutate，用新结构寻找更高上限。
 - 如果历史最佳已经达到目标年化收益率且 scoreDiff > 0，再考虑 continue_best 或 refine_recent，用于巩固收益、降低回撤、提升 Sharpe。
 - 重点判断本轮 DSL 是否可能改变真实交易行为，而不只是字面变化。
 - tradeCount 是重要观察指标：交易次数过低通常说明买入或卖出条件过于苛刻，不能只看少数交易带来的偶然高收益。
 - 不要把交易次数当成硬性阈值；请结合回测区间、标的波动、收益、回撤和 Sharpe 自行判断触发频率是否健康。
-- 分析目标达标情况时，请基于历史迭代里的策略表现；持续持有对照只能作为基准参考，不要写成“持续持有未达目标所以策略未达标”。
-- 历史记忆中的“曲线诊断”用于描述收益曲线形态、相对持续持有强弱、错失上涨、有效避险、入场质量、出场质量、仓位行为和风险行为。请据此判断问题到底来自买入过严、买入偏晚、卖出过早、仓位不足、风控过紧还是行情适配不足。
+- 分析目标达标情况时，请基于历史迭代里的策略表现；买入持有基准只能作为基准参考，不要写成“买入持有基准未达目标所以策略未达标”。
+- 历史记忆中的“曲线诊断”用于描述收益曲线形态、相对买入持有基准强弱、错失上涨、有效避险、入场质量、出场质量、仓位行为和风险行为。请据此判断问题到底来自买入过严、买入偏晚、卖出过早、仓位不足、风控过紧还是行情适配不足。
 - 历史记忆中的“timeRobustness”是同一策略在近一年、近三年、近五年的轻量跨时间验证，请重点关注哪些区间失败、是否只适配单一行情阶段，以及失败原因是收益不足、回撤过大还是交易次数异常。
-- 每次 analysis 必须总结历史记忆中的 timeRobustness：近一年/近三年/近五年通过率或跑赢持续持有比例、最差区间、最差原因、是否存在只适配主回测区间的过拟合迹象。
+- 每次 analysis 必须总结历史记忆中的 timeRobustness：近一年/近三年/近五年通过率或跑赢买入持有基准比例、最差区间、最差原因、是否存在只适配主回测区间的过拟合迹象。
 - 如果 timeRobustness 长期较差或最差区间反复集中在某类行情，不要只做细小阈值微调；应主动判断是否需要探索新结构或突变，避免陷入局部最优。
 - 不要总是默认使用 close、MA5、MA20、MA60 这类基础价量条件。除非你能说明它们在历史记忆中确实有效，否则应主动探索更丰富的因子和函数。
 - 优先考虑把基础趋势因子与波动率、区间位置、量能变化、收益率变化、RSI、MACD、KDJ、ATR、BIAS、highest/lowest、std、pct_change 等组合起来，寻找更不容易过拟合的结构。
@@ -119,7 +126,7 @@ def _build_generation_prompt(
 {{
   "mode": "continue_best 或 refine_recent 或 explore_new 或 mutate",
   "intent": "trend_following 或 trend_pullback 或 breakout 或 mean_reversion 或 dip_buying 或 momentum_acceleration 或 volatility_breakout 或 defensive_timing 或 range_trading",
-  "analysis": "先思考历史表现、持续持有对照、曲线诊断、当前目标和本轮选择原因；必须额外分析历史 tradeCount 是否过低、过密；必须总结 timeRobustness 的通过率、最差区间和失败原因，并判断是否过拟合或陷入局部最优；必须说明本轮是否使用非基础因子，若仍以 close/MA 为主则解释原因",
+  "analysis": "先思考历史表现、买入持有基准、曲线诊断、当前目标和本轮选择原因；必须额外分析历史 tradeCount 是否过低、过密；必须总结 timeRobustness 的通过率、最差区间和失败原因，并判断是否过拟合或陷入局部最优；必须说明本轮是否使用非基础因子，若仍以 close/MA 为主则解释原因",
   "plan": "基于本轮 intent 说明准备怎样设计 DSL，以及它预计会怎样改变交易行为",
   "strategy": {{
     "entry": {{
@@ -179,7 +186,7 @@ def _build_generation_prompt(
 - 可以尝试趋势、突破、反转、动量、震荡过滤等不同思路
 - 条件数量建议 1 到 6 个，必要时允许使用嵌套条件组
 - 规则需要可读、合理，不要返回空 children
-- 必须比较“策略目标”和“持续持有对照”，避免生成明显弱于持续持有的平庸策略
+- 必须比较“策略目标”和“买入持有基准”，避免生成明显弱于买入持有基准的平庸策略
 - 只输出 JSON 本身
 """.strip()
 

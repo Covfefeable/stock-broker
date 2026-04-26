@@ -816,7 +816,7 @@ def _build_iteration_summary(
         f"交易风格：{_agent_intent_label(intent)}。",
         f"本轮买入规则为“{entry_desc}”，卖出规则为“{exit_desc}”。",
         f"回测结果：年化收益 {preview['annualReturn']:.2f}% ，最大回撤 {preview['maxDrawdown']:.2f}% ，Sharpe {preview['sharpe']:.2f}。",
-        f"持续持有对照：年化收益 {benchmark_metrics['benchmarkAnnualReturn']:.2f}% ，总收益 {benchmark_metrics['benchmarkReturn']:.2f}% 。",
+        f"买入持有基准：年化收益 {benchmark_metrics['benchmarkAnnualReturn']:.2f}% ，总收益 {benchmark_metrics['benchmarkReturn']:.2f}% 。",
     ]
 
     if analysis:
@@ -842,12 +842,12 @@ def _build_iteration_summary(
 def _build_analysis_fallback(task: AgentTask, preview: dict, benchmark_metrics: dict[str, float]) -> str:
     parts = [
         f"当前策略年化收益 {preview['annualReturn']:.2f}% ，Sharpe {preview['sharpe']:.2f}，最大回撤 {preview['maxDrawdown']:.2f}%。",
-        f"持续持有年化收益 {benchmark_metrics['benchmarkAnnualReturn']:.2f}% ，最大回撤 {benchmark_metrics['benchmarkMaxDrawdown']:.2f}%。",
+        f"买入持有基准年化收益 {benchmark_metrics['benchmarkAnnualReturn']:.2f}% ，最大回撤 {benchmark_metrics['benchmarkMaxDrawdown']:.2f}%。",
     ]
     if preview["annualReturn"] >= benchmark_metrics["benchmarkAnnualReturn"]:
-        parts.append("当前策略在收益层面已达到或超过持续持有。")
+        parts.append("当前策略在收益层面已达到或超过买入持有基准。")
     else:
-        parts.append("当前策略在收益层面仍弱于持续持有。")
+        parts.append("当前策略在收益层面仍弱于买入持有基准。")
     if preview["maxDrawdown"] <= benchmark_metrics["benchmarkMaxDrawdown"]:
         parts.append("但它在回撤控制上更占优。")
     return "".join(parts)
@@ -857,7 +857,7 @@ def _build_action_plan_fallback(strategy_config: dict, preview: dict, benchmark_
     entry_desc = _describe_group(strategy_config.get("entry") or {})
     exit_desc = _describe_group(strategy_config.get("exit") or {})
     if preview["annualReturn"] < benchmark_metrics["benchmarkAnnualReturn"]:
-        return f"继续调整当前策略，重点优化买入“{entry_desc}”和卖出“{exit_desc}”的阈值，争取先超过持续持有。"
+        return f"继续调整当前策略，重点优化买入“{entry_desc}”和卖出“{exit_desc}”的阈值，争取先超过买入持有基准。"
     return f"保留当前“{entry_desc} / {exit_desc}”的核心思路，再围绕回撤和 Sharpe 做微调。"
 
 
