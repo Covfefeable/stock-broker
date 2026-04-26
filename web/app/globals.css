@@ -395,7 +395,9 @@ select {
   height: 92px;
   justify-content: center;
   padding: 0;
+  touch-action: none;
   transition: transform 180ms ease;
+  user-select: none;
   width: 92px;
 }
 

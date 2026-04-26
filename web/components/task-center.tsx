@@ -12,7 +12,8 @@ import {
 import { Drawer, Progress, Segmented, Space, Tag, Typography, notification } from "antd";
 import Lottie from "lottie-react";
 import type { LottieRefCurrentProps } from "lottie-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState } from "@/components/empty-state";
 import sphereAnimation from "@/lib/lottie/sphere.json";
 import { normalizeDisplayText } from "@/components/data-center/utils";
@@ -69,6 +70,9 @@ type TaskSocketMessage =
     };
 
 const FINISHED_TASK_LIMIT = 30;
+const FAB_SIZE = 92;
+const FAB_EDGE_GAP = 24;
+const FAB_POSITION_STORAGE_KEY = "task-center-fab-position";
 
 const statusMeta: Record<TaskStatus, { label: string; color: string; icon: React.ReactNode }> = {
   queued: {
@@ -105,6 +109,16 @@ export function TaskCenter() {
   const [filter, setFilter] = useState<TaskFilter>("active");
   const lottieRef = useRef<LottieRefCurrentProps>(null);
   const statusRef = useRef<Record<string, TaskStatus>>({});
+  const dragStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+  const [fabPosition, setFabPosition] = useState<{ x: number; y: number } | null>(null);
 
   const activeTasks = useMemo(
     () => tasks.filter((task) => task.status === "queued" || task.status === "running"),
@@ -138,6 +152,99 @@ export function TaskCenter() {
   useEffect(() => {
     lottieRef.current?.setSpeed(runningCount > 0 ? runningCount : 0.3);
   }, [runningCount]);
+
+  useEffect(() => {
+    const fallback = getDefaultFabPosition();
+    const saved = window.localStorage.getItem(FAB_POSITION_STORAGE_KEY);
+    if (!saved) {
+      setFabPosition(fallback);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as { x?: unknown; y?: unknown };
+      if (typeof parsed.x !== "number" || typeof parsed.y !== "number") {
+        setFabPosition(fallback);
+        return;
+      }
+      setFabPosition(clampFabPosition(parsed.x, parsed.y));
+    } catch {
+      setFabPosition(fallback);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setFabPosition((current) => {
+        const next = current ? clampFabPosition(current.x, current.y) : getDefaultFabPosition();
+        window.localStorage.setItem(FAB_POSITION_STORAGE_KEY, JSON.stringify(next));
+        return next;
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const handleFabPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      const position = fabPosition ?? getDefaultFabPosition();
+      dragStateRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: position.x,
+        originY: position.y,
+        moved: false,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    [fabPosition],
+  );
+
+  const handleFabPointerMove = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
+    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+      dragState.moved = true;
+    }
+
+    setFabPosition(clampFabPosition(dragState.originX + deltaX, dragState.originY + deltaY));
+  }, []);
+
+  const handleFabPointerUp = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const next = clampFabPosition(dragState.originX + event.clientX - dragState.startX, dragState.originY + event.clientY - dragState.startY);
+    setFabPosition(next);
+    window.localStorage.setItem(FAB_POSITION_STORAGE_KEY, JSON.stringify(next));
+    suppressClickRef.current = dragState.moved;
+    dragStateRef.current = null;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
+
+  const handleFabClick = useCallback(() => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    setOpen(true);
+  }, []);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -234,12 +341,19 @@ export function TaskCenter() {
   return (
     <>
       {notificationHolder}
-      <div className="task-center-fab-wrap">
+      <div
+        className="task-center-fab-wrap"
+        style={fabPosition ? { bottom: "auto", left: fabPosition.x, right: "auto", top: fabPosition.y } : undefined}
+      >
         <button
           className="task-center-fab"
           type="button"
           aria-label="打开任务中心"
-          onClick={() => setOpen(true)}
+          onClick={handleFabClick}
+          onPointerDown={handleFabPointerDown}
+          onPointerMove={handleFabPointerMove}
+          onPointerUp={handleFabPointerUp}
+          onPointerCancel={handleFabPointerUp}
         >
           <Lottie
             lottieRef={lottieRef}
@@ -294,6 +408,19 @@ export function TaskCenter() {
       </Drawer>
     </>
   );
+}
+
+function getDefaultFabPosition(): { x: number; y: number } {
+  return clampFabPosition(window.innerWidth - FAB_SIZE - FAB_EDGE_GAP, window.innerHeight - FAB_SIZE - FAB_EDGE_GAP);
+}
+
+function clampFabPosition(x: number, y: number): { x: number; y: number } {
+  const maxX = Math.max(FAB_EDGE_GAP, window.innerWidth - FAB_SIZE - FAB_EDGE_GAP);
+  const maxY = Math.max(FAB_EDGE_GAP, window.innerHeight - FAB_SIZE - FAB_EDGE_GAP);
+  return {
+    x: Math.min(Math.max(FAB_EDGE_GAP, x), maxX),
+    y: Math.min(Math.max(FAB_EDGE_GAP, y), maxY),
+  };
 }
 
 function TaskSection({
