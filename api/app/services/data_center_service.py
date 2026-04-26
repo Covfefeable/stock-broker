@@ -368,7 +368,7 @@ def sync_stock_daily_history(
     task_id: str | None = None,
 ) -> dict:
     normalized_exchange_code = exchange_code.strip().upper()
-    normalized_ticker = ticker.strip().upper()
+    normalized_ticker = ticker.strip()
     if not normalized_exchange_code:
         raise DataSyncError("同步股票历史日线前请先选择交易所。")
     if not normalized_ticker:
@@ -379,12 +379,17 @@ def sync_stock_daily_history(
         ticker=normalized_ticker,
     ).first()
     if not stock:
+        stock = Stock.query.filter(
+            Stock.exchange_code == normalized_exchange_code,
+            func.lower(Stock.ticker) == normalized_ticker.lower(),
+        ).first()
+    if not stock:
         raise DataSyncError(
             f"未找到股票 {normalized_exchange_code}/{normalized_ticker}，请先完成股票清单同步。"
         )
 
     split_records = sync_stock_splits_for_stock(user, stock)
-    extra_params = {"ticker": normalized_ticker, "order": "1"}
+    extra_params = {"ticker": stock.ticker, "order": "1"}
     if date_mode == DATE_MODE_CUSTOM:
         if start_date:
             extra_params["start_date"] = start_date
@@ -405,7 +410,7 @@ def sync_stock_daily_history(
         event_name="sync_stock_daily_history",
         base_url=canghai_stock_daily_url(normalized_exchange_code),
         success_message=(
-            f"股票历史日线同步成功（{normalized_exchange_code}/{normalized_ticker}），"
+            f"股票历史日线同步成功（{normalized_exchange_code}/{stock.ticker}），"
             f"同步送股/拆股事件 {split_records} 条。"
         ),
         upsert_func=lambda rows: upsert_stock_daily_bars(rows, stock),
@@ -426,7 +431,7 @@ def sync_index_daily_history(
     task_id: str | None = None,
 ) -> dict:
     normalized_country_code = country_code.strip().upper()
-    normalized_ticker = ticker.strip().upper()
+    normalized_ticker = ticker.strip()
     if not normalized_country_code:
         raise DataSyncError("同步指数历史日线前请先选择国家/地区。")
     if not normalized_ticker:
@@ -437,11 +442,16 @@ def sync_index_daily_history(
         ticker=normalized_ticker,
     ).first()
     if not index_asset:
+        index_asset = IndexAsset.query.filter(
+            IndexAsset.country_code == normalized_country_code,
+            func.lower(IndexAsset.ticker) == normalized_ticker.lower(),
+        ).first()
+    if not index_asset:
         raise DataSyncError(
             f"未找到指数 {normalized_country_code}/{normalized_ticker}，请先完成指数清单同步。"
         )
 
-    extra_params = {"ticker": normalized_ticker, "order": "1"}
+    extra_params = {"ticker": index_asset.ticker, "order": "1"}
     if date_mode == DATE_MODE_CUSTOM:
         if start_date:
             extra_params["start_date"] = start_date
@@ -461,7 +471,7 @@ def sync_index_daily_history(
         sync_item=SYNC_ITEM_INDEX_DAILY_HISTORY,
         event_name="sync_index_daily_history",
         base_url=canghai_index_daily_url(normalized_country_code),
-        success_message=f"指数历史日线同步成功（{normalized_country_code}/{normalized_ticker}）。",
+        success_message=f"指数历史日线同步成功（{normalized_country_code}/{index_asset.ticker}）。",
         upsert_func=lambda rows: upsert_index_daily_bars(rows, index_asset),
         extra_params=extra_params,
         log_result=log_result,
@@ -1126,18 +1136,24 @@ def list_index_options(country_code: str) -> list[dict]:
 
 def get_stock_daily_coverage(exchange_code: str, ticker: str) -> dict:
     normalized_exchange_code = exchange_code.strip().upper()
-    normalized_ticker = ticker.strip().upper()
+    normalized_ticker = ticker.strip()
     if not normalized_exchange_code or not normalized_ticker:
         return {"existingDates": [], "latestDate": None, "count": 0}
 
-    rows = (
-        StockDailyBar.query.filter_by(
-            exchange_code=normalized_exchange_code,
-            ticker=normalized_ticker,
-        )
-        .order_by(StockDailyBar.trade_date.asc(), StockDailyBar.id.asc())
-        .all()
+    query = StockDailyBar.query.filter_by(
+        exchange_code=normalized_exchange_code,
+        ticker=normalized_ticker,
     )
+    rows = query.order_by(StockDailyBar.trade_date.asc(), StockDailyBar.id.asc()).all()
+    if not rows:
+        rows = (
+            StockDailyBar.query.filter(
+                StockDailyBar.exchange_code == normalized_exchange_code,
+                func.lower(StockDailyBar.ticker) == normalized_ticker.lower(),
+            )
+            .order_by(StockDailyBar.trade_date.asc(), StockDailyBar.id.asc())
+            .all()
+        )
     dates = [row.trade_date.isoformat() for row in rows if row.trade_date]
     return {
         "existingDates": dates,
@@ -1148,18 +1164,24 @@ def get_stock_daily_coverage(exchange_code: str, ticker: str) -> dict:
 
 def get_index_daily_coverage(country_code: str, ticker: str) -> dict:
     normalized_country_code = country_code.strip().upper()
-    normalized_ticker = ticker.strip().upper()
+    normalized_ticker = ticker.strip()
     if not normalized_country_code or not normalized_ticker:
         return {"existingDates": [], "latestDate": None, "count": 0}
 
-    rows = (
-        IndexDailyBar.query.filter_by(
-            country_code=normalized_country_code,
-            ticker=normalized_ticker,
-        )
-        .order_by(IndexDailyBar.trade_date.asc(), IndexDailyBar.id.asc())
-        .all()
+    query = IndexDailyBar.query.filter_by(
+        country_code=normalized_country_code,
+        ticker=normalized_ticker,
     )
+    rows = query.order_by(IndexDailyBar.trade_date.asc(), IndexDailyBar.id.asc()).all()
+    if not rows:
+        rows = (
+            IndexDailyBar.query.filter(
+                IndexDailyBar.country_code == normalized_country_code,
+                func.lower(IndexDailyBar.ticker) == normalized_ticker.lower(),
+            )
+            .order_by(IndexDailyBar.trade_date.asc(), IndexDailyBar.id.asc())
+            .all()
+        )
     dates = [row.trade_date.isoformat() for row in rows if row.trade_date]
     return {
         "existingDates": dates,
@@ -1170,16 +1192,21 @@ def get_index_daily_coverage(country_code: str, ticker: str) -> dict:
 
 def get_stock_browser_bars(exchange_code: str, ticker: str) -> dict:
     normalized_exchange_code = exchange_code.strip().upper()
-    normalized_ticker = ticker.strip().upper()
+    normalized_ticker = ticker.strip()
     if not normalized_exchange_code or not normalized_ticker:
         return {"meta": None, "bars": []}
 
     stock = Stock.query.filter_by(exchange_code=normalized_exchange_code, ticker=normalized_ticker).first()
     if not stock:
+        stock = Stock.query.filter(
+            Stock.exchange_code == normalized_exchange_code,
+            func.lower(Stock.ticker) == normalized_ticker.lower(),
+        ).first()
+    if not stock:
         return {"meta": None, "bars": []}
 
     rows = (
-        StockDailyBar.query.filter_by(exchange_code=normalized_exchange_code, ticker=normalized_ticker)
+        StockDailyBar.query.filter_by(exchange_code=normalized_exchange_code, ticker=stock.ticker)
         .order_by(StockDailyBar.trade_date.desc(), StockDailyBar.id.desc())
         .all()
     )
@@ -1200,16 +1227,21 @@ def get_stock_browser_bars(exchange_code: str, ticker: str) -> dict:
 
 def get_index_browser_bars(country_code: str, ticker: str) -> dict:
     normalized_country_code = country_code.strip().upper()
-    normalized_ticker = ticker.strip().upper()
+    normalized_ticker = ticker.strip()
     if not normalized_country_code or not normalized_ticker:
         return {"meta": None, "bars": []}
 
     index_asset = IndexAsset.query.filter_by(country_code=normalized_country_code, ticker=normalized_ticker).first()
     if not index_asset:
+        index_asset = IndexAsset.query.filter(
+            IndexAsset.country_code == normalized_country_code,
+            func.lower(IndexAsset.ticker) == normalized_ticker.lower(),
+        ).first()
+    if not index_asset:
         return {"meta": None, "bars": []}
 
     rows = (
-        IndexDailyBar.query.filter_by(country_code=normalized_country_code, ticker=normalized_ticker)
+        IndexDailyBar.query.filter_by(country_code=normalized_country_code, ticker=index_asset.ticker)
         .order_by(IndexDailyBar.trade_date.desc(), IndexDailyBar.id.desc())
         .all()
     )
@@ -1417,9 +1449,9 @@ def upsert_index_assets(rows: list[dict], country_code: str) -> int:
 def upsert_stock_daily_bars(rows: list[dict], stock: Stock) -> int:
     affected = 0
     for item in rows:
-        ticker = str(item.get("ticker") or "").strip().upper()
+        ticker = str(item.get("ticker") or "").strip()
         trade_date_raw = str(item.get("date") or "").strip()
-        if not ticker or ticker != stock.ticker or not trade_date_raw:
+        if not ticker or ticker.casefold() != stock.ticker.casefold() or not trade_date_raw:
             continue
 
         trade_date = date.fromisoformat(trade_date_raw)
@@ -1456,7 +1488,7 @@ def upsert_stock_splits(rows: list[dict], stock: Stock) -> int:
         split_factor = parse_positive_decimal(item.get("split_factor"))
         if (
             not ticker
-            or ticker.upper() != stock.ticker.upper()
+            or ticker.casefold() != stock.ticker.casefold()
             or not event_date_raw
             or split_factor is None
         ):
@@ -1487,9 +1519,9 @@ def upsert_stock_splits(rows: list[dict], stock: Stock) -> int:
 def upsert_index_daily_bars(rows: list[dict], index_asset: IndexAsset) -> int:
     affected = 0
     for item in rows:
-        ticker = str(item.get("ticker") or "").strip().upper()
+        ticker = str(item.get("ticker") or "").strip()
         trade_date_raw = str(item.get("date") or "").strip()
-        if not ticker or ticker != index_asset.ticker or not trade_date_raw:
+        if not ticker or ticker.casefold() != index_asset.ticker.casefold() or not trade_date_raw:
             continue
 
         trade_date = date.fromisoformat(trade_date_raw)

@@ -15,7 +15,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body>
+      <body data-theme="dark" suppressHydrationWarning>
         <script
           dangerouslySetInnerHTML={{
             __html:

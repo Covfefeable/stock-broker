@@ -7,11 +7,13 @@ import {
   LockOutlined,
   RobotOutlined,
   SaveOutlined,
+  SlidersOutlined,
 } from "@ant-design/icons";
 import {
   Button,
   Divider,
   Input,
+  InputNumber,
   Menu,
   Space,
   Switch,
@@ -29,7 +31,7 @@ import { apiGet, apiRequest } from "@/lib/api";
 
 const { Text, Title } = Typography;
 
-type SectionKey = "data-sources" | "ai" | "notice" | "account";
+type SectionKey = "data-sources" | "ai" | "scoring" | "notice" | "account";
 
 type AiModelRow = {
   key: string;
@@ -55,6 +57,13 @@ type SettingsPayload = {
     dataSync: boolean;
     agentGoal: boolean;
     backtest: boolean;
+  };
+  scoring: {
+    performanceScoreWeights: {
+      annualReturn: number;
+      sharpe: number;
+      maxDrawdown: number;
+    };
   };
   account: {
     keepSignedIn: boolean;
@@ -87,6 +96,13 @@ const defaultSettings: SettingsState = {
     agentGoal: false,
     backtest: false,
   },
+  scoring: {
+    performanceScoreWeights: {
+      annualReturn: 0.7,
+      sharpe: 5,
+      maxDrawdown: 0.2,
+    },
+  },
   account: {
     keepSignedIn: true,
   },
@@ -95,6 +111,7 @@ const defaultSettings: SettingsState = {
 const sectionNav = [
   { key: "data-sources", icon: <DatabaseOutlined />, label: "数据源配置" },
   { key: "ai", icon: <RobotOutlined />, label: "AI 配置" },
+  { key: "scoring", icon: <SlidersOutlined />, label: "评分权重" },
   { key: "notice", icon: <BellOutlined />, label: "通知" },
   { key: "account", icon: <LockOutlined />, label: "账号偏好" },
 ] satisfies Array<{ key: SectionKey; icon: React.ReactNode; label: string }>;
@@ -228,6 +245,21 @@ export default function SettingsPage() {
       ...current,
       ai: {
         models: current.ai.models.map((row) => (row.key === key ? { ...row, [field]: value } : row)),
+      },
+    }));
+  };
+
+  const updateScoreWeight = (
+    key: keyof SettingsPayload["scoring"]["performanceScoreWeights"],
+    value: number | null,
+  ) => {
+    setSettings((current) => ({
+      ...current,
+      scoring: {
+        performanceScoreWeights: {
+          ...current.scoring.performanceScoreWeights,
+          [key]: Math.max(0, Number(value ?? 0)),
+        },
       },
     }));
   };
@@ -421,6 +453,39 @@ export default function SettingsPage() {
               </SettingsSection>
 
               <SettingsSection
+                description="调整策略综合分的计算权重。Agent、策略评估和样本分都会使用这套统一口径。"
+                icon={<SlidersOutlined />}
+                id="scoring"
+                title="评分权重"
+              >
+                <div className="settings-weight-grid">
+                  <WeightInput
+                    title="年化收益权重"
+                    description="年化收益越高，该权重越会拉高综合分。"
+                    value={settings.scoring.performanceScoreWeights.annualReturn}
+                    onChange={(value) => updateScoreWeight("annualReturn", value)}
+                  />
+                  <WeightInput
+                    title="Sharpe 权重"
+                    description="用于衡量单位波动下的收益表现。"
+                    value={settings.scoring.performanceScoreWeights.sharpe}
+                    onChange={(value) => updateScoreWeight("sharpe", value)}
+                  />
+                  <WeightInput
+                    title="最大回撤权重"
+                    description="该项会作为扣分项，权重越高，对回撤越敏感。"
+                    value={settings.scoring.performanceScoreWeights.maxDrawdown}
+                    onChange={(value) => updateScoreWeight("maxDrawdown", value)}
+                  />
+                </div>
+                <Text type="secondary">
+                  当前公式：综合分 = 年化收益 * {settings.scoring.performanceScoreWeights.annualReturn}
+                  {" + "}Sharpe * {settings.scoring.performanceScoreWeights.sharpe}
+                  {" - "}最大回撤 * {settings.scoring.performanceScoreWeights.maxDrawdown}
+                </Text>
+              </SettingsSection>
+
+              <SettingsSection
                 description="以下事件会通过浏览器桌面通知推送。"
                 icon={<BellOutlined />}
                 id="notice"
@@ -524,6 +589,34 @@ function SettingSwitch({
   );
 }
 
+function WeightInput({
+  description,
+  onChange,
+  title,
+  value,
+}: {
+  description: string;
+  onChange: (value: number | null) => void;
+  title: string;
+  value: number;
+}) {
+  return (
+    <div className="setting-line settings-weight-item">
+      <div>
+        <strong>{title}</strong>
+        <Text>{description}</Text>
+      </div>
+      <InputNumber
+        min={0}
+        precision={2}
+        step={0.1}
+        value={value}
+        onChange={onChange}
+      />
+    </div>
+  );
+}
+
 function mergeSettings(payload?: Partial<SettingsPayload>): SettingsState {
   const models = payload?.ai?.models?.length
     ? payload.ai.models.map((row, index) => ({
@@ -550,6 +643,13 @@ function mergeSettings(payload?: Partial<SettingsPayload>): SettingsState {
       agentGoal: payload?.notifications?.agentGoal ?? defaultSettings.notifications.agentGoal,
       backtest: payload?.notifications?.backtest ?? defaultSettings.notifications.backtest,
     },
+    scoring: {
+      performanceScoreWeights: {
+        annualReturn: payload?.scoring?.performanceScoreWeights?.annualReturn ?? defaultSettings.scoring.performanceScoreWeights.annualReturn,
+        sharpe: payload?.scoring?.performanceScoreWeights?.sharpe ?? defaultSettings.scoring.performanceScoreWeights.sharpe,
+        maxDrawdown: payload?.scoring?.performanceScoreWeights?.maxDrawdown ?? defaultSettings.scoring.performanceScoreWeights.maxDrawdown,
+      },
+    },
     account: {
       keepSignedIn: payload?.account?.keepSignedIn ?? defaultSettings.account.keepSignedIn,
     },
@@ -570,6 +670,7 @@ function serializeSettings(settings: SettingsPayload) {
       })),
     },
     notifications: settings.notifications,
+    scoring: settings.scoring,
     account: settings.account,
   };
 }

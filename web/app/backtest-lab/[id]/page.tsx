@@ -1,11 +1,11 @@
 "use client";
 
-import { ArrowLeftOutlined, ReloadOutlined } from "@ant-design/icons";
-import { Button, Card, Descriptions, Modal, Progress, Select, Space, Table, Tag, Typography, message } from "antd";
+import { ArrowLeftOutlined, QuestionCircleOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Button, Card, Descriptions, Modal, Progress, Select, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { RuleReadonlyPreview } from "@/components/strategy-builder/rule-engine";
@@ -42,6 +42,8 @@ type EvaluationResult = {
   passed?: boolean;
   score?: number | null;
   benchmarkScore?: number | null;
+  scoreDiff?: number | null;
+  sampleScore?: number | null;
   reason?: string;
   dateRange?: { start?: string | null; end?: string | null };
   annualReturn?: number | null;
@@ -63,6 +65,9 @@ type EvaluationGroup = {
   successCount: number;
   passedCount: number;
   passRate: number;
+  score?: number;
+  averageSampleScore?: number;
+  sampleScoreStd?: number;
   averageAnnualReturn: number;
   averageMaxDrawdown: number;
   averageSharpe: number;
@@ -279,6 +284,7 @@ export default function BacktestLabDetailPage() {
 
   const crossAssetColumns = useResultColumns("标的", setDetailResult);
   const timeRangeColumns = useResultColumns("区间", setDetailResult);
+  const totalScoreTooltip = buildTotalScoreTooltip(report);
 
   return (
     <AppShell>
@@ -310,7 +316,7 @@ export default function BacktestLabDetailPage() {
             <Card className="dashboard-card" bordered loading={loading} title="评估概览">
               <div className="backtest-score-panel">
                 <div>
-                  <Text type="secondary">综合评分</Text>
+                  <MetricLabel title="综合评分" tooltip={totalScoreTooltip} />
                   <strong>{formatNumber(payload.evaluation?.score)}</strong>
                 </div>
                 <div>
@@ -365,10 +371,10 @@ export default function BacktestLabDetailPage() {
           </div>
 
           <div className="backtest-detail-metrics">
-            <MetricCard title="跨标的通过率" value={formatPercent(report.generality?.passRate)} helper={report.generality?.conclusion} />
-            <MetricCard title="跨时间通过率" value={formatPercent(report.stability?.passRate)} helper={report.stability?.conclusion} />
-            <MetricCard title="交易健康度" value={formatNumber(report.tradeHealth?.score)} helper={report.tradeHealth?.conclusion} />
-            <MetricCard title="原始标的年化" value={formatPercent(report.fullOriginal?.annualReturn)} helper={`持续持有 ${formatPercent(report.fullOriginal?.benchmarkAnnualReturn)}`} />
+            <MetricCard title="跨标的得分" value={formatNumber(report.generality?.score)} helper={`${report.generality?.conclusion || "-"} / 通过率 ${formatPercent(report.generality?.passRate)}`} tooltip={buildGroupScoreTooltip(report.generality, "跨标的")} />
+            <MetricCard title="跨时间得分" value={formatNumber(report.stability?.score)} helper={`${report.stability?.conclusion || "-"} / 通过率 ${formatPercent(report.stability?.passRate)}`} tooltip={buildGroupScoreTooltip(report.stability, "跨时间")} />
+            <MetricCard title="交易健康度" value={formatNumber(report.tradeHealth?.score)} helper={report.tradeHealth?.conclusion} tooltip={buildTradeHealthTooltip(report)} />
+            <MetricCard title="风险控制得分" value={formatNumber(calculateRiskScore(report))} helper={`最大平均回撤 ${formatPercent(calculateRiskDrawdown(report))}`} tooltip={buildRiskScoreTooltip(report)} />
           </div>
 
           {payload.evaluation?.errorMessage ? (
@@ -384,7 +390,7 @@ export default function BacktestLabDetailPage() {
               dataSource={report.crossAssetResults || []}
               pagination={false}
               locale={{ emptyText: <EmptyState title="暂无跨标的评估结果" compact /> }}
-              scroll={{ x: 1160 }}
+              scroll={{ x: 1280 }}
             />
           </Card>
 
@@ -395,7 +401,7 @@ export default function BacktestLabDetailPage() {
               dataSource={report.timeRangeResults || []}
               pagination={false}
               locale={{ emptyText: <EmptyState title="暂无跨时间区间评估结果" compact /> }}
-              scroll={{ x: 1160 }}
+              scroll={{ x: 1280 }}
             />
           </Card>
 
@@ -634,6 +640,17 @@ function useResultColumns(firstTitle: string, onViewDetail: (record: EvaluationR
         ),
       },
       {
+        title: "样本分",
+        key: "sampleScore",
+        width: 112,
+        render: (_, record) => (
+          <div className="backtest-compared-cell">
+            <span className={sampleScoreClass(record.sampleScore)}>{formatNumber(record.sampleScore)}</span>
+            <small>差值 {formatSignedNumber(record.scoreDiff)}</small>
+          </div>
+        ),
+      },
+      {
         title: "年化收益",
         key: "annualReturn",
         width: 122,
@@ -723,18 +740,138 @@ function ComparedMetricCell({
   );
 }
 
-function MetricCard({ title, value, helper }: { title: string; value: string; helper?: string }) {
+function MetricCard({ title, value, helper, tooltip }: { title: string; value: string; helper?: string; tooltip?: ReactNode }) {
   return (
     <Card className="metric-card" bordered>
-      <Text type="secondary">{title}</Text>
+      <MetricLabel title={title} tooltip={tooltip} />
       <strong>{value}</strong>
       {helper ? <span>{helper}</span> : null}
     </Card>
   );
 }
 
+function MetricLabel({ title, tooltip }: { title: string; tooltip?: ReactNode }) {
+  return (
+    <span className="metric-label-with-help">
+      <Text type="secondary">{title}</Text>
+      {tooltip ? (
+        <Tooltip title={<div className="metric-tooltip-content">{tooltip}</div>} placement="topLeft">
+          <QuestionCircleOutlined />
+        </Tooltip>
+      ) : null}
+    </span>
+  );
+}
+
+function buildTotalScoreTooltip(report: EvaluationReport): ReactNode {
+  const generalityScore = report.generality?.score;
+  const stabilityScore = report.stability?.score;
+  const riskScore = calculateRiskScore(report);
+  const tradeHealthScore = report.tradeHealth?.score;
+  const totalScore =
+    (generalityScore ?? 0) * 0.25
+    + (stabilityScore ?? 0) * 0.35
+    + riskScore * 0.2
+    + (tradeHealthScore ?? 0) * 0.1;
+  const finalScore = report.score ?? totalScore;
+
+  return (
+    <>
+      <div>综合评分用于衡量策略在跨标的、跨时间、风险控制和交易频率上的整体可靠性。</div>
+      <div>公式：跨标的得分 * 0.25 + 跨时间得分 * 0.35 + 风险控制得分 * 0.20 + 交易健康度 * 0.10。</div>
+      <div>
+        实际：{formatNumber(generalityScore)} * 0.25 + {formatNumber(stabilityScore)} * 0.35 + {formatNumber(riskScore)} * 0.20 + {formatNumber(tradeHealthScore)} * 0.10 = {formatNumber(finalScore)}
+      </div>
+      <div>
+        风险控制得分：max(0, 100 - max({formatPercent(report.generality?.averageMaxDrawdown)}, {formatPercent(report.stability?.averageMaxDrawdown)}) * 2) = {formatNumber(riskScore)}。
+      </div>
+      <div>等级：≥75 已通过；60-74.99 可观察；45-59.99 风险较高；&lt;45 未通过。</div>
+    </>
+  );
+}
+
+function buildGroupScoreTooltip(group: EvaluationGroup | undefined, label: string): ReactNode {
+  return (
+    <>
+      <div>{label}得分衡量策略相对持续持有的平均优势，并对样本间波动做轻微惩罚。</div>
+      <div>单样本分 = clamp(50 + (策略综合分 - 持续持有综合分) * 2, 0, 100)。</div>
+      <div>分组得分 = 平均样本分 - 样本分标准差 * 0.2。</div>
+      <div>
+        实际：{formatNumber(group?.averageSampleScore)} - {formatNumber(group?.sampleScoreStd)} * 0.2 = {formatNumber(group?.score)}
+      </div>
+      <div>
+        样本：成功 {group?.successCount ?? 0} / 总数 {group?.total ?? 0}，通过率 {formatPercent(group?.passRate)}。
+      </div>
+    </>
+  );
+}
+
+function buildTradeHealthTooltip(report: EvaluationReport): ReactNode {
+  const rows = [
+    report.fullOriginal,
+    ...(report.crossAssetResults || []),
+    ...(report.timeRangeResults || []),
+  ].filter((item): item is EvaluationResult => Boolean(item) && item?.status === "success");
+  const healthyCount = rows.filter((item) => {
+    const count = item.tradeCount ?? 0;
+    return count >= 2 && count <= 120;
+  }).length;
+  const totalCount = rows.length;
+  const actualScore = totalCount > 0 ? (healthyCount / totalCount) * 100 : 0;
+
+  return (
+    <>
+      <div>交易健康度用于检查策略是否有足够的交易样本，同时避免过度频繁交易。</div>
+      <div>当前口径：每个成功评估样本的交易次数在 2 到 120 次之间视为健康。</div>
+      <div>公式：健康样本数 / 成功样本数 * 100。</div>
+      <div>
+        实际：{healthyCount} / {totalCount} * 100 = {formatNumber(report.tradeHealth?.score ?? actualScore)}；平均交易次数 {formatNumber(report.tradeHealth?.averageTradeCount)}。
+      </div>
+    </>
+  );
+}
+
+function buildRiskScoreTooltip(report: EvaluationReport): ReactNode {
+  const generalityDrawdown = report.generality?.averageMaxDrawdown;
+  const stabilityDrawdown = report.stability?.averageMaxDrawdown;
+  const riskDrawdown = calculateRiskDrawdown(report);
+  const riskScore = calculateRiskScore(report);
+
+  return (
+    <>
+      <div>风险控制得分用于衡量策略在跨标的和跨时间评估中的回撤压力。</div>
+      <div>公式：max(0, 100 - max(跨标的平均最大回撤, 跨时间平均最大回撤) * 2)。</div>
+      <div>
+        实际：max(0, 100 - max({formatPercent(generalityDrawdown)}, {formatPercent(stabilityDrawdown)}) * 2)
+        = max(0, 100 - {formatNumber(riskDrawdown)} * 2) = {formatNumber(riskScore)}。
+      </div>
+      <div>该得分在最终综合评分中占 20%。</div>
+    </>
+  );
+}
+
+function calculateRiskDrawdown(report: EvaluationReport): number {
+  return Math.max(report.generality?.averageMaxDrawdown ?? 0, report.stability?.averageMaxDrawdown ?? 0);
+}
+
+function calculateRiskScore(report: EvaluationReport): number {
+  return Math.max(0, 100 - calculateRiskDrawdown(report) * 2);
+}
+
 function formatNumber(value: number | null | undefined): string {
   return value === null || value === undefined ? "-" : value.toFixed(2);
+}
+
+function formatSignedNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "-";
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+}
+
+function sampleScoreClass(value: number | null | undefined): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (value >= 55) return "positive-text";
+  if (value < 45) return "negative-text";
+  return undefined;
 }
 
 function formatPercent(value: number | null | undefined): string {

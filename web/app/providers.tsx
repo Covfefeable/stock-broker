@@ -25,18 +25,24 @@ export function useThemeMode() {
 }
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<ThemeMode>(() => {
-    if (typeof window === "undefined") {
-      return "dark";
-    }
-    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return stored === "light" || stored === "dark" ? stored : "dark";
-  });
+  const [mode, setMode] = useState<ThemeMode>("dark");
+  const [themeReady, setThemeReady] = useState(false);
 
   useEffect(() => {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    const nextMode = stored === "light" || stored === "dark" ? stored : "dark";
+    setMode(nextMode);
+    document.body.dataset.theme = nextMode;
+    setThemeReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!themeReady) {
+      return;
+    }
     window.localStorage.setItem(THEME_STORAGE_KEY, mode);
     document.body.dataset.theme = mode;
-  }, [mode]);
+  }, [mode, themeReady]);
 
   const contextValue = useMemo(
     () => ({

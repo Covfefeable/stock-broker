@@ -17,6 +17,7 @@ from app.models.stock import Stock
 from app.models.user import User
 from app.services.data_center_service import log_event
 from app.services.performance_score import calculate_performance_score
+from app.services.settings_service import get_performance_score_weights
 from app.services.settings_service import get_or_create_settings
 from app.services.strategy_service import (
     StrategyError,
@@ -170,16 +171,17 @@ def get_agent_task(user: User, task_id: int) -> AgentTask:
 def get_agent_task_detail(user: User, task_id: int) -> dict:
     task = get_agent_task(user, task_id)
     task_payload = task.to_dict()
-    best_iteration = _get_best_iteration(task)
+    score_weights = get_performance_score_weights(user)
+    best_iteration = _get_best_iteration(task, score_weights=score_weights)
     task_payload["bestMaxDrawdown"] = (
         round(float(best_iteration.max_drawdown), 2)
         if best_iteration and best_iteration.max_drawdown is not None
         else None
     )
-    task_payload["bestScore"] = _score_iteration(best_iteration)
+    task_payload["bestScore"] = _score_iteration(best_iteration, weights=score_weights)
     return {
         "task": task_payload,
-        "iterations": [_serialize_agent_iteration_detail(task, item) for item in task.iterations],
+        "iterations": [_serialize_agent_iteration_detail(task, item, score_weights=score_weights) for item in task.iterations],
     }
 
 
@@ -209,16 +211,28 @@ def preview_agent_iteration(user: User, task_id: int, iteration_id: int) -> dict
     return _run_strategy_backtest(bars, iteration.strategy_config or {})
 
 
-def _get_best_iteration(task: AgentTask) -> AgentIteration | None:
-    query = AgentIteration.query.filter(AgentIteration.task_id == task.id)
-    if task.best_annual_return is not None:
-        query = query.filter(AgentIteration.annual_return == task.best_annual_return)
-    return query.order_by(AgentIteration.iteration_number.desc(), AgentIteration.id.desc()).first()
+def _get_best_iteration(task: AgentTask, *, score_weights: dict[str, float] | None = None) -> AgentIteration | None:
+    iterations = AgentIteration.query.filter(AgentIteration.task_id == task.id).all()
+    if not iterations:
+        return None
+
+    def sort_key(iteration: AgentIteration) -> tuple[float, int, int]:
+        score = _score_iteration(iteration, weights=score_weights)
+        return (
+            score if score is not None else float("-inf"),
+            iteration.iteration_number,
+            iteration.id,
+        )
+
+    return max(
+        iterations,
+        key=sort_key,
+    )
 
 
-def _serialize_agent_iteration_detail(task: AgentTask, iteration: AgentIteration) -> dict:
+def _serialize_agent_iteration_detail(task: AgentTask, iteration: AgentIteration, *, score_weights: dict[str, float] | None = None) -> dict:
     payload = iteration.to_dict()
-    payload["score"] = _score_iteration(iteration)
+    payload["score"] = _score_iteration(iteration, weights=score_weights)
     analysis = (payload.get("analysis") or "").strip()
     action_plan = (payload.get("actionPlan") or "").strip()
     memory = (payload.get("memory") or "").strip()
@@ -236,7 +250,7 @@ def _serialize_agent_iteration_detail(task: AgentTask, iteration: AgentIteration
     return payload
 
 
-def _score_iteration(iteration: AgentIteration | None) -> float | None:
+def _score_iteration(iteration: AgentIteration | None, *, weights: dict[str, float] | None = None) -> float | None:
     if not iteration:
         return None
     return round(
@@ -245,7 +259,8 @@ def _score_iteration(iteration: AgentIteration | None) -> float | None:
                 "annualReturn": float(iteration.annual_return) if iteration.annual_return is not None else 0,
                 "sharpe": float(iteration.sharpe) if iteration.sharpe is not None else 0,
                 "maxDrawdown": float(iteration.max_drawdown) if iteration.max_drawdown is not None else 0,
-            }
+            },
+            weights=weights,
         ),
         2,
     )
@@ -464,6 +479,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
     if not bars:
         raise AgentTaskError("当前标的没有可用于 Agent 任务的历史日线数据。")
 
+    score_weights = get_performance_score_weights(task.user)
     benchmark_preview = _run_strategy_backtest(bars, _build_noop_strategy_config(task))
     benchmark_metrics = {
         "benchmarkReturn": benchmark_preview["benchmarkReturn"],
@@ -521,6 +537,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             analysis_text,
             action_plan_text,
             generation_result.get("mode"),
+            score_weights=score_weights,
         )
         memory_text = _build_iteration_memory(
             iteration,
@@ -533,6 +550,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             generation_result,
             research_state,
             curve_diagnostics,
+            score_weights=score_weights,
         )
 
         iteration_row = AgentIteration(
@@ -550,7 +568,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
         )
         db.session.add(iteration_row)
 
-        is_best_result = _is_better_result(preview, best_result)
+        is_best_result = _is_better_result(preview, best_result, weights=score_weights)
         if is_best_result:
             best_result = preview
             task.best_annual_return = Decimal(str(preview["annualReturn"]))
@@ -562,7 +580,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             {
                 "iteration": iteration,
                 "mode": generation_result.get("mode") or "explore_new",
-                "score": _score_result(preview),
+                "score": _score_result(preview, weights=score_weights),
                 "isBest": is_best_result,
                 "annualReturn": preview["annualReturn"],
                 "totalReturn": preview["totalReturn"],
@@ -597,7 +615,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             level="info",
             message=(
                 f"第 {iteration}/{task.max_iterations} 轮完成："
-                f"综合分 {_score_result(preview):.2f}，"
+                f"综合分 {_score_result(preview, weights=score_weights):.2f}，"
                 f"年化 {preview['annualReturn']:.2f}%，"
                 f"回撤 {preview['maxDrawdown']:.2f}%，"
                 f"Sharpe {preview['sharpe']:.2f}。"
@@ -887,11 +905,12 @@ def _summarize_outcome(best_item: dict) -> dict:
     }
 
 
-def _score_result(result: dict) -> float:
+def _score_result(result: dict, *, weights: dict[str, float] | None = None) -> float:
     return calculate_performance_score(
         result.get("annualReturn"),
         result.get("sharpe"),
         result.get("maxDrawdown"),
+        weights=weights,
     )
 
 
@@ -1420,10 +1439,10 @@ def _parse_date(value: Any, field_label: str) -> date:
         raise AgentTaskError(f"{field_label}格式无效。") from exc
 
 
-def _is_better_result(current: dict, best: dict | None) -> bool:
+def _is_better_result(current: dict, best: dict | None, *, weights: dict[str, float] | None = None) -> bool:
     if best is None:
         return True
-    return _score_result(current) > _score_result(best)
+    return _score_result(current, weights=weights) > _score_result(best, weights=weights)
 
 
 def _build_iteration_summary(
@@ -1436,6 +1455,7 @@ def _build_iteration_summary(
     analysis: str | None = None,
     action_plan: str | None = None,
     mode: str | None = None,
+    score_weights: dict[str, float] | None = None,
 ) -> str:
     entry_desc = _describe_group(strategy_config.get("entry") or {})
     exit_desc = _describe_group(strategy_config.get("exit") or {})
@@ -1452,7 +1472,7 @@ def _build_iteration_summary(
     if action_plan:
         summary_parts.append(f"本轮决策：{action_plan}")
 
-    if previous_best is None or _is_better_result(preview, previous_best):
+    if previous_best is None or _is_better_result(preview, previous_best, weights=score_weights):
         summary_parts.append("这一轮刷新了当前最优结果，后续可以围绕这组条件继续微调。")
     else:
         summary_parts.append("这一轮没有超过当前最优结果，下一轮可以尝试调整买入阈值或收紧退出条件。")
@@ -1500,6 +1520,7 @@ def _build_iteration_memory(
     generation_result: dict,
     research_state: dict,
     curve_diagnostics: dict,
+    score_weights: dict[str, float] | None = None,
 ) -> str:
     del benchmark_metrics, summary, research_state
     mode = generation_result.get("mode") or "explore_new"
@@ -1507,7 +1528,7 @@ def _build_iteration_memory(
         "round": iteration,
         "mode": mode,
         "modeLabel": _agent_mode_label(mode),
-        "score": round(_score_result(preview), 2),
+        "score": round(_score_result(preview, weights=score_weights), 2),
         "metrics": {
             "annualReturn": round(float(preview["annualReturn"]), 2),
             "totalReturn": round(float(preview["totalReturn"]), 2),

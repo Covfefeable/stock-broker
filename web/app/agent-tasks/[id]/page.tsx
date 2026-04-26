@@ -70,6 +70,17 @@ function asStrategyDslConfig(value: Record<string, unknown> | null | undefined):
   return value as unknown as StrategyDslConfig;
 }
 
+function renderPerformanceScoreTooltip() {
+  return (
+    <div className="metric-tooltip-content">
+      <div>综合分数用于平衡收益、稳定性和回撤后选择最佳综合表现。</div>
+      <div>公式：年化收益 * 年化收益权重 + Sharpe * Sharpe 权重 - 最大回撤 * 最大回撤权重。</div>
+      <div>当前默认：年化收益权重 0.7，Sharpe 权重 5，最大回撤权重 0.2。</div>
+      <div>实际权重可在系统设置的评分权重中调整，后续迭代按当时配置计算。</div>
+    </div>
+  );
+}
+
 export default function AgentTaskDetailPage() {
   const params = useParams<{ id: string }>();
   const [messageApi, contextHolder] = message.useMessage();
@@ -293,7 +304,7 @@ export default function AgentTaskDetailPage() {
         title: (
           <Space size={4}>
             综合分数
-            <Tooltip title="综合分数 = 年化收益 * 0.7 + Sharpe * 10 - 最大回撤 * 0.2，用于平衡收益、稳定性和回撤后选择最佳综合表现。">
+            <Tooltip title={renderPerformanceScoreTooltip()}>
               <QuestionCircleOutlined />
             </Tooltip>
           </Space>
@@ -476,7 +487,7 @@ export default function AgentTaskDetailPage() {
                   <div className="agent-metric-title">
                     <Text type="secondary">
                       当前最佳综合分数{" "}
-                      <Tooltip title="综合分数 = 年化收益 * 0.7 + Sharpe * 10 - 最大回撤 * 0.2，用于平衡收益、稳定性和回撤后选择最佳综合表现。">
+                      <Tooltip title={renderPerformanceScoreTooltip()}>
                         <QuestionCircleOutlined />
                       </Tooltip>
                     </Text>

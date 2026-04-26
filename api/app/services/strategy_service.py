@@ -77,6 +77,7 @@ EXPRESSION_FUNCTION_ARITY = {
 }
 WINDOW_FUNCTIONS = {"sum", "avg", "std", "highest", "lowest"}
 CHANGE_FUNCTIONS = {"change", "pct_change"}
+INDICATOR_WARMUP_BARS = 180
 
 
 def _parse_optional_metric(value: Any) -> Decimal | None:
@@ -457,8 +458,6 @@ def _load_asset_bars(asset_type: str, asset_identifier: str, country_code: str, 
         model = IndexDailyBar
         query = model.query.filter(model.country_code == country_code, model.ticker == asset_identifier)
 
-    if start_date:
-        query = query.filter(model.trade_date >= start_date)
     if end_date:
         query = query.filter(model.trade_date <= end_date)
 
@@ -476,8 +475,28 @@ def _load_asset_bars(asset_type: str, asset_identifier: str, country_code: str, 
         if row.trade_date and row.close is not None
     ]
     if asset_type == "stock":
-        return apply_stock_split_adjustments(bars, exchange_code, ticker)
-    return bars
+        bars = apply_stock_split_adjustments(bars, exchange_code, ticker)
+    return _attach_warmup_flags(bars, start_date)
+
+
+def _attach_warmup_flags(bars: list[dict], start_date: date | None) -> list[dict]:
+    if not start_date:
+        return [dict(bar, isWarmup=False) for bar in bars]
+
+    first_backtest_index: int | None = None
+    for index, bar in enumerate(bars):
+        if bar["date"] >= start_date:
+            first_backtest_index = index
+            break
+    if first_backtest_index is None:
+        return []
+
+    warmup_start_index = max(0, first_backtest_index - INDICATOR_WARMUP_BARS)
+    selected = bars[warmup_start_index:]
+    return [
+        dict(bar, isWarmup=bar["date"] < start_date)
+        for bar in selected
+    ]
 
 
 def _parse_date(value: Any) -> date | None:
@@ -578,7 +597,10 @@ def _validate_variable_token(token: dict, label: str) -> None:
     name = token.get("name")
     if name not in RULE_FIELD_VALUES:
         raise StrategyError(f"{label}不支持：{name}。")
-    offset = int(token.get("offset") or 0)
+    try:
+        offset = int(token.get("offset") or 0)
+    except (TypeError, ValueError) as exc:
+        raise StrategyError(f"{label}历史引用偏移格式无效。") from exc
     if offset > 0:
         raise StrategyError(f"{label}不允许引用未来数据。")
 
@@ -613,6 +635,13 @@ def _parse_number_token(value: Any, label: str) -> float:
 
 
 def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
+    first_backtest_index = next(
+        (index for index, bar in enumerate(bars) if not bar.get("isWarmup")),
+        None,
+    )
+    if first_backtest_index is None:
+        raise StrategyError("当前标的没有可用于回测区间的历史日线数据。")
+    backtest_bars = bars[first_backtest_index:]
     indicators = _calculate_indicators(bars)
     risk = strategy_config.get("risk") or {}
     initial_capital = float(risk.get("initialCapital") or 100000)
@@ -639,12 +668,28 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     equity_curve: list[float] = []
     benchmark_curve: list[float] = []
     context_history: list[dict[str, Any]] = []
-    benchmark_entry_price = bars[0]["open"] if bars and bars[0]["open"] is not None else (bars[0]["close"] if bars else None)
+    benchmark_start_bar = bars[first_backtest_index]
+    benchmark_entry_price = (
+        benchmark_start_bar["open"]
+        if benchmark_start_bar["open"] is not None
+        else benchmark_start_bar["close"]
+    )
     benchmark_shares = (initial_capital / benchmark_entry_price) if benchmark_entry_price and benchmark_entry_price > 0 else 0.0
 
     for index, bar in enumerate(bars):
         close_price = bar["close"]
         open_price = bar["open"] if bar["open"] is not None else close_price
+        if bar.get("isWarmup"):
+            context_history.append(
+                {
+                    **bar,
+                    **{name: series[index] for name, series in indicators.items()},
+                    "position_return": None,
+                    "holding_days": None,
+                    "position_ratio": 0.0,
+                }
+            )
+            continue
         if close_price is None:
             equity_curve.append(cash)
             benchmark_curve.append(benchmark_curve[-1] if benchmark_curve else initial_capital)
@@ -746,7 +791,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
         benchmark_curve.append(benchmark_shares * close_price if benchmark_shares > 0 else initial_capital)
         context_history.append(context.copy())
 
-    live_close_price = bars[-1]["close"] if bars else None
+    live_close_price = backtest_bars[-1]["close"] if backtest_bars else None
     current_position = {
         "status": "持仓中" if shares > 0 else "空仓",
         "shares": round(shares, 6),
@@ -781,8 +826,8 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             "reason": "当前未触发买入条件。",
         }
 
-    if force_close_on_end and shares > 0 and bars[-1]["close"] is not None:
-        close_price = bars[-1]["close"]
+    if force_close_on_end and shares > 0 and backtest_bars[-1]["close"] is not None:
+        close_price = backtest_bars[-1]["close"]
         proceeds = shares * close_price
         cash += proceeds
         pnl_ratio = ((close_price - entry_price) / entry_price) if entry_price else 0.0
@@ -790,7 +835,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             wins += 1
         trades.append(
                 {
-                    "date": bars[-1]["date"].isoformat(),
+                    "date": backtest_bars[-1]["date"].isoformat(),
                     "side": "sell",
                     "price": round(close_price, 4),
                     "shares": round(shares, 6),
@@ -844,16 +889,16 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
         "benchmarkSharpe": round(benchmark_sharpe_ratio, 2),
         "equityCurve": [
             {"date": bar["date"].isoformat(), "value": round(value, 2)}
-            for bar, value in zip(bars, equity_curve, strict=False)
+            for bar, value in zip(backtest_bars, equity_curve, strict=False)
         ],
         "benchmarkCurve": [
             {"date": bar["date"].isoformat(), "value": round(value, 2)}
-            for bar, value in zip(bars, benchmark_curve, strict=False)
+            for bar, value in zip(backtest_bars, benchmark_curve, strict=False)
         ],
         "trades": trades,
         "dateRange": {
-            "start": bars[0]["date"].isoformat() if bars else None,
-            "end": bars[-1]["date"].isoformat() if bars else None,
+            "start": backtest_bars[0]["date"].isoformat() if backtest_bars else None,
+            "end": backtest_bars[-1]["date"].isoformat() if backtest_bars else None,
         },
         "currentPosition": current_position,
         "nextAction": next_action,
@@ -1344,7 +1389,10 @@ def _evaluate_value_token(token: dict, contexts: list[dict[str, Any]], context_i
 
 def _resolve_variable_value(token: dict, contexts: list[dict[str, Any]], context_index: int) -> float | None:
     name = token.get("name")
-    offset = int(token.get("offset") or 0)
+    try:
+        offset = int(token.get("offset") or 0)
+    except (TypeError, ValueError):
+        return None
     if name not in RULE_FIELD_VALUES or offset > 0:
         return None
     target_index = context_index + offset

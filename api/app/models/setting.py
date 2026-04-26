@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.extensions import db
+from app.services.performance_score import default_performance_score_weights
 
 
 def default_ai_models() -> list[dict[str, str]]:
@@ -26,6 +27,11 @@ class Setting(db.Model):
         JSONB().with_variant(db.JSON(), "sqlite"),
         nullable=False,
         default=default_ai_models,
+    )
+    performance_score_weights = db.Column(
+        JSONB().with_variant(db.JSON(), "sqlite"),
+        nullable=False,
+        default=default_performance_score_weights,
     )
     notification_data_sync = db.Column(db.Boolean, nullable=False, default=False)
     notification_agent_goal = db.Column(db.Boolean, nullable=False, default=False)
@@ -57,6 +63,9 @@ class Setting(db.Model):
                 "dataSync": self.notification_data_sync,
                 "agentGoal": self.notification_agent_goal,
                 "backtest": self.notification_backtest,
+            },
+            "scoring": {
+                "performanceScoreWeights": self.performance_score_weights or default_performance_score_weights(),
             },
             "account": {
                 "keepSignedIn": self.keep_signed_in,

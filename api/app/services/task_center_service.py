@@ -7,6 +7,8 @@ from app.models.agent_iteration import AgentIteration
 from app.models.agent_task import AgentTask
 from app.models.event_log import EventLog
 from app.services.event_log_meta import event_name_label, sync_item_label
+from app.services.performance_score import calculate_performance_score
+from app.services.settings_service import get_performance_score_weights
 
 TASK_CENTER_CHANNEL = "task_center.events"
 
@@ -154,10 +156,26 @@ def task_status_from_log(log: EventLog) -> str:
 
 
 def best_iteration_for_agent(agent_task: AgentTask) -> AgentIteration | None:
-    query = AgentIteration.query.filter(AgentIteration.task_id == agent_task.id)
-    if agent_task.best_annual_return is not None:
-        query = query.filter(AgentIteration.annual_return == agent_task.best_annual_return)
-    return query.order_by(AgentIteration.iteration_number.desc(), AgentIteration.id.desc()).first()
+    iterations = AgentIteration.query.filter(AgentIteration.task_id == agent_task.id).all()
+    if not iterations:
+        return None
+    return max(
+        iterations,
+        key=lambda iteration: (
+            calculate_agent_iteration_score(iteration),
+            iteration.iteration_number,
+            iteration.id,
+        ),
+    )
+
+
+def calculate_agent_iteration_score(iteration: AgentIteration) -> float:
+    return calculate_performance_score(
+        iteration.annual_return,
+        iteration.sharpe,
+        iteration.max_drawdown,
+        weights=get_performance_score_weights(iteration.task.user if iteration.task else None),
+    )
 
 
 def _metric_to_float(value) -> float | None:

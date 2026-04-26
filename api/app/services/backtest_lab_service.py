@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import json
+from math import isnan, sqrt
 import random
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -21,7 +22,7 @@ from app.models.strategy_evaluation import StrategyEvaluation
 from app.models.user import User
 from app.services.data_center_service import log_event
 from app.services.performance_score import calculate_performance_score
-from app.services.settings_service import get_or_create_settings
+from app.services.settings_service import get_or_create_settings, get_performance_score_weights
 from app.services.strategy_service import (
     EXPRESSION_FUNCTION_ARITY,
     EXPRESSION_OPERATOR_VALUES,
@@ -254,6 +255,7 @@ def mark_strategy_evaluation_failed(evaluation: StrategyEvaluation, message: str
 def build_strategy_evaluation_report(strategy: Strategy, evaluation_id: int, evaluation_payload: dict | None = None) -> dict:
     rng = random.Random(f"strategy-evaluation:{strategy.id}:{evaluation_id}")
     country_code = strategy_country_code(strategy)
+    score_weights = get_performance_score_weights(strategy.user)
     original_asset = {
         "assetType": strategy.asset_type,
         "assetIdentifier": strategy.asset_identifier,
@@ -264,7 +266,7 @@ def build_strategy_evaluation_report(strategy: Strategy, evaluation_id: int, eva
     cross_asset_targets = list((evaluation_payload or {}).get("selectedCrossAssetTargets") or [])
     if not cross_asset_targets:
         cross_asset_targets = select_cross_asset_targets(strategy, rng)
-    cross_asset_results = [run_target_evaluation(strategy, target) for target in cross_asset_targets]
+    cross_asset_results = [run_target_evaluation(strategy, target, score_weights=score_weights) for target in cross_asset_targets]
 
     time_ranges = select_time_ranges(strategy, rng)
     time_results = [
@@ -279,11 +281,12 @@ def build_strategy_evaluation_report(strategy: Strategy, evaluation_id: int, eva
                 "startDate": item["startDate"],
                 "endDate": item["endDate"],
             },
+            score_weights=score_weights,
         )
         for item in time_ranges
     ]
 
-    full_original = run_target_evaluation(strategy, original_asset)
+    full_original = run_target_evaluation(strategy, original_asset, score_weights=score_weights)
     generality = summarize_result_group(cross_asset_results, "跨标的通用性")
     stability = summarize_result_group(time_results, "跨时间区间稳定性")
     trade_health = summarize_trade_health([full_original, *cross_asset_results, *time_results])
@@ -353,7 +356,7 @@ def generate_evaluation_ai_advice(strategy: Strategy, report: dict) -> dict:
             "crossAssetResults": report.get("crossAssetResults"),
             "timeRangeResults": report.get("timeRangeResults"),
         },
-        "scoreMethod": "评估总分综合跨标的通过率、跨时间通过率、回撤风险与交易健康度；单样本综合分 = 年化收益 * 0.7 + Sharpe * 10 - 最大回撤 * 0.2。",
+        "scoreMethod": "评估总分综合跨标的得分、跨时间得分、回撤风险与交易健康度；单样本综合分使用系统设置中的评分权重。",
     }
     prompt = (
         "你是量化策略评估顾问。请基于策略买入/卖出规则、跨标的评估、跨时间区间评估、交易健康度和评分信息，"
@@ -827,7 +830,7 @@ def strategy_country_code(strategy: Strategy) -> str:
     return str(strategy.country_region or "").split("-", 1)[0].strip().upper()
 
 
-def run_target_evaluation(strategy: Strategy, target: dict) -> dict:
+def run_target_evaluation(strategy: Strategy, target: dict, *, score_weights: dict[str, float] | None = None) -> dict:
     config = build_config_for_range(strategy.strategy_config or {}, target.get("startDate"), target.get("endDate"))
     try:
         bars = _load_asset_bars(target["assetType"], target["assetIdentifier"], target["countryCode"], config)
@@ -838,20 +841,26 @@ def run_target_evaluation(strategy: Strategy, target: dict) -> dict:
             preview.get("annualReturn"),
             preview.get("sharpe"),
             preview.get("maxDrawdown"),
+            weights=score_weights,
         )
         benchmark_score = calculate_performance_score(
             preview.get("benchmarkAnnualReturn"),
             preview.get("benchmarkSharpe"),
             preview.get("benchmarkMaxDrawdown"),
+            weights=score_weights,
         )
-        passed = result_passes(strategy_score, benchmark_score)
+        score_diff = strategy_score - benchmark_score
+        sample_score = calculate_sample_score(strategy_score, benchmark_score)
+        passed = result_passes(sample_score)
         return {
             **target,
             "status": "success",
             "passed": passed,
             "score": round(strategy_score, 2),
             "benchmarkScore": round(benchmark_score, 2),
-            "reason": build_result_reason(preview, passed, strategy_score, benchmark_score),
+            "scoreDiff": round(score_diff, 2),
+            "sampleScore": sample_score,
+            "reason": build_result_reason(preview, passed, strategy_score, benchmark_score, sample_score),
             "dateRange": preview.get("dateRange"),
             "annualReturn": preview.get("annualReturn"),
             "benchmarkAnnualReturn": preview.get("benchmarkAnnualReturn"),
@@ -893,14 +902,18 @@ def failed_result(target: dict, message: str) -> dict:
     return {**target, "status": "failure", "passed": False, "reason": message}
 
 
-def result_passes(strategy_score: float, benchmark_score: float) -> bool:
-    return strategy_score > benchmark_score
+def calculate_sample_score(strategy_score: float, benchmark_score: float) -> float:
+    return round(min(max(50.0 + (strategy_score - benchmark_score) * 2.0, 0.0), 100.0), 2)
 
 
-def build_result_reason(preview: dict, passed: bool, strategy_score: float, benchmark_score: float) -> str:
+def result_passes(sample_score: float) -> bool:
+    return sample_score >= 52.0
+
+
+def build_result_reason(preview: dict, passed: bool, strategy_score: float, benchmark_score: float, sample_score: float) -> str:
     prefix = "通过" if passed else "未通过"
     return (
-        f"{prefix}：综合分 {strategy_score:.2f}，持续持有 {benchmark_score:.2f}；"
+        f"{prefix}：样本分 {sample_score:.2f}，策略综合分 {strategy_score:.2f}，持续持有 {benchmark_score:.2f}；"
         f"年化 {preview.get('annualReturn')}%，持续持有 {preview.get('benchmarkAnnualReturn')}%，"
         f"回撤 {preview.get('maxDrawdown')}%，Sharpe {preview.get('sharpe')}，交易 {preview.get('tradeCount')} 次。"
     )
@@ -911,16 +924,23 @@ def summarize_result_group(results: list[dict], label: str) -> dict:
     success_rows = [item for item in results if item.get("status") == "success"]
     passed_rows = [item for item in success_rows if item.get("passed")]
     pass_rate = (len(passed_rows) / total * 100) if total else 0.0
+    sample_scores = [float(item.get("sampleScore")) for item in success_rows if item.get("sampleScore") is not None]
+    average_sample_score = average(sample_scores)
+    sample_score_std = standard_deviation(sample_scores)
+    group_score = max(0.0, min(100.0, average_sample_score - sample_score_std * 0.2)) if sample_scores else 0.0
     avg_annual = average([item.get("annualReturn") for item in success_rows])
     avg_drawdown = average([item.get("maxDrawdown") for item in success_rows])
     avg_sharpe = average([item.get("sharpe") for item in success_rows])
-    conclusion = group_conclusion(pass_rate)
+    conclusion = group_conclusion(group_score)
     return {
         "label": label,
         "total": total,
         "successCount": len(success_rows),
         "passedCount": len(passed_rows),
         "passRate": round(pass_rate, 2),
+        "score": round(group_score, 2),
+        "averageSampleScore": round(average_sample_score, 2),
+        "sampleScoreStd": round(sample_score_std, 2),
         "averageAnnualReturn": avg_annual,
         "averageMaxDrawdown": avg_drawdown,
         "averageSharpe": avg_sharpe,
@@ -952,10 +972,14 @@ def summarize_trade_health(results: list[dict]) -> dict:
 
 
 def calculate_evaluation_score(generality: dict, stability: dict, trade_health: dict) -> float:
-    risk_score = max(0.0, 100.0 - float(generality.get("averageMaxDrawdown") or 0) * 2)
+    risk_drawdown = max(
+        float(generality.get("averageMaxDrawdown") or 0),
+        float(stability.get("averageMaxDrawdown") or 0),
+    )
+    risk_score = max(0.0, 100.0 - risk_drawdown * 2)
     return (
-        float(generality.get("passRate") or 0) * 0.35
-        + float(stability.get("passRate") or 0) * 0.35
+        float(generality.get("score") or 0) * 0.25
+        + float(stability.get("score") or 0) * 0.35
         + risk_score * 0.2
         + float(trade_health.get("score") or 0) * 0.1
     )
@@ -983,7 +1007,19 @@ def group_conclusion(score: float) -> str:
 
 def average(values: list[Any]) -> float:
     numbers = [float(value) for value in values if value is not None]
-    return round(sum(numbers) / len(numbers), 2) if numbers else 0.0
+    if not numbers:
+        return 0.0
+    result = sum(numbers) / len(numbers)
+    return 0.0 if isnan(result) else round(result, 2)
+
+
+def standard_deviation(values: list[Any]) -> float:
+    numbers = [float(value) for value in values if value is not None]
+    if len(numbers) < 2:
+        return 0.0
+    mean = sum(numbers) / len(numbers)
+    result = sqrt(sum((value - mean) ** 2 for value in numbers) / len(numbers))
+    return 0.0 if isnan(result) else result
 
 
 def backtest_lab_strategy_to_dict(strategy: Strategy, evaluation: StrategyEvaluation | None) -> dict:
