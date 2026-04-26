@@ -4,8 +4,6 @@ import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from sqlalchemy import desc, or_
 
@@ -15,6 +13,7 @@ from app.models.agent_task import AgentTask
 from app.models.index_asset import IndexAsset
 from app.models.stock import Stock
 from app.models.user import User
+from app.services.ai_client import AIClientError, call_chat_completion_content
 from app.services.data_center_service import log_event
 from app.services.performance_score import calculate_performance_score
 from app.services.settings_service import get_performance_score_weights
@@ -1145,55 +1144,29 @@ def _generate_strategy_with_ai(
     last_error: AgentTaskError | None = None
 
     for attempt in range(1, AI_DSL_GENERATION_RETRY_COUNT + 1):
-        payload = {
-            "model": model_config["model"],
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "你是一名量化研究员，负责为单一股票或指数生成可执行的 JSON 策略 DSL。"
-                        "只能返回 JSON，不要包含 markdown，不要输出解释。"
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": 0.7,
-            "response_format": {"type": "json_object"},
-        }
-
-        request = Request(
-            f"{str(model_config['baseUrl']).rstrip('/')}/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {model_config['apiKey']}",
-            },
-            method="POST",
-        )
-
         try:
-            with urlopen(request, timeout=60) as response:
-                raw_payload = json.loads(response.read().decode("utf-8"))
-            content = (
-                raw_payload.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
+            content = call_chat_completion_content(
+                model_config,
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是一名量化研究员，负责为单一股票或指数生成可执行的 JSON 策略 DSL。"
+                            "只能返回 JSON，不要包含 markdown，不要输出解释。"
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                timeout=180,
+                temperature=0.7,
+                response_format={"type": "json_object"},
             )
-            if not content:
-                raise AgentTaskError("AI 模型没有返回策略内容。")
-
             generation_payload = _parse_strategy_generation_payload(content)
             strategy_config = generation_payload["strategyConfig"]
             _validate_strategy_config(strategy_config)
             return generation_payload
-        except HTTPError as exc:
-            try:
-                detail = exc.read().decode("utf-8")
-            except Exception:  # noqa: BLE001
-                detail = f"HTTP {exc.code}"
-            last_error = AgentTaskError(f"AI 模型调用失败：{detail}")
-        except URLError as exc:
-            last_error = AgentTaskError(f"AI 模型网络异常：{exc.reason}")
+        except AIClientError as exc:
+            last_error = AgentTaskError(str(exc))
         except AgentTaskError as exc:
             last_error = exc
 

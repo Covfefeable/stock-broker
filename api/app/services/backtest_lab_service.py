@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 import json
 from math import isnan, sqrt
 import random
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from sqlalchemy import and_, func, or_
 
@@ -20,6 +18,7 @@ from app.models.stock_daily_bar import StockDailyBar
 from app.models.strategy import Strategy
 from app.models.strategy_evaluation import StrategyEvaluation
 from app.models.user import User
+from app.services.ai_client import AIClientError, call_chat_completion_json
 from app.services.data_center_service import log_event
 from app.services.performance_score import calculate_performance_score
 from app.services.settings_service import get_or_create_settings, get_performance_score_weights
@@ -364,31 +363,17 @@ def generate_evaluation_ai_advice(strategy: Strategy, report: dict) -> dict:
         "{\"ruleAnalysis\":\"买入卖出规则解析\",\"riskPoints\":[\"潜在风险点\"],\"recommendation\":\"综合建议\"}。\n"
         f"评估材料：{json.dumps(prompt_payload, ensure_ascii=False)}"
     )
-    request = Request(
-        f"{model_config['baseUrl'].rstrip('/')}/chat/completions",
-        data=json.dumps(
-            {
-                "model": model_config["model"],
-                "messages": [
-                    {"role": "system", "content": "你只能返回合法 JSON，不要输出 markdown。"},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.25,
-                "response_format": {"type": "json_object"},
-            }
-        ).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {model_config['apiKey']}",
-        },
-        method="POST",
-    )
     try:
-        with urlopen(request, timeout=90) as response:
-            raw_payload = json.loads(response.read().decode("utf-8"))
-        content = raw_payload.get("choices", [{}])[0].get("message", {}).get("content", "")
-        parsed = json.loads(content)
-    except Exception as exc:  # noqa: BLE001
+        parsed = call_chat_completion_json(
+            model_config,
+            [
+                {"role": "system", "content": "你只能返回合法 JSON，不要输出 markdown。"},
+                {"role": "user", "content": prompt},
+            ],
+            timeout=180,
+            temperature=0.25,
+        )
+    except AIClientError as exc:
         return {
             "status": "failed",
             "message": f"AI 建议生成失败：{exc}",
@@ -529,41 +514,18 @@ def _compact_report_for_ai(report: dict) -> dict:
 
 
 def call_ai_json(model_config: dict, prompt: str, *, timeout: int, temperature: float) -> dict:
-    request = Request(
-        f"{model_config['baseUrl'].rstrip('/')}/chat/completions",
-        data=json.dumps(
-            {
-                "model": model_config["model"],
-                "messages": [
-                    {"role": "system", "content": "你只能返回合法 JSON，不要输出 markdown。"},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": temperature,
-                "response_format": {"type": "json_object"},
-            }
-        ).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {model_config['apiKey']}",
-        },
-        method="POST",
-    )
     try:
-        with urlopen(request, timeout=timeout) as response:
-            raw_payload = json.loads(response.read().decode("utf-8"))
-        content = raw_payload.get("choices", [{}])[0].get("message", {}).get("content", "")
-        parsed = json.loads(content)
-    except HTTPError as exc:
-        raise BacktestLabError(f"AI 模型调用失败：HTTP {exc.code}") from exc
-    except URLError as exc:
-        raise BacktestLabError(f"AI 模型网络异常：{exc.reason}") from exc
-    except json.JSONDecodeError as exc:
-        raise BacktestLabError("AI 返回内容不是合法 JSON。") from exc
-    except Exception as exc:
-        raise BacktestLabError(f"AI 模型调用异常：{exc}") from exc
-    if not isinstance(parsed, dict):
-        raise BacktestLabError("AI 返回内容结构无效。")
-    return parsed
+        return call_chat_completion_json(
+            model_config,
+            [
+                {"role": "system", "content": "你只能返回合法 JSON，不要输出 markdown。"},
+                {"role": "user", "content": prompt},
+            ],
+            timeout=timeout,
+            temperature=temperature,
+        )
+    except AIClientError as exc:
+        raise BacktestLabError(str(exc)) from exc
 
 
 def select_cross_asset_targets(strategy: Strategy, rng: random.Random) -> list[dict]:
@@ -751,40 +713,18 @@ def select_similar_assets_with_ai(strategy: Strategy, candidates: list[dict], mo
         f"国家/地区={strategy.country_region}。\n"
         f"候选标的：{json.dumps(candidate_payload, ensure_ascii=False)}"
     )
-    request = Request(
-        f"{model_config['baseUrl'].rstrip('/')}/chat/completions",
-        data=json.dumps(
-            {
-                "model": model_config["model"],
-                "messages": [
-                    {"role": "system", "content": "你只能返回合法 JSON，不要输出 markdown。"},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.2,
-                "response_format": {"type": "json_object"},
-            }
-        ).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {model_config['apiKey']}",
-        },
-        method="POST",
-    )
     try:
-        with urlopen(request, timeout=60) as response:
-            raw_payload = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        raise BacktestLabError(f"AI 模型调用失败：HTTP {exc.code}") from exc
-    except URLError as exc:
-        raise BacktestLabError(f"AI 模型网络异常：{exc.reason}") from exc
-    except Exception as exc:
-        raise BacktestLabError(f"AI 模型调用异常：{exc}") from exc
-
-    content = raw_payload.get("choices", [{}])[0].get("message", {}).get("content", "")
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise BacktestLabError("AI 返回的标的选择不是合法 JSON。") from exc
+        parsed = call_chat_completion_json(
+            model_config,
+            [
+                {"role": "system", "content": "你只能返回合法 JSON，不要输出 markdown。"},
+                {"role": "user", "content": prompt},
+            ],
+            timeout=120,
+            temperature=0.2,
+        )
+    except AIClientError as exc:
+        raise BacktestLabError(str(exc)) from exc
 
     identifiers = parsed.get("assetIdentifiers")
     if not isinstance(identifiers, list):
