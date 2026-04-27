@@ -754,23 +754,29 @@ function MetricLabel({ title, tooltip }: { title: string; tooltip?: ReactNode })
 }
 
 function buildTotalScoreTooltip(report: EvaluationReport): ReactNode {
+  const weights = {
+    generality: 0.25,
+    stability: 0.4,
+    risk: 0.25,
+    tradeHealth: 0.1,
+  };
   const generalityScore = report.generality?.score;
   const stabilityScore = report.stability?.score;
   const riskScore = calculateRiskScore(report);
   const tradeHealthScore = report.tradeHealth?.score;
   const totalScore =
-    (generalityScore ?? 0) * 0.25
-    + (stabilityScore ?? 0) * 0.35
-    + riskScore * 0.2
-    + (tradeHealthScore ?? 0) * 0.1;
+    (generalityScore ?? 0) * weights.generality
+    + (stabilityScore ?? 0) * weights.stability
+    + riskScore * weights.risk
+    + (tradeHealthScore ?? 0) * weights.tradeHealth;
   const finalScore = report.score ?? totalScore;
 
   return (
     <>
       <div>综合评分用于衡量策略在跨标的、跨时间、风险控制和交易频率上的整体可靠性。</div>
-      <div>公式：跨标的得分 * 0.25 + 跨时间得分 * 0.35 + 风险控制得分 * 0.20 + 交易健康度 * 0.10。</div>
+      <div>公式：跨标的得分 * 0.25 + 跨时间得分 * 0.40 + 风险控制得分 * 0.25 + 交易健康度 * 0.10。</div>
       <div>
-        实际：{formatNumber(generalityScore)} * 0.25 + {formatNumber(stabilityScore)} * 0.35 + {formatNumber(riskScore)} * 0.20 + {formatNumber(tradeHealthScore)} * 0.10 = {formatNumber(finalScore)}
+        实际：{formatNumber(generalityScore)} * 0.25 + {formatNumber(stabilityScore)} * 0.40 + {formatNumber(riskScore)} * 0.25 + {formatNumber(tradeHealthScore)} * 0.10 = {formatNumber(finalScore)}
       </div>
       <div>
         风险控制得分：max(0, 100 - max({formatPercent(report.generality?.averageMaxDrawdown)}, {formatPercent(report.stability?.averageMaxDrawdown)}) * 2) = {formatNumber(riskScore)}。
@@ -835,7 +841,7 @@ function buildRiskScoreTooltip(report: EvaluationReport): ReactNode {
         实际：max(0, 100 - max({formatPercent(generalityDrawdown)}, {formatPercent(stabilityDrawdown)}) * 2)
         = max(0, 100 - {formatNumber(riskDrawdown)} * 2) = {formatNumber(riskScore)}。
       </div>
-      <div>该得分在最终综合评分中占 20%。</div>
+      <div>该得分在最终综合评分中占 25%。</div>
     </>
   );
 }

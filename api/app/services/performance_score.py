@@ -4,7 +4,7 @@ from typing import Any
 
 ANNUAL_RETURN_WEIGHT = 0.7
 SHARPE_WEIGHT = 5
-MAX_DRAWDOWN_WEIGHT = 0.2
+MAX_DRAWDOWN_WEIGHT = 0.3
 
 
 def default_performance_score_weights() -> dict[str, float]:

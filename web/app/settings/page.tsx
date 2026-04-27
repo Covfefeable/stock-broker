@@ -122,7 +122,7 @@ const defaultSettings: SettingsState = {
     performanceScoreWeights: {
       annualReturn: 0.7,
       sharpe: 5,
-      maxDrawdown: 0.2,
+      maxDrawdown: 0.3,
     },
   },
   account: {

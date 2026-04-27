@@ -72,8 +72,8 @@ def calculate_evaluation_score(generality: dict, stability: dict, trade_health: 
     risk_score = max(0.0, 100.0 - risk_drawdown * 2)
     return (
         float(generality.get("score") or 0) * 0.25
-        + float(stability.get("score") or 0) * 0.35
-        + risk_score * 0.2
+        + float(stability.get("score") or 0) * 0.4
+        + risk_score * 0.25
         + float(trade_health.get("score") or 0) * 0.1
     )
 
