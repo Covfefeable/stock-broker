@@ -22,6 +22,10 @@ def canghai_stock_split_url(exchange_code: str) -> str:
     return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/split"
 
 
+def canghai_stock_dividend_url(exchange_code: str) -> str:
+    return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/dividend"
+
+
 def canghai_trading_calendar_url(exchange_code: str) -> str:
     return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/market/calendar"
 

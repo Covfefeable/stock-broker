@@ -19,6 +19,7 @@ from app.services.data_center.canghai_client import canghai_stock_url
 from app.services.data_center.canghai_client import canghai_index_url
 from app.services.data_center.canghai_client import canghai_stock_daily_url
 from app.services.data_center.canghai_client import canghai_stock_split_url
+from app.services.data_center.canghai_client import canghai_stock_dividend_url
 from app.services.data_center.canghai_client import canghai_trading_calendar_url
 from app.services.data_center.canghai_client import canghai_index_daily_url
 from app.services.data_center.canghai_client import build_canghai_url
@@ -36,6 +37,7 @@ from app.services.data_center.sync_master_data import sync_trading_calendar
 from app.services.data_center.sync_daily_history import sync_stock_daily_history
 from app.services.data_center.sync_daily_history import sync_index_daily_history
 from app.services.data_center.sync_daily_history import sync_stock_splits_for_stock
+from app.services.data_center.sync_daily_history import sync_stock_dividends_for_stock
 from app.services.data_center.sync_batch import batch_sync_stock_daily_history
 from app.services.data_center.sync_batch import batch_sync_index_daily_history
 from app.services.data_center.sync_batch import batch_sync_stock_and_index_daily_history
@@ -64,6 +66,7 @@ from app.services.data_center.upserts import upsert_stocks
 from app.services.data_center.upserts import upsert_index_assets
 from app.services.data_center.upserts import upsert_stock_daily_bars
 from app.services.data_center.upserts import upsert_stock_splits
+from app.services.data_center.upserts import upsert_stock_dividends
 from app.services.data_center.upserts import upsert_index_daily_bars
 from app.services.data_center.upserts import upsert_trading_calendar_days
 from app.services.data_center.events import log_event
@@ -89,6 +92,7 @@ __all__ = [
     "canghai_index_url",
     "canghai_stock_daily_url",
     "canghai_stock_split_url",
+    "canghai_stock_dividend_url",
     "canghai_trading_calendar_url",
     "canghai_index_daily_url",
     "build_canghai_url",
@@ -106,6 +110,7 @@ __all__ = [
     "sync_stock_daily_history",
     "sync_index_daily_history",
     "sync_stock_splits_for_stock",
+    "sync_stock_dividends_for_stock",
     "batch_sync_stock_daily_history",
     "batch_sync_index_daily_history",
     "batch_sync_stock_and_index_daily_history",
@@ -134,6 +139,7 @@ __all__ = [
     "upsert_index_assets",
     "upsert_stock_daily_bars",
     "upsert_stock_splits",
+    "upsert_stock_dividends",
     "upsert_index_daily_bars",
     "upsert_trading_calendar_days",
     "log_event",

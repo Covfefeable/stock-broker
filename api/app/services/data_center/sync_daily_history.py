@@ -11,6 +11,7 @@ from app.services.data_center.constants import *  # noqa: F403
 from app.services.data_center.canghai_client import (
     build_canghai_url,
     canghai_index_daily_url,
+    canghai_stock_dividend_url,
     canghai_stock_daily_url,
     canghai_stock_split_url,
     fetch_json,
@@ -25,6 +26,7 @@ from app.services.data_center.time import beijing_today
 from app.services.data_center.tokens import get_user_token
 from app.services.data_center.upserts import (
     upsert_index_daily_bars,
+    upsert_stock_dividends,
     upsert_stock_daily_bars,
     upsert_stock_splits,
 )
@@ -63,6 +65,7 @@ def sync_stock_daily_history(
         )
 
     split_records = sync_stock_splits_for_stock(user, stock)
+    dividend_records = sync_stock_dividends_for_stock(user, stock)
     extra_params = {"ticker": stock.ticker, "order": "1"}
     if date_mode == DATE_MODE_CUSTOM:
         if start_date:
@@ -85,7 +88,7 @@ def sync_stock_daily_history(
         base_url=canghai_stock_daily_url(normalized_exchange_code),
         success_message=(
             f"股票历史日线同步成功（{normalized_exchange_code}/{stock.ticker}），"
-            f"同步送股/拆股事件 {split_records} 条。"
+            f"同步送股/拆股事件 {split_records} 条，现金分红事件 {dividend_records} 条。"
         ),
         upsert_func=lambda rows: upsert_stock_daily_bars(rows, stock),
         extra_params=extra_params,
@@ -189,3 +192,42 @@ def sync_stock_splits_for_stock(user: User, stock: Stock) -> int:
             f"股票送股/拆股信息同步失败（{stock.exchange_code}/{stock.ticker}）：上游数据结构不符合预期。"
         )
     return upsert_stock_splits(rows, stock)
+
+
+def sync_stock_dividends_for_stock(user: User, stock: Stock) -> int:
+    token = get_user_token(user)
+    request_url = build_canghai_url(
+        canghai_stock_dividend_url(stock.exchange_code),
+        token,
+        extra_params={
+            "ticker": stock.ticker,
+            "start_date": DEFAULT_FULL_HISTORY_SYNC_START_DATE,
+            "order": "1",
+        },
+    )
+    try:
+        payload = fetch_json(request_url)
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore") if exc.fp else ""
+        detail = f" HTTP {exc.code}"
+        if body:
+            detail = f"{detail}：{body[:240]}"
+        raise DataSyncError(
+            f"股票现金分红信息同步失败（{stock.exchange_code}/{stock.ticker}）。{detail}"
+        ) from exc
+    except URLError as exc:
+        raise DataSyncError(
+            f"股票现金分红信息同步失败（{stock.exchange_code}/{stock.ticker}），网络请求异常：{exc.reason}"
+        ) from exc
+
+    if payload.get("code") != 200:
+        raise DataSyncError(
+            f"股票现金分红信息同步失败（{stock.exchange_code}/{stock.ticker}）："
+            f"{payload.get('msg') or '上游接口返回异常'}"
+        )
+    rows = payload.get("data") or []
+    if not isinstance(rows, list):
+        raise DataSyncError(
+            f"股票现金分红信息同步失败（{stock.exchange_code}/{stock.ticker}）：上游数据结构不符合预期。"
+        )
+    return upsert_stock_dividends(rows, stock)

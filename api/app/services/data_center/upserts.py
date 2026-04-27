@@ -9,6 +9,7 @@ from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
+from app.models.stock_dividend import StockDividend
 from app.models.stock_split import StockSplit
 from app.models.trading_calendar_day import TradingCalendarDay
 
@@ -195,6 +196,42 @@ def upsert_stock_splits(rows: list[dict], stock: Stock) -> int:
 
         record.stock_id = stock.id
         record.split_factor = split_factor
+        affected += 1
+
+    db.session.commit()
+    return affected
+
+
+def upsert_stock_dividends(rows: list[dict], stock: Stock) -> int:
+    affected = 0
+    for item in rows:
+        ticker = str(item.get("ticker") or "").strip()
+        event_date_raw = str(item.get("date") or "").strip()
+        dividend = parse_positive_decimal(item.get("dividend"))
+        if (
+            not ticker
+            or ticker.casefold() != stock.ticker.casefold()
+            or not event_date_raw
+            or dividend is None
+        ):
+            continue
+
+        event_date = date.fromisoformat(event_date_raw)
+        record = StockDividend.query.filter_by(
+            exchange_code=stock.exchange_code,
+            ticker=stock.ticker,
+            event_date=event_date,
+        ).first()
+        if not record:
+            record = StockDividend(
+                exchange_code=stock.exchange_code,
+                ticker=stock.ticker,
+                event_date=event_date,
+            )
+            db.session.add(record)
+
+        record.stock_id = stock.id
+        record.dividend = dividend
         affected += 1
 
     db.session.commit()
