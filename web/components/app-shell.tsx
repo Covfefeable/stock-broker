@@ -3,12 +3,10 @@
 import {
   AppstoreOutlined,
   BarChartOutlined,
-  BellOutlined,
   BulbOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   DatabaseOutlined,
-  FundProjectionScreenOutlined,
   MoonOutlined,
   RobotOutlined,
   SettingOutlined,
@@ -50,7 +48,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Sider className="sidebar" width={248} collapsed={collapsed} collapsedWidth={80} trigger={null}>
             <div className="brand-block">
               <span className="brand-mark">
-                <FundProjectionScreenOutlined />
+                <img src="/brand-logo.svg" alt="" />
               </span>
               <div className="brand-copy">
                 <strong>Genesis</strong>
@@ -84,7 +82,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   onChange={toggleMode}
                   title="切换明暗模式"
                 />
-                <Button icon={<BellOutlined />} shape="circle" type="text" />
+                {/* 消息入口暂未接入实际功能，先保留位置但不展示。 */}
+                {/* <Button icon={<BellOutlined />} shape="circle" type="text" /> */}
                 <Popover
                   trigger="hover"
                   placement="bottomRight"

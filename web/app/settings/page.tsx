@@ -4,6 +4,7 @@ import {
   BellOutlined,
   DatabaseOutlined,
   HolderOutlined,
+  LinkOutlined,
   LockOutlined,
   RobotOutlined,
   SaveOutlined,
@@ -23,7 +24,7 @@ import {
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppLoader } from "@/components/app-loader";
 import { AppShell } from "@/components/app-shell";
 import { getAccessToken } from "@/lib/auth";
@@ -123,12 +124,13 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draggingModelKey, setDraggingModelKey] = useState<string | null>(null);
+  const [testingModelKey, setTestingModelKey] = useState<string | null>(null);
 
   useEffect(() => {
     const loadSettings = async () => {
       try {
         const token = getAccessToken();
-      const response = await apiGet<{ settings: SettingsPayload }>("/settings/me", token);
+        const response = await apiGet<{ settings: SettingsPayload }>("/settings/me", token);
         setSettings(mergeSettings(response.settings));
       } catch (error) {
         messageApi.error(error instanceof Error ? error.message : "加载系统设置失败");
@@ -138,6 +140,30 @@ export default function SettingsPage() {
     };
 
     void loadSettings();
+  }, [messageApi]);
+
+  const handleTestAiModel = useCallback(async (record: AiModelRow) => {
+    setTestingModelKey(record.key);
+    try {
+      const token = getAccessToken();
+      const response = await apiRequest<{ ok: boolean; message: string; content: string }>("/settings/test-ai-model", {
+        method: "POST",
+        body: {
+          modelConfig: {
+            name: record.name,
+            model: record.model,
+            baseUrl: record.baseUrl,
+            apiKey: record.apiKey,
+          },
+        },
+        token,
+      });
+      messageApi.success(`测试成功：${response.content || response.message}`);
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "AI 模型测试失败");
+    } finally {
+      setTestingModelKey(null);
+    }
   }, [messageApi]);
 
   const aiModelColumns = useMemo<ColumnsType<AiModelRow>>(
@@ -198,28 +224,37 @@ export default function SettingsPage() {
       },
       {
         title: "操作",
-        width: 90,
+        width: 150,
         fixed: "right",
         render: (_, record) => (
-          <Button
-            type="link"
-            danger
-            disabled={settings.ai.models.length <= 1}
-            onClick={() =>
-              setSettings((current) => ({
-                ...current,
-                ai: {
-                  models: current.ai.models.filter((row) => row.key !== record.key),
-                },
-              }))
-            }
-          >
-            删除
-          </Button>
+          <Space size={8}>
+            <Button
+              type="link"
+              loading={testingModelKey === record.key}
+              onClick={() => void handleTestAiModel(record)}
+            >
+              测试
+            </Button>
+            <Button
+              type="link"
+              danger
+              disabled={settings.ai.models.length <= 1}
+              onClick={() =>
+                setSettings((current) => ({
+                  ...current,
+                  ai: {
+                    models: current.ai.models.filter((row) => row.key !== record.key),
+                  },
+                }))
+              }
+            >
+              删除
+            </Button>
+          </Space>
         ),
       },
     ],
-    [settings.ai.models.length],
+    [handleTestAiModel, settings.ai.models.length, testingModelKey],
   );
 
   const moveAiModel = (fromKey: string, toKey: string) => {
@@ -258,7 +293,7 @@ export default function SettingsPage() {
       scoring: {
         performanceScoreWeights: {
           ...current.scoring.performanceScoreWeights,
-          [key]: Math.max(0, Number(value ?? 0)),
+          [key]: normalizeWeightInput(key, value),
         },
       },
     }));
@@ -380,8 +415,18 @@ export default function SettingsPage() {
                 <div className="data-source-config-list">
                   <div className="data-source-config-item">
                     <div>
-                      <strong>沧海数据</strong>
-                      <Text>当前仅支持该预设数据源接入</Text>
+                      <strong>
+                        沧海数据
+                        <a
+                          className="settings-inline-link"
+                          href="https://tsanghi.com/fin/user"
+                          rel="noreferrer"
+                          target="_blank"
+                          title="打开沧海数据用户中心"
+                        >
+                          <LinkOutlined />
+                        </a>
+                      </strong>
                     </div>
                     <div>
                       <label className="settings-field-label">API Key</label>
@@ -467,7 +512,9 @@ export default function SettingsPage() {
                   />
                   <WeightInput
                     title="Sharpe 权重"
-                    description="用于衡量单位波动下的收益表现。"
+                    description="用于衡量单位波动下的收益表现，范围 1-10。"
+                    min={1}
+                    max={10}
                     value={settings.scoring.performanceScoreWeights.sharpe}
                     onChange={(value) => updateScoreWeight("sharpe", value)}
                   />
@@ -591,11 +638,15 @@ function SettingSwitch({
 
 function WeightInput({
   description,
+  max = 100,
+  min = 0,
   onChange,
   title,
   value,
 }: {
   description: string;
+  max?: number;
+  min?: number;
   onChange: (value: number | null) => void;
   title: string;
   value: number;
@@ -607,7 +658,8 @@ function WeightInput({
         <Text>{description}</Text>
       </div>
       <InputNumber
-        min={0}
+        max={max}
+        min={min}
         precision={2}
         step={0.1}
         value={value}
@@ -654,6 +706,17 @@ function mergeSettings(payload?: Partial<SettingsPayload>): SettingsState {
       keepSignedIn: payload?.account?.keepSignedIn ?? defaultSettings.account.keepSignedIn,
     },
   };
+}
+
+function normalizeWeightInput(
+  key: keyof SettingsPayload["scoring"]["performanceScoreWeights"],
+  value: number | null,
+) {
+  const number = Number(value ?? 0);
+  if (key === "sharpe") {
+    return Math.min(10, Math.max(1, number));
+  }
+  return Math.max(0, number);
 }
 
 function serializeSettings(settings: SettingsPayload) {

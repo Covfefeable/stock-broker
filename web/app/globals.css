@@ -261,14 +261,17 @@ select {
 }
 
 .brand-mark {
-  background: var(--primary);
+  background: transparent;
   border-radius: 8px;
-  color: #fff;
   display: grid;
-  font-family: "General Sans", system-ui, sans-serif;
-  font-weight: 700;
   height: 40px;
   place-items: center;
+  width: 40px;
+}
+
+.brand-mark img {
+  display: block;
+  height: 40px;
   width: 40px;
 }
 
@@ -1351,9 +1354,23 @@ select {
 }
 
 .data-source-config-item strong {
+  align-items: center;
   color: var(--text-main);
-  display: block;
+  display: inline-flex;
+  gap: 8px;
   margin-bottom: 4px;
+}
+
+.settings-inline-link {
+  align-items: center;
+  color: var(--primary);
+  display: inline-flex;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.settings-inline-link:hover {
+  color: var(--primary-strong);
 }
 
 .data-source-config-item .ant-typography {
@@ -1799,13 +1816,17 @@ select {
 }
 
 .login-brand-mark {
-  background: var(--primary);
+  background: transparent;
   border-radius: 8px;
-  color: #fff;
   display: grid;
-  font-size: 20px;
   height: 44px;
   place-items: center;
+  width: 44px;
+}
+
+.login-brand-mark img {
+  display: block;
+  height: 44px;
   width: 44px;
 }
 

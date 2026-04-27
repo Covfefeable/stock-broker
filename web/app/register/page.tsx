@@ -1,6 +1,6 @@
 "use client";
 
-import { FundProjectionScreenOutlined, LockOutlined, MailOutlined, UserOutlined } from "@ant-design/icons";
+import { LockOutlined, MailOutlined, UserOutlined } from "@ant-design/icons";
 import { Button, Form, Input, Typography, message } from "antd";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -50,7 +50,7 @@ export default function RegisterPage() {
       <section className="login-hero">
         <div className="login-brand">
           <span className="login-brand-mark">
-            <FundProjectionScreenOutlined />
+            <img src="/brand-logo.svg" alt="" />
           </span>
           <div>
             <strong>Genesis</strong>

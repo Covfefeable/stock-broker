@@ -15,7 +15,7 @@ export function DataCenterHeader({ batchSyncing, onBatchSync, onOpenSyncModal }:
       <div>
         <Title level={1}>数据中心</Title>
         <Text className="page-description">
-          管理 A 股、港股、美股等多市场行情、基础信息与财务因子数据，监控同步状态和数据覆盖情况。
+          管理全球多市场行情、基础信息等数据，监控同步状态和数据覆盖情况。
         </Text>
       </div>
       <Space>

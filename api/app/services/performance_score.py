@@ -21,7 +21,7 @@ def normalize_performance_score_weights(value: Any) -> dict[str, float]:
         return defaults
     return {
         "annualReturn": _to_weight(value.get("annualReturn"), defaults["annualReturn"]),
-        "sharpe": _to_weight(value.get("sharpe"), defaults["sharpe"]),
+        "sharpe": _to_weight(value.get("sharpe"), defaults["sharpe"], minimum=1, maximum=10),
         "maxDrawdown": _to_weight(value.get("maxDrawdown"), defaults["maxDrawdown"]),
     }
 
@@ -42,12 +42,16 @@ def calculate_performance_score(
     )
 
 
-def _to_weight(value: Any, fallback: float) -> float:
+def _to_weight(value: Any, fallback: float, *, minimum: float = 0, maximum: float | None = None) -> float:
     try:
         number = float(value)
     except (TypeError, ValueError):
         return fallback
-    return number if number >= 0 else fallback
+    if number < minimum:
+        return minimum
+    if maximum is not None and number > maximum:
+        return maximum
+    return number
 
 
 def _to_float(value: Any) -> float:
