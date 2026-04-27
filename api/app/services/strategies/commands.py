@@ -71,7 +71,7 @@ def _apply_strategy_payload(strategy: Strategy, payload: dict, *, is_create: boo
         raise StrategyError("请输入策略名称。")
     if not strategy_type:
         raise StrategyError("请选择策略类型。")
-    if source != "人工创建":
+    if source not in {"人工创建", "计划任务"}:
         raise StrategyError("请选择有效的来源。")
     if not country_region:
         raise StrategyError("请选择国家/地区。")

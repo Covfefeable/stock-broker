@@ -50,6 +50,10 @@ def init_celery(app):
                 "scan-online-canghai-token-statuses-every-5-minutes": {
                     "task": "app.tasks.scheduled.scan_online_canghai_token_statuses",
                     "schedule": 300.0,
+                },
+                "scan-due-scheduled-plans-every-minute": {
+                    "task": "app.tasks.scheduled.scan_due_scheduled_plans",
+                    "schedule": 60.0,
                 }
             },
         }

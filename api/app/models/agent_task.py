@@ -67,6 +67,7 @@ class AgentTask(db.Model):
         cascade="all, delete-orphan",
         order_by="desc(AgentIteration.iteration_number)",
     )
+    scheduled_plans = db.relationship("ScheduledPlan", back_populates="agent_task")
 
     def to_dict(self) -> dict:
         return {

@@ -1691,6 +1691,22 @@ select {
   color: var(--primary);
 }
 
+.table-column-help {
+  align-items: center;
+  display: inline-flex;
+}
+
+.table-column-help .anticon {
+  color: var(--text-muted);
+  cursor: help;
+  font-size: 12px;
+  transition: color 0.18s ease;
+}
+
+.table-column-help .anticon:hover {
+  color: var(--primary);
+}
+
 .metric-tooltip-content {
   display: grid;
   gap: 8px;
@@ -2000,6 +2016,101 @@ select {
 .strategy-filter-select {
   flex: 0 0 168px;
   width: 168px;
+}
+
+.scheduled-plan-form {
+  margin-top: 8px;
+}
+
+.scheduled-plan-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.scheduled-plan-time-picker,
+.full-width-input {
+  width: 100%;
+}
+
+.scheduled-picker-section {
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+}
+
+.scheduled-day-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.scheduled-week-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.scheduled-choice {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 700;
+  height: 30px;
+  justify-content: center;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.scheduled-choice:hover {
+  border-color: rgba(99, 102, 241, 0.74);
+  color: var(--text-primary);
+}
+
+.scheduled-choice-active {
+  background: rgba(79, 70, 229, 0.22);
+  border-color: #6366f1;
+  color: var(--text-primary);
+}
+
+.scheduled-last-day {
+  padding: 0 14px;
+  width: auto;
+}
+
+.scheduled-helper {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.scheduled-minute-row {
+  align-items: center;
+  display: grid;
+  column-gap: 22px;
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
+.scheduled-threshold-row {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 180px 220px;
+}
+
+.scheduled-threshold-input {
+  width: 160px;
+}
+
+.scheduled-label-with-tooltip {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
 }
 
 .strategy-list-summary {

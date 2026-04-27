@@ -122,6 +122,20 @@ type DetailResponse = {
   evaluation: Evaluation | null;
 };
 
+type PerformanceScoreWeights = {
+  annualReturn: number;
+  sharpe: number;
+  maxDrawdown: number;
+};
+
+type SettingsResponse = {
+  settings?: {
+    scoring?: {
+      performanceScoreWeights?: Partial<PerformanceScoreWeights>;
+    };
+  };
+};
+
 type EvaluationCandidate = {
   label: string;
   value: string;
@@ -151,6 +165,12 @@ const conclusionColor: Record<string, string> = {
   未通过: "red",
 };
 
+const defaultPerformanceScoreWeights: PerformanceScoreWeights = {
+  annualReturn: 0.7,
+  sharpe: 5,
+  maxDrawdown: 0.3,
+};
+
 function asStrategyDslConfig(value: Record<string, unknown> | null | undefined): StrategyDslConfig | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -178,6 +198,7 @@ export default function BacktestLabDetailPage() {
   const [candidateCountryCode, setCandidateCountryCode] = useState("");
   const [selectedCandidateValues, setSelectedCandidateValues] = useState<string[]>([]);
   const [detailResult, setDetailResult] = useState<EvaluationResult | null>(null);
+  const [scoreWeights, setScoreWeights] = useState<PerformanceScoreWeights>(defaultPerformanceScoreWeights);
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -197,6 +218,24 @@ export default function BacktestLabDetailPage() {
       void loadDetail();
     }
   }, [loadDetail, strategyId]);
+
+  useEffect(() => {
+    const loadScoreWeights = async () => {
+      try {
+        const token = getAccessToken();
+        const response = await apiGet<SettingsResponse>("/settings/me", token);
+        const weights = response.settings?.scoring?.performanceScoreWeights || {};
+        setScoreWeights({
+          annualReturn: Number(weights.annualReturn ?? defaultPerformanceScoreWeights.annualReturn),
+          sharpe: Number(weights.sharpe ?? defaultPerformanceScoreWeights.sharpe),
+          maxDrawdown: Number(weights.maxDrawdown ?? defaultPerformanceScoreWeights.maxDrawdown),
+        });
+      } catch {
+        setScoreWeights(defaultPerformanceScoreWeights);
+      }
+    };
+    void loadScoreWeights();
+  }, []);
 
   const openEvaluateModal = useCallback(async () => {
     if (!payload) return;
@@ -287,8 +326,8 @@ export default function BacktestLabDetailPage() {
   const report = payload?.evaluation?.report || {};
   const isRunning = payload?.strategy.evaluationStatus === "queued" || payload?.strategy.evaluationStatus === "running";
 
-  const crossAssetColumns = useResultColumns("标的", setDetailResult);
-  const timeRangeColumns = useResultColumns("区间", setDetailResult);
+  const crossAssetColumns = useResultColumns("标的", setDetailResult, scoreWeights);
+  const timeRangeColumns = useResultColumns("区间", setDetailResult, scoreWeights);
   const totalScoreTooltip = buildTotalScoreTooltip(report);
 
   return (
@@ -553,7 +592,11 @@ function EvaluationResultDetail({ result }: { result: EvaluationResult }) {
   );
 }
 
-function useResultColumns(firstTitle: string, onViewDetail: (record: EvaluationResult) => void): ColumnsType<EvaluationResult> {
+function useResultColumns(
+  firstTitle: string,
+  onViewDetail: (record: EvaluationResult) => void,
+  scoreWeights: PerformanceScoreWeights,
+): ColumnsType<EvaluationResult> {
   return useMemo(
     () => [
       {
@@ -577,7 +620,7 @@ function useResultColumns(firstTitle: string, onViewDetail: (record: EvaluationR
         render: (_, record) => <MiniEquityCompareChart preview={record.detail} />,
       },
       {
-        title: "综合分数",
+        title: <TableColumnHelp title="综合分数" tooltip={buildResultScoreTooltip(scoreWeights)} />,
         key: "score",
         width: 118,
         render: (_, record) => (
@@ -585,7 +628,7 @@ function useResultColumns(firstTitle: string, onViewDetail: (record: EvaluationR
         ),
       },
       {
-        title: "样本分",
+        title: <TableColumnHelp title="样本分" tooltip={buildSampleScoreTooltip()} />,
         key: "sampleScore",
         width: 112,
         render: (_, record) => (
@@ -658,7 +701,7 @@ function useResultColumns(firstTitle: string, onViewDetail: (record: EvaluationR
         ),
       },
     ],
-    [firstTitle, onViewDetail],
+    [firstTitle, onViewDetail, scoreWeights],
   );
 }
 
@@ -753,6 +796,42 @@ function MetricLabel({ title, tooltip }: { title: string; tooltip?: ReactNode })
   );
 }
 
+function TableColumnHelp({ title, tooltip }: { title: string; tooltip: ReactNode }) {
+  return (
+    <Space size={4} className="table-column-help">
+      <span>{title}</span>
+      <Tooltip title={<div className="metric-tooltip-content">{tooltip}</div>} placement="topLeft">
+        <QuestionCircleOutlined />
+      </Tooltip>
+    </Space>
+  );
+}
+
+function buildResultScoreTooltip(weights: PerformanceScoreWeights): ReactNode {
+  return (
+    <>
+      <div>综合分数用于比较同一样本内策略和基准的综合表现。</div>
+      <div>公式：年化收益 * 年化收益权重 + Sharpe * Sharpe 权重 - 最大回撤 * 最大回撤权重。</div>
+      <div>
+        当前设置：年化收益权重 {formatWeight(weights.annualReturn)}，Sharpe 权重 {formatWeight(weights.sharpe)}，最大回撤权重 {formatWeight(weights.maxDrawdown)}。
+      </div>
+      <div>权重来自系统设置的评分权重；数值越高代表收益、稳定性和回撤之间的整体表现越好。</div>
+      <div>单元格上方为策略综合分数，下方为基准综合分数。</div>
+    </>
+  );
+}
+
+function buildSampleScoreTooltip(): ReactNode {
+  return (
+    <>
+      <div>样本分用于判断策略在单个标的或单个时间区间里，相对基准是否有优势。</div>
+      <div>公式：clamp(50 + (策略综合分 - 基准综合分) * 2, 0, 100)。</div>
+      <div>50 代表与基准基本持平；高于 50 表示策略优于基准，低于 50 表示弱于基准。</div>
+      <div>当前通过标准：样本分 ≥ 52。</div>
+    </>
+  );
+}
+
 function buildTotalScoreTooltip(report: EvaluationReport): ReactNode {
   const weights = {
     generality: 0.25,
@@ -796,7 +875,7 @@ function buildGroupScoreTooltip(group: EvaluationGroup | undefined, label: strin
         实际：{formatNumber(group?.averageSampleScore)} - {formatNumber(group?.sampleScoreStd)} * 0.2 = {formatNumber(group?.score)}
       </div>
       <div>
-        样本：成功 {group?.successCount ?? 0} / 总数 {group?.total ?? 0}，通过率 {formatPercent(group?.passRate)}。
+        样本：通过 {group?.passedCount ?? 0} / 总数 {group?.total ?? 0}，通过率 {formatPercent(group?.passRate)}。
       </div>
     </>
   );
@@ -856,6 +935,10 @@ function calculateRiskScore(report: EvaluationReport): number {
 
 function formatNumber(value: number | null | undefined): string {
   return value === null || value === undefined ? "-" : value.toFixed(2);
+}
+
+function formatWeight(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function formatSignedNumber(value: number | null | undefined): string {

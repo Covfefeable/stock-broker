@@ -4,6 +4,7 @@ import {
   AppstoreOutlined,
   BarChartOutlined,
   BulbOutlined,
+  CalendarOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   DatabaseOutlined,
@@ -30,6 +31,7 @@ const navItems = [
   { key: "/strategy-builder", icon: <BulbOutlined />, label: <Link href="/strategy-builder">策略搭建</Link> },
   { key: "/backtest-lab", icon: <BarChartOutlined />, label: <Link href="/backtest-lab">回测实验室</Link> },
   { key: "/agent-tasks", icon: <RobotOutlined />, label: <Link href="/agent-tasks">AI Agent 任务</Link> },
+  { key: "/scheduled-plans", icon: <CalendarOutlined />, label: <Link href="/scheduled-plans">计划任务</Link> },
   { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">系统设置</Link> },
 ];
 

@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models.agent_task import AgentTask
+from app.models.scheduled_plan_run import ScheduledPlanRun
 from app.models.user import User
 from app.services.agent_tasks.errors import AgentTaskError
 from app.services.agent_tasks.helpers import (
@@ -16,6 +17,7 @@ from app.services.agent_tasks.helpers import (
 )
 from app.services.agent_tasks.queries import get_agent_task
 from app.services.data_center import log_event
+from app.services.scheduled_plans import ScheduledPlanError, ensure_agent_task_not_referenced
 from app.services.strategies import list_strategy_asset_options
 
 
@@ -89,6 +91,14 @@ def create_agent_task(user: User, payload: dict) -> AgentTask:
 
 def delete_agent_task(user: User, task_id: int) -> None:
     task = get_agent_task(user, task_id)
+    try:
+        ensure_agent_task_not_referenced(user, task.id)
+    except ScheduledPlanError as exc:
+        raise AgentTaskError(str(exc)) from exc
+    ScheduledPlanRun.query.filter(
+        ScheduledPlanRun.user_id == user.id,
+        ScheduledPlanRun.generated_agent_task_id == task.id,
+    ).update({"generated_agent_task_id": None}, synchronize_session=False)
     db.session.delete(task)
     db.session.commit()
 

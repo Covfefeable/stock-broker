@@ -47,6 +47,12 @@ class User(db.Model):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    scheduled_plans = db.relationship(
+        "ScheduledPlan",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        order_by="desc(ScheduledPlan.updated_at)",
+    )
 
     def to_dict(self) -> dict:
         return {

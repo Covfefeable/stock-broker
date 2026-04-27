@@ -1,0 +1,2 @@
+class ScheduledPlanError(Exception):
+    pass

@@ -6,6 +6,8 @@ from app.models.exchange import Exchange
 from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
 from app.models.setting import Setting
+from app.models.scheduled_plan import ScheduledPlan
+from app.models.scheduled_plan_run import ScheduledPlanRun
 from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
 from app.models.stock_dividend import StockDividend
@@ -25,6 +27,8 @@ __all__ = [
     "IndexAsset",
     "IndexDailyBar",
     "Setting",
+    "ScheduledPlan",
+    "ScheduledPlanRun",
     "Stock",
     "StockDailyBar",
     "StockDividend",

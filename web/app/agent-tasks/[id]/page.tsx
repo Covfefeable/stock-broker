@@ -35,6 +35,26 @@ type TaskSocketMessage =
       message: string;
     };
 
+type PerformanceScoreWeights = {
+  annualReturn: number;
+  sharpe: number;
+  maxDrawdown: number;
+};
+
+type SettingsResponse = {
+  settings?: {
+    scoring?: {
+      performanceScoreWeights?: Partial<PerformanceScoreWeights>;
+    };
+  };
+};
+
+const defaultPerformanceScoreWeights: PerformanceScoreWeights = {
+  annualReturn: 0.7,
+  sharpe: 5,
+  maxDrawdown: 0.3,
+};
+
 const statusMeta = {
   queued: { label: "排队中", color: "default" },
   running: { label: "运行中", color: "processing" },
@@ -52,6 +72,10 @@ const previewRangeOptions = [
 
 function formatPercent(value: number | null | undefined) {
   return value === null || value === undefined ? "-" : `${value.toFixed(2)}%`;
+}
+
+function formatWeight(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -81,13 +105,15 @@ function asStrategyDslConfig(value: Record<string, unknown> | null | undefined):
   return value as unknown as StrategyDslConfig;
 }
 
-function renderPerformanceScoreTooltip() {
+function renderPerformanceScoreTooltip(weights: PerformanceScoreWeights) {
   return (
     <div className="metric-tooltip-content">
       <div>综合分数用于平衡收益、稳定性和回撤后选择最佳综合表现。</div>
       <div>公式：年化收益 * 年化收益权重 + Sharpe * Sharpe 权重 - 最大回撤 * 最大回撤权重。</div>
-      <div>当前默认：年化收益权重 0.7，Sharpe 权重 5，最大回撤权重 0.2。</div>
-      <div>实际权重可在系统设置的评分权重中调整，后续迭代按当时配置计算。</div>
+      <div>
+        当前设置：年化收益权重 {formatWeight(weights.annualReturn)}，Sharpe 权重 {formatWeight(weights.sharpe)}，最大回撤权重 {formatWeight(weights.maxDrawdown)}。
+      </div>
+      <div>权重来自系统设置的评分权重；后续迭代按运行时配置计算。</div>
     </div>
   );
 }
@@ -150,6 +176,7 @@ export default function AgentTaskDetailPage() {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [savingName, setSavingName] = useState(false);
+  const [scoreWeights, setScoreWeights] = useState<PerformanceScoreWeights>(defaultPerformanceScoreWeights);
   const refreshTimerRef = useRef<number | null>(null);
 
   const loadDetail = useCallback(async (options?: { silent?: boolean }) => {
@@ -174,6 +201,24 @@ export default function AgentTaskDetailPage() {
   useEffect(() => {
     void loadDetail();
   }, [loadDetail]);
+
+  useEffect(() => {
+    const loadScoreWeights = async () => {
+      try {
+        const token = getAccessToken();
+        const response = await apiGet<SettingsResponse>("/settings/me", token);
+        const weights = response.settings?.scoring?.performanceScoreWeights || {};
+        setScoreWeights({
+          annualReturn: Number(weights.annualReturn ?? defaultPerformanceScoreWeights.annualReturn),
+          sharpe: Number(weights.sharpe ?? defaultPerformanceScoreWeights.sharpe),
+          maxDrawdown: Number(weights.maxDrawdown ?? defaultPerformanceScoreWeights.maxDrawdown),
+        });
+      } catch {
+        setScoreWeights(defaultPerformanceScoreWeights);
+      }
+    };
+    void loadScoreWeights();
+  }, []);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -391,7 +436,7 @@ export default function AgentTaskDetailPage() {
         title: (
           <Space size={4}>
             综合分数
-            <Tooltip title={renderPerformanceScoreTooltip()}>
+            <Tooltip title={renderPerformanceScoreTooltip(scoreWeights)}>
               <QuestionCircleOutlined />
             </Tooltip>
           </Space>
@@ -565,7 +610,7 @@ export default function AgentTaskDetailPage() {
                   <div className="agent-metric-title">
                     <Text type="secondary">
                       当前最佳综合分数{" "}
-                      <Tooltip title={renderPerformanceScoreTooltip()}>
+                      <Tooltip title={renderPerformanceScoreTooltip(scoreWeights)}>
                         <QuestionCircleOutlined />
                       </Tooltip>
                     </Text>
