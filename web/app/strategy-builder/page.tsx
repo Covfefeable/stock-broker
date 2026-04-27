@@ -33,6 +33,7 @@ type StrategyListResponse = {
   };
   filters: {
     countryRegions: string[];
+    types: string[];
     sources: string[];
     statuses: string[];
   };
@@ -43,6 +44,7 @@ type QueryState = {
   pageSize: number;
   keyword: string;
   countryRegion?: string;
+  type?: string;
   source?: string;
   status?: string;
   sortField?: string;
@@ -53,6 +55,7 @@ type StrategyFilters = StrategyListResponse["filters"];
 
 const defaultFilters: StrategyFilters = {
   countryRegions: [],
+  types: [],
   sources: [],
   statuses: [],
 };
@@ -69,6 +72,7 @@ const defaultQueryState: QueryState = {
   pageSize: 10,
   keyword: "",
   countryRegion: undefined,
+  type: undefined,
   source: undefined,
   status: undefined,
   sortField: undefined,
@@ -90,6 +94,7 @@ export default function StrategyBuilderPage() {
   });
   const [draftKeyword, setDraftKeyword] = useState("");
   const [draftCountryRegion, setDraftCountryRegion] = useState<string | undefined>();
+  const [draftType, setDraftType] = useState<string | undefined>();
   const [draftSource, setDraftSource] = useState<string | undefined>();
   const [draftStatus, setDraftStatus] = useState<string | undefined>();
   const [queryState, setQueryState] = useState<QueryState>(defaultQueryState);
@@ -107,6 +112,9 @@ export default function StrategyBuilderPage() {
       }
       if (nextState.countryRegion) {
         params.set("countryRegion", nextState.countryRegion);
+      }
+      if (nextState.type) {
+        params.set("type", nextState.type);
       }
       if (nextState.source) {
         params.set("source", nextState.source);
@@ -142,6 +150,7 @@ export default function StrategyBuilderPage() {
       page: 1,
       keyword: draftKeyword.trim(),
       countryRegion: draftCountryRegion,
+      type: draftType,
       source: draftSource,
       status: draftStatus,
     }));
@@ -150,6 +159,7 @@ export default function StrategyBuilderPage() {
   const resetFilters = () => {
     setDraftKeyword("");
     setDraftCountryRegion(undefined);
+    setDraftType(undefined);
     setDraftSource(undefined);
     setDraftStatus(undefined);
     setQueryState(defaultQueryState);
@@ -357,6 +367,14 @@ export default function StrategyBuilderPage() {
             placeholder="国家/地区"
             value={draftCountryRegion}
             onChange={setDraftCountryRegion}
+          />
+          <Select
+            allowClear
+            className="strategy-filter-select"
+            options={filters.types.map((value) => ({ label: value, value }))}
+            placeholder="类型"
+            value={draftType}
+            onChange={setDraftType}
           />
           <Select
             allowClear

@@ -24,6 +24,7 @@ def get_strategies():
     payload = list_strategies(
         g.current_user,
         keyword=request.args.get("keyword", default="", type=str),
+        strategy_type=request.args.get("type", default="", type=str),
         country_region=request.args.get("countryRegion", default="", type=str),
         source=request.args.get("source", default="", type=str),
         status=request.args.get("status", default="", type=str),

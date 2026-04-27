@@ -139,6 +139,7 @@ def list_strategies(
     user: User,
     *,
     keyword: str = "",
+    strategy_type: str = "",
     country_region: str = "",
     source: str = "",
     status: str = "",
@@ -163,6 +164,8 @@ def list_strategies(
 
     if country_region:
         query = query.filter(Strategy.country_region == _normalize_country_region(country_region))
+    if strategy_type:
+        query = query.filter(Strategy.type == strategy_type)
     if source:
         query = query.filter(Strategy.source == source)
     if status:
@@ -196,6 +199,14 @@ def list_strategies(
         .order_by(Strategy.source.asc())
         .all()
     ]
+    type_options = [
+        value
+        for value in db.session.query(Strategy.type)
+        .filter(Strategy.user_id == user.id)
+        .distinct()
+        .order_by(Strategy.type.asc())
+        .all()
+    ]
     status_options = [
         value
         for value in db.session.query(Strategy.status)
@@ -214,6 +225,7 @@ def list_strategies(
         },
         "filters": {
             "countryRegions": [value for (value,) in country_region_options if value],
+            "types": [value for (value,) in type_options if value],
             "sources": [value for (value,) in source_options if value],
             "statuses": [value for (value,) in status_options if value],
         },
