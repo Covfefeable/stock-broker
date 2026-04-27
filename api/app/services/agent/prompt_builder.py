@@ -180,6 +180,19 @@ DSL 结构硬性要求，违反任何一条都会被系统拒绝：
 - 条件数量建议 1 到 6 个，必要时允许使用嵌套条件组
 - 规则需要可读、合理，不要返回空 children
 - 必须比较“策略目标”和“买入持有基准”，避免生成明显弱于买入持有基准的平庸策略
+
+DSL 能力说明：
+- entryRules 和 exitRules 支持多条规则，并按列表顺序命中第一条；请把更重要、更紧急的规则放在更靠前的位置。
+- 多个买入场景应优先拆成多条 entryRules，例如趋势突破、回踩确认、低波动突破、低位反转分别成为独立规则，而不是全部塞进一个巨大 or 条件。
+- 多个卖出场景应优先拆成多条 exitRules，例如风险退出、动能衰退、仓位过高减仓、浮盈保护分别成为独立规则。
+- 可以使用 position_ratio 做仓位控制。position_ratio 范围是 0 到 1，例如当前仓位大于 0.7 时卖出 0.3，或当前仓位低于 0.5 时允许继续买入。
+- 可以使用 position_return、holding_days、days_since_last_trade 做持仓状态控制。position_return 只适合卖出规则；days_since_last_trade 可用于控制交易冷却期，避免过度连续买卖。
+- action.size 是本条规则要执行的仓位比例；买入会自动限制在剩余可用仓位内，卖出会自动限制在当前持仓内，不会超过满仓，也不会卖空。
+- leftExpression 和 rightExpression 可以是组合表达式，不限于单个字段；可以用算术 token 与函数组合表达 close / ema(close, 20) - 1、zscore(range_pct, 60)、drawdown_from_high(close, 60)、percentile_rank(volatility_20d, 120) 等结构。
+- offset 可用于历史引用，但只能小于等于 0，例如 close[-1]、rsi14[-3]；不得使用未来数据。
+- slope(x, n) 用于判断趋势斜率或指标改善，zscore(x, n) 用于判断历史极端程度，percentile_rank(x, n) 用于判断历史分位，drawdown_from_high(x, n) 用于判断相对近期高点的回撤。
+- 量纲必须严格匹配：atr14_pct、range_pct、gap_pct、volatility_20d、bias_ma20、position_return 都是比例，阈值应写 0.02 这种小数；rsi14、kdj_k、kdj_d 是 0 到 100；position_ratio 是 0 到 1。
+- 价格字段只能和价格类表达式比较，比例字段只能和比例类表达式比较；不要把价格、比例、振荡指标混在同一个比较条件里。
 - 只输出 JSON 本身
 """.strip()
 
