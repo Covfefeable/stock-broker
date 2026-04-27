@@ -16,7 +16,7 @@ from app.services.agent_tasks.helpers import (
 )
 from app.services.agent_tasks.queries import get_agent_task
 from app.services.data_center_service import log_event
-from app.services.strategy_service import list_strategy_asset_options
+from app.services.strategies import list_strategy_asset_options
 
 
 def create_agent_task(user: User, payload: dict) -> AgentTask:

@@ -7,8 +7,8 @@ from app.models.agent_task import AgentTask
 from app.services.agent.prompt_builder import _build_generation_prompt
 from app.services.agent.rule_definitions import AGENT_STRATEGY_INTENTS
 from app.services.ai_client import AIClientError, call_chat_completion_content
-from app.services.strategy_service import StrategyError
-from app.services.strategy_service import _validate_strategy_config as _validate_token_strategy_config
+from app.services.strategies import StrategyError
+from app.services.strategies import _validate_strategy_config as _validate_token_strategy_config
 
 
 AI_DSL_GENERATION_RETRY_COUNT = 3

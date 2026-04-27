@@ -24,7 +24,7 @@ from app.services.agent_tasks.helpers import (
 )
 from app.services.data_center_service import log_event
 from app.services.settings_service import get_performance_score_weights
-from app.services.strategy_service import _load_asset_bars, _run_strategy_backtest
+from app.services.strategies import _load_asset_bars, _run_strategy_backtest
 
 
 def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict:

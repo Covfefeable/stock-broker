@@ -1,7 +1,7 @@
 from flask import Blueprint, g, request
 
 from app.routes.auth import auth_required
-from app.services.backtest_lab_service import (
+from app.services.backtest_lab import (
     BacktestLabError,
     evaluate_strategy,
     generate_improved_strategy,

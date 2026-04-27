@@ -16,7 +16,7 @@ from app.services.agent_tasks.errors import AgentTaskError
 from app.services.agent_tasks.helpers import _get_best_iteration, _score_iteration, _score_result
 from app.services.performance_score import calculate_performance_score
 from app.services.settings_service import get_performance_score_weights
-from app.services.strategy_service import _load_asset_bars, _run_strategy_backtest
+from app.services.strategies import _load_asset_bars, _run_strategy_backtest
 from app.services.agent.time_robustness import _resolve_preview_range
 
 

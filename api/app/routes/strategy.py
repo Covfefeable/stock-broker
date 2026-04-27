@@ -1,7 +1,7 @@
 from flask import Blueprint, g, request
 
 from app.routes.auth import auth_required
-from app.services.strategy_service import (
+from app.services.strategies import (
     StrategyError,
     archive_strategy,
     create_strategy,
@@ -47,7 +47,7 @@ def post_strategy():
     evaluation = None
     evaluation_error = None
     try:
-        from app.services.backtest_lab_service import evaluate_strategy
+        from app.services.backtest_lab import evaluate_strategy
 
         evaluation = evaluate_strategy(g.current_user, strategy.id)
     except Exception as exc:  # noqa: BLE001

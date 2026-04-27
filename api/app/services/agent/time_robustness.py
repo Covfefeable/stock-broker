@@ -5,7 +5,7 @@ from datetime import date
 from app.models.agent_task import AgentTask
 from app.services.agent.curve_diagnostics import _build_equity_curve_diagnostics
 from app.services.performance_score import calculate_performance_score
-from app.services.strategy_service import _load_asset_bars, _run_strategy_backtest
+from app.services.strategies import _load_asset_bars, _run_strategy_backtest
 
 
 def _format_time_robustness_for_memory(time_robustness: dict) -> str:
@@ -166,4 +166,3 @@ def _build_time_sample_diagnosis(preview: dict, strategy_score: float, benchmark
     elif trade_count > 120:
         problems.append("交易次数过高")
     return "、".join(problems) if problems else "表现优于或接近买入持有基准"
-

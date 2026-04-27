@@ -4,7 +4,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from app.extensions import celery_app, db
 from app.models.strategy_evaluation import StrategyEvaluation
 from app.models.user import User
-from app.services.backtest_lab_service import (
+from app.services.backtest_lab import (
     BacktestLabError,
     mark_strategy_evaluation_failed,
     run_strategy_evaluation,
