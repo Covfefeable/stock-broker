@@ -14,6 +14,7 @@ import { StrategyBacktestDetailPanel } from "@/components/strategy-builder/strat
 import type { StrategyDslConfig, StrategyPreviewResult } from "@/components/strategy-builder/types";
 import { getAccessToken } from "@/lib/auth";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
+import { buildTaskCenterWsUrl } from "@/lib/ws";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -66,16 +67,6 @@ function renderOptionalText(value: string | null | undefined, fallback: string) 
     return fallback;
   }
   return normalized;
-}
-
-function buildTaskCenterWsUrl(token: string): string {
-  const configuredBase = process.env.NEXT_PUBLIC_WS_BASE_URL?.replace(/\/$/, "");
-  if (configuredBase) {
-    return `${configuredBase}/ws/tasks?token=${encodeURIComponent(token)}`;
-  }
-
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${protocol}://${window.location.host}/ws/tasks?token=${encodeURIComponent(token)}`;
 }
 
 function asStrategyDslConfig(value: Record<string, unknown> | null | undefined): StrategyDslConfig | null {

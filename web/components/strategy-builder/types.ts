@@ -2,7 +2,22 @@ export type RuleLogic = "and" | "or";
 export type RuleOperator = ">" | ">=" | "<" | "<=" | "==" | "!=" | "cross_over" | "cross_under";
 export type RuleScope = "entry" | "exit";
 export type ExpressionOperator = "+" | "-" | "*" | "/";
-export type ExpressionFunctionName = "abs" | "min" | "max" | "sum" | "avg" | "std" | "highest" | "lowest" | "change" | "pct_change";
+export type ExpressionFunctionName =
+  | "abs"
+  | "min"
+  | "max"
+  | "sum"
+  | "avg"
+  | "std"
+  | "highest"
+  | "lowest"
+  | "change"
+  | "pct_change"
+  | "ema"
+  | "slope"
+  | "zscore"
+  | "percentile_rank"
+  | "drawdown_from_high";
 
 export type RuleFieldValue =
   | "open"
@@ -21,24 +36,18 @@ export type RuleFieldValue =
   | "macd_dea"
   | "rsi14"
   | "bias_ma20"
-  | "return_5d"
-  | "return_20d"
-  | "return_60d"
-  | "volume_ratio_5"
-  | "volume_ratio_20"
-  | "atr14"
+  | "atr14_pct"
   | "volatility_20d"
+  | "range_pct"
+  | "gap_pct"
   | "close_pct_of_20d_range"
   | "close_pct_of_60d_range"
   | "distance_to_20d_high"
   | "distance_to_20d_low"
-  | "body_pct"
-  | "upper_shadow_pct"
-  | "lower_shadow_pct"
-  | "gap_up"
-  | "gap_down"
   | "position_return"
-  | "holding_days";
+  | "position_ratio"
+  | "holding_days"
+  | "days_since_last_trade";
 
 export type ExpressionToken =
   | { type: "variable"; name: RuleFieldValue; offset?: number }

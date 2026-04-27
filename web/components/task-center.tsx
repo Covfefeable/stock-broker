@@ -19,6 +19,7 @@ import sphereAnimation from "@/lib/lottie/sphere.json";
 import { normalizeDisplayText } from "@/components/data-center/utils";
 import { getAccessToken } from "@/lib/auth";
 import { apiGet } from "@/lib/api";
+import { buildTaskCenterWsUrl } from "@/lib/ws";
 
 const { Text, Title } = Typography;
 
@@ -595,16 +596,6 @@ function dedupeLogs(logs: string[]): string[] {
 
 function formatPercent(value: number | null | undefined): string {
   return value == null ? "-" : `${value.toFixed(2)}%`;
-}
-
-function buildTaskCenterWsUrl(token: string): string {
-  const configuredBase = process.env.NEXT_PUBLIC_WS_BASE_URL?.replace(/\/$/, "");
-  if (configuredBase) {
-    return `${configuredBase}/ws/tasks?token=${encodeURIComponent(token)}`;
-  }
-
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${protocol}://${window.location.host}/ws/tasks?token=${encodeURIComponent(token)}`;
 }
 
 function formatDisplayTime(value: string | null): string {

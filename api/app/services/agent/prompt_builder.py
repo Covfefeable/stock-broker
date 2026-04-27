@@ -113,7 +113,7 @@ def _build_generation_prompt(
 - 每次 analysis 必须总结历史记忆中的 timeRobustness：近一年/近三年/近五年通过率或跑赢买入持有基准比例、最差区间、最差原因、是否存在只适配主回测区间的过拟合迹象。
 - 如果 timeRobustness 长期较差或最差区间反复集中在某类行情，不要只做细小阈值微调；应主动判断是否需要探索新结构或突变，避免陷入局部最优。
 - 不要总是默认使用 close、MA5、MA20、MA60 这类基础价量条件。除非你能说明它们在历史记忆中确实有效，否则应主动探索更丰富的因子和函数。
-- 优先考虑把基础趋势因子与波动率、区间位置、量能变化、收益率变化、RSI、MACD、KDJ、ATR、BIAS、highest/lowest、std、pct_change 等组合起来，寻找更不容易过拟合的结构。
+- 优先考虑把基础趋势因子与归一化波动、区间位置、跳空幅度、RSI、MACD、KDJ、BIAS、highest/lowest、std、pct_change、ema、slope、zscore、percentile_rank、drawdown_from_high 等组合起来，寻找更不容易过拟合的结构。
 - 每次 analysis 必须说明本轮是否使用了非基础因子；如果仍然主要使用 close/MA，必须解释为什么这样比使用其他因子更合理。
 
 返回 JSON 顶层字段协议：
@@ -160,15 +160,15 @@ DSL 结构硬性要求，违反任何一条都会被系统拒绝：
 - operator token：type 必须是 operator；value 只能是 +、-、*、/；它只用于表达式内部算术，不能用于条件比较。
 - function token：type 必须是 function；name 必须是可用函数名；args 必须是表达式 token 数组的数组。
 - 函数名只能放在 function.name，不能放在 token.type；字段名只能放在 variable.name，不能放在 token.type。
-- 可用函数只有 abs、min、max、sum、avg、std、highest、lowest、change、pct_change；不要使用 ma、ema、sma、if、and、or、cross、rank 等未列出的函数。
-- 函数参数个数必须匹配：abs 1 个；min/max 2 个；sum/avg/std/highest/lowest/change/pct_change 2 个。
-- sum/avg/std/highest/lowest/change/pct_change 的第 2 个参数必须是单个正整数 number token 的表达式数组。
-- 如果需要移动平均，请优先使用字段 ma5/ma10/ma20/ma60/ma120；如需自定义窗口，可使用 avg(close, n) 的 function token。
+- 可用函数只有 abs、min、max、sum、avg、std、highest、lowest、change、pct_change、ema、slope、zscore、percentile_rank、drawdown_from_high；不要使用 ma、sma、if、and、or、cross、rank 等未列出的函数。
+- 函数参数个数必须匹配：abs 1 个；min/max 2 个；sum/avg/std/highest/lowest/change/pct_change/ema/slope/zscore/percentile_rank/drawdown_from_high 2 个。
+- sum/avg/std/highest/lowest/change/pct_change/ema/slope/zscore/percentile_rank/drawdown_from_high 的第 2 个参数必须是单个正整数 number token 的表达式数组。
+- 如果需要移动平均，请优先使用字段 ma5/ma10/ma20/ma60/ma120；如需自定义窗口，可使用 avg(close, n) 或 ema(close, n) 的 function token。
 - 表达式数组不能为空；不能连续出现两个 Operand；二元 operator 前后都必须有 Operand。
 - 允许一元 + 或 -，但只允许出现在表达式开头、operator 之后或 groupStart 之后；负数阈值优先直接写成 number.value。
 - groupStart 和 groupEnd 必须成对出现，不能用字符串 "(" 或 ")" 代替。
 - 条件比较由 condition.operator 表达，表达式 token 内禁止出现 >、>=、<、<=、==、!=、cross_over、cross_under。
-- 量纲必须一致：收益率字段和收益率阈值比较，价格字段和价格表达式比较，波动/ATR 字段不能直接和 position_return 比较。
+- 量纲必须一致：收益率字段和收益率阈值比较，价格字段和价格表达式比较，atr14_pct、range_pct、gap_pct、volatility_20d 等比例字段不能直接和价格字段比较。
 - 规则的 conditions 必须永远是 group；即使只有一个条件，也要放在 group.children 中。
 
 要求：

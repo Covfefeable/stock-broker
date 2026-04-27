@@ -67,24 +67,18 @@ const FIELD_OPTIONS: RuleFieldOption[] = [
   { label: "KDJ K", value: "kdj_k", scopes: ["entry", "exit"], category: "动量因子", help: "KDJ 中较敏感的 K 值，反映短线位置变化。" },
   { label: "KDJ D", value: "kdj_d", scopes: ["entry", "exit"], category: "动量因子", help: "KDJ 中更平滑的 D 值，常与 K 值配合看金叉死叉。" },
   { label: "BIAS(MA20)", value: "bias_ma20", scopes: ["entry", "exit"], category: "趋势因子", help: "收盘价相对 MA20 的偏离率，口径为 close / MA20 - 1。" },
-  { label: "5日收益率", value: "return_5d", scopes: ["entry", "exit"], category: "动量因子", help: "相对 5 个交易日前收盘价的累计收益率，口径为 close / close[-5] - 1。" },
-  { label: "20日收益率", value: "return_20d", scopes: ["entry", "exit"], category: "动量因子", help: "相对 20 个交易日前收盘价的累计收益率，口径为 close / close[-20] - 1。" },
-  { label: "60日收益率", value: "return_60d", scopes: ["entry", "exit"], category: "动量因子", help: "相对 60 个交易日前收盘价的累计收益率，口径为 close / close[-60] - 1。" },
-  { label: "量比(5日)", value: "volume_ratio_5", scopes: ["entry", "exit"], category: "量价因子", help: "当日成交量相对 5 日平均成交量的倍数。" },
-  { label: "量比(20日)", value: "volume_ratio_20", scopes: ["entry", "exit"], category: "量价因子", help: "当日成交量相对 20 日平均成交量的倍数。" },
-  { label: "ATR14", value: "atr14", scopes: ["entry", "exit"], category: "波动因子", help: "14 日平均真实波幅，衡量价格波动强度。" },
+  { label: "ATR14占比", value: "atr14_pct", scopes: ["entry", "exit"], category: "波动因子", help: "14 日平均真实波幅相对收盘价的比例，口径为 ATR14 / close。" },
   { label: "20日波动率", value: "volatility_20d", scopes: ["entry", "exit"], category: "波动因子", help: "最近 20 个交易日日收益率标准差，不做年化。" },
+  { label: "日内振幅", value: "range_pct", scopes: ["entry", "exit"], category: "波动因子", help: "当日最高价与最低价的差相对收盘价的比例，口径为 (high - low) / close。" },
+  { label: "跳空幅度", value: "gap_pct", scopes: ["entry", "exit"], category: "波动因子", help: "当日开盘价相对前一交易日收盘价的变化率，口径为 open / close[-1] - 1。" },
   { label: "20日区间位置", value: "close_pct_of_20d_range", scopes: ["entry", "exit"], category: "位置因子", help: "收盘价位于最近 20 日高低区间中的相对位置，范围通常在 0 到 1。" },
   { label: "60日区间位置", value: "close_pct_of_60d_range", scopes: ["entry", "exit"], category: "位置因子", help: "收盘价位于最近 60 日高低区间中的相对位置，范围通常在 0 到 1。" },
   { label: "距20日高点", value: "distance_to_20d_high", scopes: ["entry", "exit"], category: "位置因子", help: "收盘价相对最近 20 日最高价的偏离率，口径为 close / high20 - 1。" },
   { label: "距20日低点", value: "distance_to_20d_low", scopes: ["entry", "exit"], category: "位置因子", help: "收盘价相对最近 20 日最低价的偏离率，口径为 close / low20 - 1。" },
-  { label: "实体占比", value: "body_pct", scopes: ["entry", "exit"], category: "K线形态", help: "K 线实体长度相对开盘价的比例，口径为 |close - open| / open。" },
-  { label: "上影线占比", value: "upper_shadow_pct", scopes: ["entry", "exit"], category: "K线形态", help: "上影线长度相对开盘价的比例。" },
-  { label: "下影线占比", value: "lower_shadow_pct", scopes: ["entry", "exit"], category: "K线形态", help: "下影线长度相对开盘价的比例。" },
-  { label: "向上跳空", value: "gap_up", scopes: ["entry", "exit"], category: "K线形态", help: "若当日开盘价高于前一日最高价则记为 1，否则为 0。" },
-  { label: "向下跳空", value: "gap_down", scopes: ["entry", "exit"], category: "K线形态", help: "若当日开盘价低于前一日最低价则记为 1，否则为 0。" },
   { label: "持仓收益率", value: "position_return", scopes: ["exit"], category: "持仓状态", help: "当前收盘价相对持仓成本的收益率。" },
+  { label: "当前仓位", value: "position_ratio", scopes: ["entry", "exit"], category: "持仓状态", help: "当前持仓市值占总权益的比例，范围通常为 0 到 1。" },
   { label: "持仓天数", value: "holding_days", scopes: ["exit"], category: "持仓状态", help: "从首次建仓到当前 K 线为止已持有的交易日数量。" },
+  { label: "距上次交易天数", value: "days_since_last_trade", scopes: ["entry", "exit"], category: "持仓状态", help: "距离最近一次买入或卖出的交易日数量。" },
 ];
 
 const OPERATOR_OPTIONS: Array<{ label: string; value: RuleOperator }> = [
@@ -121,6 +115,11 @@ const FUNCTION_OPTIONS: Array<{ label: string; value: ExpressionFunctionName; he
   { label: "lowest(x, n)", value: "lowest", help: "最近 n 根 K 线的表达式最小值。" },
   { label: "change(x, n)", value: "change", help: "当前表达式值减去 n 根 K 线前的表达式值。" },
   { label: "pct_change(x, n)", value: "pct_change", help: "当前表达式值相对 n 根 K 线前表达式值的变化率。" },
+  { label: "ema(x, n)", value: "ema", help: "最近 n 根 K 线表达式的指数移动平均，首值使用窗口第一项。" },
+  { label: "slope(x, n)", value: "slope", help: "最近 n 根 K 线表达式对时间序号的线性回归斜率。" },
+  { label: "zscore(x, n)", value: "zscore", help: "当前表达式相对最近 n 根 K 线均值的标准分。" },
+  { label: "percentile_rank(x, n)", value: "percentile_rank", help: "当前表达式在最近 n 根 K 线中的分位排名，范围 0 到 1。" },
+  { label: "drawdown_from_high(x, n)", value: "drawdown_from_high", help: "当前表达式相对最近 n 根 K 线最高值的回撤，口径为 x / highest(x, n) - 1。" },
 ];
 
 const PREVIEW_METRICS: PreviewMetricConfig[] = [

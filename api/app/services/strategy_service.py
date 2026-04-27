@@ -41,25 +41,18 @@ RULE_FIELD_VALUES = {
     "macd_dea",
     "rsi14",
     "bias_ma20",
-    "return_5d",
-    "return_20d",
-    "return_60d",
-    "volume_ratio_5",
-    "volume_ratio_20",
-    "atr14",
+    "atr14_pct",
     "volatility_20d",
+    "range_pct",
+    "gap_pct",
     "close_pct_of_20d_range",
     "close_pct_of_60d_range",
     "distance_to_20d_high",
     "distance_to_20d_low",
-    "body_pct",
-    "upper_shadow_pct",
-    "lower_shadow_pct",
-    "gap_up",
-    "gap_down",
     "position_return",
     "holding_days",
     "position_ratio",
+    "days_since_last_trade",
 }
 RULE_OPERATOR_VALUES = {">", ">=", "<", "<=", "==", "!=", "cross_over", "cross_under"}
 EXPRESSION_OPERATOR_VALUES = {"+", "-", "*", "/"}
@@ -74,8 +67,13 @@ EXPRESSION_FUNCTION_ARITY = {
     "lowest": 2,
     "change": 2,
     "pct_change": 2,
+    "ema": 2,
+    "slope": 2,
+    "zscore": 2,
+    "percentile_rank": 2,
+    "drawdown_from_high": 2,
 }
-WINDOW_FUNCTIONS = {"sum", "avg", "std", "highest", "lowest"}
+WINDOW_FUNCTIONS = {"sum", "avg", "std", "highest", "lowest", "ema", "slope", "zscore", "percentile_rank", "drawdown_from_high"}
 CHANGE_FUNCTIONS = {"change", "pct_change"}
 INDICATOR_WARMUP_BARS = 180
 MIN_ANNUALIZATION_PERIODS = 60
@@ -734,6 +732,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     pending_sell_size = 0.0
     pending_entry_reason: str | None = None
     pending_exit_reason: str | None = None
+    last_trade_index: int | None = None
 
     equity_curve: list[float] = []
     benchmark_curve: list[float] = []
@@ -757,6 +756,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                     "position_return": None,
                     "holding_days": None,
                     "position_ratio": 0.0,
+                    "days_since_last_trade": None,
                 }
             )
             continue
@@ -795,6 +795,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                 }
             )
             shares = remaining_shares
+            last_trade_index = index
             if shares <= 1e-8:
                 shares = 0.0
                 entry_price = None
@@ -846,6 +847,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                         "reason": pending_entry_reason or "买入规则触发",
                     }
                 )
+                last_trade_index = index
             pending_buy_signal = False
             pending_buy_size = 0.0
             pending_entry_reason = None
@@ -860,6 +862,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             "position_return": ((close_price - entry_price) / entry_price) if shares > 0 and entry_price else None,
             "holding_days": (index - entry_index) if shares > 0 and entry_index is not None else None,
             "position_ratio": ((shares * close_price) / (cash + shares * close_price)) if shares > 0 and (cash + shares * close_price) > 0 else 0.0,
+            "days_since_last_trade": (index - last_trade_index) if last_trade_index is not None else None,
         }
         evaluation_contexts = [*context_history, context]
         current_context_index = len(evaluation_contexts) - 1
@@ -1075,15 +1078,11 @@ def _calculate_indicators(bars: list[dict]) -> dict[str, list[float | None]]:
     macd_dif, macd_dea = _macd(closes)
     kdj_k, kdj_d = _kdj(highs, lows, closes)
     bias_ma20 = _ratio_to_series(closes, ma20)
-    return_5d = _rate_of_change(closes, 5)
-    return_20d = _rate_of_change(closes, 20)
-    return_60d = _rate_of_change(closes, 60)
-    volume_ma5 = _simple_moving_average(volumes, 5)
-    volume_ma20 = _simple_moving_average(volumes, 20)
-    volume_ratio_5 = _series_ratio(volumes, volume_ma5)
-    volume_ratio_20 = _series_ratio(volumes, volume_ma20)
     atr14 = _atr(highs, lows, closes, 14)
+    atr14_pct = _series_ratio(atr14, closes)
     volatility_20d = _rolling_volatility(closes, 20)
+    range_pct = _range_pct(highs, lows, closes)
+    gap_pct = _gap_pct(opens, closes)
     high20 = _rolling_max(highs, 20)
     low20 = _rolling_min(lows, 20)
     high60 = _rolling_max(highs, 60)
@@ -1092,10 +1091,6 @@ def _calculate_indicators(bars: list[dict]) -> dict[str, list[float | None]]:
     close_pct_of_60d_range = _range_position(closes, low60, high60)
     distance_to_20d_high = _distance_to_series(closes, high20)
     distance_to_20d_low = _distance_to_series(closes, low20)
-    body_pct = _body_pct(opens, closes)
-    upper_shadow_pct = _upper_shadow_pct(opens, highs, closes)
-    lower_shadow_pct = _lower_shadow_pct(opens, lows, closes)
-    gap_up, gap_down = _gap_flags(opens, highs, lows)
 
     return {
         "ma5": ma5,
@@ -1109,22 +1104,14 @@ def _calculate_indicators(bars: list[dict]) -> dict[str, list[float | None]]:
         "kdj_k": kdj_k,
         "kdj_d": kdj_d,
         "bias_ma20": bias_ma20,
-        "return_5d": return_5d,
-        "return_20d": return_20d,
-        "return_60d": return_60d,
-        "volume_ratio_5": volume_ratio_5,
-        "volume_ratio_20": volume_ratio_20,
-        "atr14": atr14,
+        "atr14_pct": atr14_pct,
         "volatility_20d": volatility_20d,
+        "range_pct": range_pct,
+        "gap_pct": gap_pct,
         "close_pct_of_20d_range": close_pct_of_20d_range,
         "close_pct_of_60d_range": close_pct_of_60d_range,
         "distance_to_20d_high": distance_to_20d_high,
         "distance_to_20d_low": distance_to_20d_low,
-        "body_pct": body_pct,
-        "upper_shadow_pct": upper_shadow_pct,
-        "lower_shadow_pct": lower_shadow_pct,
-        "gap_up": gap_up,
-        "gap_down": gap_down,
     }
 
 
@@ -1233,54 +1220,26 @@ def _rolling_volatility(closes: list[float | None], window: int) -> list[float |
     return result
 
 
-def _body_pct(opens: list[float | None], closes: list[float | None]) -> list[float | None]:
+def _range_pct(highs: list[float | None], lows: list[float | None], closes: list[float | None]) -> list[float | None]:
     result: list[float | None] = []
-    for open_price, close_price in zip(opens, closes, strict=False):
-        if open_price in (None, 0) or close_price is None:
+    for high_price, low_price, close_price in zip(highs, lows, closes, strict=False):
+        if high_price is None or low_price is None or close_price in (None, 0):
             result.append(None)
         else:
-            result.append(round(abs(close_price - open_price) / open_price, 6))
+            result.append(round((high_price - low_price) / close_price, 6))
     return result
 
 
-def _upper_shadow_pct(opens: list[float | None], highs: list[float | None], closes: list[float | None]) -> list[float | None]:
-    result: list[float | None] = []
-    for open_price, high_price, close_price in zip(opens, highs, closes, strict=False):
-        if open_price in (None, 0) or high_price is None or close_price is None:
-            result.append(None)
-        else:
-            result.append(round(max(high_price - max(open_price, close_price), 0.0) / open_price, 6))
-    return result
-
-
-def _lower_shadow_pct(opens: list[float | None], lows: list[float | None], closes: list[float | None]) -> list[float | None]:
-    result: list[float | None] = []
-    for open_price, low_price, close_price in zip(opens, lows, closes, strict=False):
-        if open_price in (None, 0) or low_price is None or close_price is None:
-            result.append(None)
-        else:
-            result.append(round(max(min(open_price, close_price) - low_price, 0.0) / open_price, 6))
-    return result
-
-
-def _gap_flags(
-    opens: list[float | None],
-    highs: list[float | None],
-    lows: list[float | None],
-) -> tuple[list[float | None], list[float | None]]:
-    gap_up: list[float | None] = [None]
-    gap_down: list[float | None] = [None]
+def _gap_pct(opens: list[float | None], closes: list[float | None]) -> list[float | None]:
+    result: list[float | None] = [None]
     for index in range(1, len(opens)):
         open_price = opens[index]
-        previous_high = highs[index - 1]
-        previous_low = lows[index - 1]
-        if open_price is None or previous_high is None or previous_low is None:
-            gap_up.append(None)
-            gap_down.append(None)
+        previous_close = closes[index - 1]
+        if open_price is None or previous_close in (None, 0):
+            result.append(None)
             continue
-        gap_up.append(1.0 if open_price > previous_high else 0.0)
-        gap_down.append(1.0 if open_price < previous_low else 0.0)
-    return gap_up, gap_down
+        result.append(round((open_price / previous_close) - 1, 6))
+    return result
 
 
 def _simple_moving_average(values: list[float | None], window: int) -> list[float | None]:
@@ -1563,7 +1522,24 @@ def _evaluate_function_token(token: dict, contexts: list[dict[str, Any]], contex
         if name == "lowest":
             return min(numeric_values)
         average = sum(numeric_values) / len(numeric_values)
-        return sqrt(sum((value - average) ** 2 for value in numeric_values) / len(numeric_values))
+        variance = sum((value - average) ** 2 for value in numeric_values) / len(numeric_values)
+        standard_deviation = sqrt(variance)
+        if name == "std":
+            return standard_deviation
+        if name == "ema":
+            return _ema_window_value(numeric_values)
+        if name == "slope":
+            return _linear_slope(numeric_values)
+        if name == "zscore":
+            return 0.0 if standard_deviation == 0 else (numeric_values[-1] - average) / standard_deviation
+        if name == "percentile_rank":
+            current = numeric_values[-1]
+            lower_count = sum(1 for value in numeric_values if value < current)
+            equal_count = sum(1 for value in numeric_values if value == current)
+            return (lower_count + 0.5 * equal_count) / len(numeric_values)
+        if name == "drawdown_from_high":
+            highest_value = max(numeric_values)
+            return (numeric_values[-1] / highest_value) - 1 if highest_value != 0 else None
     if name in CHANGE_FUNCTIONS:
         window = _evaluate_window_arg(args[1], contexts, context_index)
         if window is None or context_index - window < 0:
@@ -1583,3 +1559,26 @@ def _evaluate_window_arg(tokens: list[dict], contexts: list[dict[str, Any]], con
     if value is None or value <= 0 or int(value) != value:
         return None
     return int(value)
+
+
+def _ema_window_value(values: list[float]) -> float | None:
+    if not values:
+        return None
+    multiplier = 2 / (len(values) + 1)
+    ema_value = values[0]
+    for value in values[1:]:
+        ema_value = (value - ema_value) * multiplier + ema_value
+    return ema_value
+
+
+def _linear_slope(values: list[float]) -> float | None:
+    count = len(values)
+    if count < 2:
+        return None
+    x_mean = (count - 1) / 2
+    y_mean = sum(values) / count
+    denominator = sum((index - x_mean) ** 2 for index in range(count))
+    if denominator == 0:
+        return 0.0
+    numerator = sum((index - x_mean) * (value - y_mean) for index, value in enumerate(values))
+    return numerator / denominator

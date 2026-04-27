@@ -18,24 +18,18 @@ RULE_FIELDS = [
     {"label": "KDJ K", "value": "kdj_k", "description": "KDJ 中较敏感的 K 值。"},
     {"label": "KDJ D", "value": "kdj_d", "description": "KDJ 中更平滑的 D 值。"},
     {"label": "BIAS(MA20)", "value": "bias_ma20", "description": "收盘价相对 MA20 的偏离率，口径为 close / MA20 - 1。"},
-    {"label": "5日收益率", "value": "return_5d", "description": "close / close[-5] - 1。"},
-    {"label": "20日收益率", "value": "return_20d", "description": "close / close[-20] - 1。"},
-    {"label": "60日收益率", "value": "return_60d", "description": "close / close[-60] - 1。"},
-    {"label": "量比(5日)", "value": "volume_ratio_5", "description": "当日成交量相对 5 日平均成交量的倍数。"},
-    {"label": "量比(20日)", "value": "volume_ratio_20", "description": "当日成交量相对 20 日平均成交量的倍数。"},
-    {"label": "ATR14", "value": "atr14", "description": "14 日平均真实波幅。"},
+    {"label": "ATR14占比", "value": "atr14_pct", "description": "14 日平均真实波幅相对收盘价的比例，口径为 ATR14 / close。"},
     {"label": "20日波动率", "value": "volatility_20d", "description": "最近 20 个交易日日收益率标准差，不做年化。"},
+    {"label": "日内振幅", "value": "range_pct", "description": "当日最高价与最低价的差相对收盘价的比例，口径为 (high - low) / close。"},
+    {"label": "跳空幅度", "value": "gap_pct", "description": "当日开盘价相对前一交易日收盘价的变化率，口径为 open / close[-1] - 1。"},
     {"label": "20日区间位置", "value": "close_pct_of_20d_range", "description": "收盘价位于最近 20 日高低区间中的相对位置。"},
     {"label": "60日区间位置", "value": "close_pct_of_60d_range", "description": "收盘价位于最近 60 日高低区间中的相对位置。"},
     {"label": "距20日高点", "value": "distance_to_20d_high", "description": "收盘价相对最近 20 日最高价的偏离率。"},
     {"label": "距20日低点", "value": "distance_to_20d_low", "description": "收盘价相对最近 20 日最低价的偏离率。"},
-    {"label": "实体占比", "value": "body_pct", "description": "|close - open| / open。"},
-    {"label": "上影线占比", "value": "upper_shadow_pct", "description": "上影线长度相对开盘价的比例。"},
-    {"label": "下影线占比", "value": "lower_shadow_pct", "description": "下影线长度相对开盘价的比例。"},
-    {"label": "向上跳空", "value": "gap_up", "description": "若开盘价高于前一日最高价则记为 1，否则为 0。"},
-    {"label": "向下跳空", "value": "gap_down", "description": "若开盘价低于前一日最低价则记为 1，否则为 0。"},
     {"label": "持仓收益率", "value": "position_return", "description": "当前收盘价相对持仓成本的收益率。"},
+    {"label": "当前仓位", "value": "position_ratio", "description": "当前持仓市值占总权益的比例，范围通常为 0 到 1。"},
     {"label": "持仓天数", "value": "holding_days", "description": "从首次建仓到当前 K 线为止已持有的交易日数。"},
+    {"label": "距上次交易天数", "value": "days_since_last_trade", "description": "距离最近一次买入或卖出的交易日数量。"},
 ]
 
 RULE_OPERATORS = [
@@ -61,6 +55,11 @@ RULE_FUNCTIONS = [
     {"name": "lowest", "args": "x, n", "description": "最近 n 根 K 线的表达式最小值。"},
     {"name": "change", "args": "x, n", "description": "当前表达式值减去 n 根 K 线前的表达式值。"},
     {"name": "pct_change", "args": "x, n", "description": "当前表达式相对 n 根 K 线前的变化率。"},
+    {"name": "ema", "args": "x, n", "description": "最近 n 根 K 线表达式的指数移动平均，首值使用窗口第一项。"},
+    {"name": "slope", "args": "x, n", "description": "最近 n 根 K 线表达式对时间序号的线性回归斜率。"},
+    {"name": "zscore", "args": "x, n", "description": "当前表达式相对最近 n 根 K 线均值的标准分。"},
+    {"name": "percentile_rank", "args": "x, n", "description": "当前表达式在最近 n 根 K 线中的分位排名，范围 0 到 1。"},
+    {"name": "drawdown_from_high", "args": "x, n", "description": "当前表达式相对最近 n 根 K 线最高值的回撤，口径为 x / highest(x, n) - 1。"},
 ]
 
 AGENT_STRATEGY_INTENTS = {
