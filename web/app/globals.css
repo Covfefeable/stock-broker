@@ -713,6 +713,10 @@ select {
   width: 100%;
 }
 
+.hidden-file-input {
+  display: none;
+}
+
 .agent-task-title,
 .agent-task-meta,
 .status-list div,

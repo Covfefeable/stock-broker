@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowLeftOutlined, SaveOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, DownloadOutlined, SaveOutlined, UploadOutlined } from "@ant-design/icons";
 import { Button, Card, Form, Input, Modal, Radio, Select, Space, Typography, message } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import type { CountryOption, IndexDailyCoverage, StockDailyCoverage, SyncEnqueueResponse } from "@/components/data-center/types";
 import { RuleEngine, createDefaultStrategyDslConfig, normalizeStrategyDslConfig } from "@/components/strategy-builder/rule-engine";
@@ -59,6 +59,7 @@ export default function NewStrategyPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<StrategyPreviewResult | null>(null);
   const [pendingPrefillAssetIdentifier, setPendingPrefillAssetIdentifier] = useState<string | null>(null);
+  const importDslInputRef = useRef<HTMLInputElement | null>(null);
 
   const assetType = Form.useWatch("assetType", form);
   const countryCode = Form.useWatch("countryCode", form);
@@ -347,6 +348,41 @@ export default function NewStrategyPage() {
     }
   };
 
+  const handleExportDsl = () => {
+    const strategyName = form.getFieldValue("name") || "strategy";
+    const fileName = `${sanitizeFileName(strategyName)}-dsl.json`;
+    const content = JSON.stringify(strategyDsl, null, 2);
+    const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportDslFile = async (file?: File) => {
+    if (!file) return;
+    try {
+      const content = await file.text();
+      const parsed = JSON.parse(content) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("DSL 文件内容必须是 JSON 对象。");
+      }
+      const payload = parsed as { strategy?: Partial<StrategyDslConfig>; strategyConfig?: Partial<StrategyDslConfig> };
+      const importedDsl = normalizeStrategyDslConfig(payload.strategyConfig ?? payload.strategy ?? (parsed as Partial<StrategyDslConfig>));
+      setStrategyDsl(importedDsl);
+      setPreviewResult(null);
+      messageApi.success("DSL 已导入，请预览确认收益后再保存。");
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "导入 DSL 失败，请检查文件格式。");
+    } finally {
+      if (importDslInputRef.current) {
+        importDslInputRef.current.value = "";
+      }
+    }
+  };
+
   return (
     <AppShell>
       {contextHolder}
@@ -438,7 +474,28 @@ export default function NewStrategyPage() {
         </Form>
       </Card>
 
-      <Card className="dashboard-card strategy-rule-placeholder-card" title="规则引擎" bordered>
+      <Card
+        className="dashboard-card strategy-rule-placeholder-card"
+        title="规则引擎"
+        bordered
+        extra={
+          <Space>
+            <Button icon={<DownloadOutlined />} onClick={handleExportDsl}>
+              导出 DSL
+            </Button>
+            <Button icon={<UploadOutlined />} onClick={() => importDslInputRef.current?.click()}>
+              导入 DSL
+            </Button>
+            <input
+              ref={importDslInputRef}
+              accept="application/json,.json"
+              className="hidden-file-input"
+              type="file"
+              onChange={(event) => void handleImportDslFile(event.target.files?.[0])}
+            />
+          </Space>
+        }
+      >
         <RuleEngine
           value={strategyDsl}
           onChange={setStrategyDsl}
@@ -450,4 +507,8 @@ export default function NewStrategyPage() {
       </Card>
     </AppShell>
   );
+}
+
+function sanitizeFileName(value: string): string {
+  return value.trim().replace(/[\\/:*?"<>|]+/g, "_") || "strategy";
 }
