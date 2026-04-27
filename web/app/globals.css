@@ -1320,15 +1320,11 @@ select {
 .settings-weight-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: 14px;
 }
 
 .settings-weight-item {
-  align-items: flex-start;
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  padding: 14px;
+  align-items: center;
 }
 
 .settings-weight-item .ant-input-number {
@@ -1346,19 +1342,26 @@ select {
 
 .data-source-config-item {
   align-items: flex-start;
-  border-bottom: 1px solid var(--panel-border);
   display: grid;
   gap: 18px;
-  grid-template-columns: minmax(180px, 0.7fr) minmax(280px, 1fr);
-  padding-bottom: 18px;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
 }
 
-.data-source-config-item strong {
+.data-source-config-item strong,
+.data-source-setting-label strong {
   align-items: center;
   color: var(--text-main);
   display: inline-flex;
   gap: 8px;
   margin-bottom: 4px;
+}
+
+.data-source-setting-control {
+  display: grid;
+  gap: 14px;
+  justify-self: end;
+  max-width: 860px;
+  width: 100%;
 }
 
 .settings-inline-link {
@@ -1387,6 +1390,61 @@ select {
 
 .data-source-config-item .ant-form-item {
   margin-bottom: 0;
+}
+
+.data-source-status-panel {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.data-source-status-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.data-source-status-title {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.data-source-status-title .settings-field-label {
+  margin-bottom: 0;
+}
+
+.data-source-status-grid {
+  color: var(--text-muted);
+  display: grid;
+  font-size: 13px;
+  gap: 8px 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.data-source-config-item > .setting-line {
+  grid-column: 1;
+}
+
+.settings-help-icon {
+  color: var(--text-muted);
+  cursor: help;
+  font-size: 13px;
+  margin-left: 6px;
+}
+
+.data-source-switch-control {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+  min-height: 32px;
+}
+
+.data-source-switch-control .ant-switch {
+  flex: 0 0 auto;
 }
 
 .settings-table-action {
@@ -1730,6 +1788,11 @@ select {
   .settings-form-grid-four,
   .data-source-config-item {
     grid-template-columns: 1fr;
+  }
+
+  .data-source-config-item > .setting-line,
+  .data-source-status-panel {
+    grid-column: 1;
   }
 
   .settings-nav {

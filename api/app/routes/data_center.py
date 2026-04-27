@@ -16,7 +16,6 @@ from app.services.data_center import (
     SYNC_ITEM_STOCK_LIST,
     SYNC_ITEM_TRADING_CALENDAR,
     get_data_center_overview_metrics,
-    get_data_source_status_snapshot,
     get_index_daily_coverage,
     get_index_browser_bars,
     get_stock_daily_coverage,
@@ -29,6 +28,7 @@ from app.services.data_center import (
     list_stock_options,
     log_event,
 )
+from app.services.settings import get_canghai_token_status
 from app.tasks.data_center import (
     batch_sync_stock_and_index_daily_history_task,
     sync_data_center_item,
@@ -54,7 +54,20 @@ def event_logs():
 @data_center_bp.get("/data-center/source-status")
 @auth_required
 def source_status():
-    return {"item": get_data_source_status_snapshot()}
+    status = get_canghai_token_status(g.current_user)
+    detail = status["status"]
+    return {
+        "item": {
+            "sourceKey": status["sourceKey"],
+            "sourceName": status["sourceName"],
+            "status": detail["status"],
+            "tokenStatus": detail["tokenStatus"],
+            "latencyMs": detail["latencyMs"],
+            "checkedAt": detail["lastCheckedAt"],
+            "httpStatus": detail["httpStatus"],
+            "message": detail["message"],
+        }
+    }
 
 
 @data_center_bp.get("/data-center/exchange-options")

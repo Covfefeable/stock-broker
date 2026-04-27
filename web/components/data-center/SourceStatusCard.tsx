@@ -11,21 +11,24 @@ type Props = {
   loading: boolean;
 };
 
-function getStatusMeta(status: DataSourceStatusItem["status"] | undefined) {
-  if (status === "normal") {
-    return { badge: "success" as const, text: "正常" };
+function getApiKeyStatusMeta(status: DataSourceStatusItem["tokenStatus"] | undefined) {
+  if (status === "valid") {
+    return { badge: "success" as const, text: "API Key 有效" };
   }
-  if (status === "abnormal") {
-    return { badge: "error" as const, text: "异常" };
+  if (status === "invalid") {
+    return { badge: "error" as const, text: "API Key 无效" };
   }
-  if (status === "checking") {
-    return { badge: "processing" as const, text: "检测中" };
+  if (status === "expired") {
+    return { badge: "error" as const, text: "API Key 已过期" };
   }
-  return { badge: "default" as const, text: "未知" };
+  if (status === "error") {
+    return { badge: "warning" as const, text: "API Key 异常" };
+  }
+  return { badge: "default" as const, text: "API Key 未检测" };
 }
 
 export function SourceStatusCard({ item, exchangeCoverage, loading }: Props) {
-  const statusMeta = getStatusMeta(item?.status);
+  const apiKeyStatusMeta = getApiKeyStatusMeta(item?.tokenStatus);
 
   return (
     <Card className="dashboard-card source-status-card" title="数据源状态" loading={loading}>
@@ -35,7 +38,7 @@ export function SourceStatusCard({ item, exchangeCoverage, loading }: Props) {
             <strong>{item?.sourceName ?? "沧海数据"}</strong>
             <Text>{item?.message || "等待下一次检测结果"}</Text>
           </div>
-          <Badge status={statusMeta.badge} text={statusMeta.text} />
+          <Badge status={apiKeyStatusMeta.badge} text={apiKeyStatusMeta.text} />
         </div>
 
         <div className="source-status-metrics">

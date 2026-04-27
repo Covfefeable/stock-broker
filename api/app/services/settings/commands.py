@@ -28,6 +28,9 @@ def update_settings(user: User, payload: dict) -> Setting:
     scoring = payload.get("scoring") or {}
 
     settings.canghai_api_key = (data_source.get("canghaiApiKey") or "").strip() or None
+    settings.canghai_token_check_enabled = bool(
+        data_source.get("canghaiTokenCheckEnabled", True)
+    )
     settings.ai_models = normalize_ai_models(ai.get("models"))
     settings.performance_score_weights = normalize_performance_score_weights(
         scoring.get("performanceScoreWeights")

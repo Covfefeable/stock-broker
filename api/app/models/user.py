@@ -42,6 +42,11 @@ class User(db.Model):
         cascade="all, delete-orphan",
         order_by="desc(AgentTask.updated_at)",
     )
+    data_source_statuses = db.relationship(
+        "UserDataSourceStatus",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
     def to_dict(self) -> dict:
         return {

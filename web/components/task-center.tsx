@@ -74,6 +74,7 @@ const FINISHED_TASK_LIMIT = 30;
 const FAB_SIZE = 92;
 const FAB_EDGE_GAP = 24;
 const FAB_POSITION_STORAGE_KEY = "task-center-fab-position";
+const TASK_SOCKET_HEARTBEAT_INTERVAL_MS = 30_000;
 
 const statusMeta: Record<TaskStatus, { label: string; color: string; icon: React.ReactNode }> = {
   queued: {
@@ -256,6 +257,26 @@ export function TaskCenter() {
     let cancelled = false;
     let socket: WebSocket | null = null;
     let reconnectTimer: number | null = null;
+    let heartbeatTimer: number | null = null;
+
+    const stopHeartbeat = () => {
+      if (heartbeatTimer) {
+        window.clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    };
+
+    const sendHeartbeat = () => {
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "heartbeat" }));
+      }
+    };
+
+    const startHeartbeat = () => {
+      stopHeartbeat();
+      sendHeartbeat();
+      heartbeatTimer = window.setInterval(sendHeartbeat, TASK_SOCKET_HEARTBEAT_INTERVAL_MS);
+    };
 
     const connect = async () => {
       try {
@@ -275,6 +296,10 @@ export function TaskCenter() {
       }
 
       socket = new WebSocket(buildTaskCenterWsUrl(token));
+
+      socket.onopen = () => {
+        startHeartbeat();
+      };
 
       socket.onmessage = (event) => {
         if (cancelled) {
@@ -316,6 +341,7 @@ export function TaskCenter() {
       };
 
       socket.onclose = () => {
+        stopHeartbeat();
         if (!cancelled) {
           reconnectTimer = window.setTimeout(() => {
             void connect();
@@ -335,6 +361,7 @@ export function TaskCenter() {
       if (reconnectTimer) {
         window.clearTimeout(reconnectTimer);
       }
+      stopHeartbeat();
       socket?.close();
     };
   }, []);

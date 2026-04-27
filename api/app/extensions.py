@@ -47,8 +47,8 @@ def init_celery(app):
                 },
             },
             "beat_schedule": {
-                "check-canghai-data-source-status-every-5-minutes": {
-                    "task": "app.tasks.scheduled.check_canghai_data_source_status",
+                "scan-online-canghai-token-statuses-every-5-minutes": {
+                    "task": "app.tasks.scheduled.scan_online_canghai_token_statuses",
                     "schedule": 300.0,
                 }
             },

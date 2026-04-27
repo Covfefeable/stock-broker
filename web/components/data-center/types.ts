@@ -152,6 +152,7 @@ export type DataSourceStatusItem = {
   sourceKey: string;
   sourceName: string;
   status: "normal" | "abnormal" | "unknown" | "checking";
+  tokenStatus?: "valid" | "invalid" | "expired" | "error" | "unknown";
   latencyMs: number | null;
   checkedAt: string | null;
   httpStatus: number | null;

@@ -1,10 +1,10 @@
 from celery import current_task
 
 from app.extensions import celery_app
-from app.services.data_center import check_canghai_data_source_status
+from app.services.settings import scan_online_canghai_token_statuses
 
 
-@celery_app.task(name="app.tasks.scheduled.check_canghai_data_source_status")
-def check_canghai_data_source_status_task() -> dict:
+@celery_app.task(name="app.tasks.scheduled.scan_online_canghai_token_statuses")
+def scan_online_canghai_token_statuses_task() -> dict:
     task_id = current_task.request.id if current_task else None
-    return check_canghai_data_source_status(task_id=task_id)
+    return scan_online_canghai_token_statuses(task_id=task_id)

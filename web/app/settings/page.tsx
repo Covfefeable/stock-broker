@@ -4,6 +4,7 @@ import {
   BellOutlined,
   DatabaseOutlined,
   HolderOutlined,
+  InfoCircleOutlined,
   LinkOutlined,
   LockOutlined,
   RobotOutlined,
@@ -20,6 +21,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
@@ -45,6 +47,7 @@ type AiModelRow = {
 type SettingsPayload = {
   dataSource: {
     canghaiApiKey: string;
+    canghaiTokenCheckEnabled: boolean;
   };
   ai: {
     models: Array<{
@@ -77,9 +80,27 @@ type SettingsState = Omit<SettingsPayload, "ai"> & {
   };
 };
 
+type CanghaiStatusResponse = {
+  sourceKey: string;
+  sourceName: string;
+  scheduledCheckEnabled: boolean;
+  status: {
+    status: string;
+    tokenStatus: string;
+    lastCheckedAt: string | null;
+    lastSuccessAt: string | null;
+    lastFailedAt: string | null;
+    latencyMs: number | null;
+    httpStatus: number | null;
+    message: string | null;
+    failureCount: number;
+  };
+};
+
 const defaultSettings: SettingsState = {
   dataSource: {
     canghaiApiKey: "",
+    canghaiTokenCheckEnabled: true,
   },
   ai: {
     models: [
@@ -125,6 +146,8 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [draggingModelKey, setDraggingModelKey] = useState<string | null>(null);
   const [testingModelKey, setTestingModelKey] = useState<string | null>(null);
+  const [testingCanghaiToken, setTestingCanghaiToken] = useState(false);
+  const [canghaiStatus, setCanghaiStatus] = useState<CanghaiStatusResponse | null>(null);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -132,6 +155,11 @@ export default function SettingsPage() {
         const token = getAccessToken();
         const response = await apiGet<{ settings: SettingsPayload }>("/settings/me", token);
         setSettings(mergeSettings(response.settings));
+        const statusResponse = await apiGet<CanghaiStatusResponse>(
+          "/settings/data-sources/canghai/status",
+          token,
+        );
+        setCanghaiStatus(statusResponse);
       } catch (error) {
         messageApi.error(error instanceof Error ? error.message : "加载系统设置失败");
       } finally {
@@ -141,6 +169,33 @@ export default function SettingsPage() {
 
     void loadSettings();
   }, [messageApi]);
+
+  const handleTestCanghaiToken = useCallback(async () => {
+    setTestingCanghaiToken(true);
+    try {
+      const token = getAccessToken();
+      const response = await apiRequest<CanghaiStatusResponse>(
+        "/settings/data-sources/canghai/test-token",
+        {
+          method: "POST",
+          body: {
+            apiKey: settings.dataSource.canghaiApiKey,
+          },
+          token,
+        },
+      );
+      setCanghaiStatus(response);
+      if (response.status.tokenStatus === "valid") {
+        messageApi.success("沧海数据 API Key 检测通过");
+      } else {
+        messageApi.warning("沧海数据 API Key 检测未通过");
+      }
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "沧海数据 API Key 检测失败");
+    } finally {
+      setTestingCanghaiToken(false);
+    }
+  }, [messageApi, settings.dataSource.canghaiApiKey]);
 
   const handleTestAiModel = useCallback(async (record: AiModelRow) => {
     setTestingModelKey(record.key);
@@ -414,9 +469,9 @@ export default function SettingsPage() {
               >
                 <div className="data-source-config-list">
                   <div className="data-source-config-item">
-                    <div>
+                    <div className="data-source-setting-label">
                       <strong>
-                        沧海数据
+                        沧海数据 API Key
                         <a
                           className="settings-inline-link"
                           href="https://tsanghi.com/fin/user"
@@ -428,19 +483,60 @@ export default function SettingsPage() {
                         </a>
                       </strong>
                     </div>
-                    <div>
-                      <label className="settings-field-label">API Key</label>
+                    <div className="data-source-setting-control">
                       <Input.Password
                         value={settings.dataSource.canghaiApiKey}
                         onChange={(event) =>
                           setSettings((current) => ({
                             ...current,
                             dataSource: {
+                              ...current.dataSource,
                               canghaiApiKey: event.target.value,
                             },
                           }))
                         }
                         placeholder="请输入 API Key"
+                      />
+                      <div className="data-source-status-panel">
+                        <div className="data-source-status-head">
+                          <div className="data-source-status-title">
+                            <label className="settings-field-label">API Key 状态</label>
+                            <Tag color={tokenStatusColor(canghaiStatus?.status.tokenStatus)}>
+                              {tokenStatusText(canghaiStatus?.status.tokenStatus)}
+                            </Tag>
+                          </div>
+                          <Button loading={testingCanghaiToken} onClick={() => void handleTestCanghaiToken()}>
+                            测试
+                          </Button>
+                        </div>
+                        <div className="data-source-status-grid">
+                          <span>最近检测：{formatDateTime(canghaiStatus?.status.lastCheckedAt)}</span>
+                          <span>延迟：{formatLatency(canghaiStatus?.status.latencyMs)}</span>
+                          <span>HTTP：{canghaiStatus?.status.httpStatus ?? "-"}</span>
+                          <span>连续失败：{canghaiStatus?.status.failureCount ?? 0}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="data-source-setting-label">
+                      <strong>
+                        定时检测 API Key 有效性
+                        <Tooltip title="仅在当前账号在线时，每 30 分钟检测一次 API Key 有效性。">
+                          <InfoCircleOutlined className="settings-help-icon" />
+                        </Tooltip>
+                      </strong>
+                    </div>
+                    <div className="data-source-setting-control data-source-switch-control">
+                      <Switch
+                        checked={settings.dataSource.canghaiTokenCheckEnabled}
+                        onChange={(checked) =>
+                          setSettings((current) => ({
+                            ...current,
+                            dataSource: {
+                              ...current.dataSource,
+                              canghaiTokenCheckEnabled: checked,
+                            },
+                          }))
+                        }
                       />
                     </div>
                   </div>
@@ -686,6 +782,9 @@ function mergeSettings(payload?: Partial<SettingsPayload>): SettingsState {
   return {
     dataSource: {
       canghaiApiKey: payload?.dataSource?.canghaiApiKey ?? defaultSettings.dataSource.canghaiApiKey,
+      canghaiTokenCheckEnabled:
+        payload?.dataSource?.canghaiTokenCheckEnabled ??
+        defaultSettings.dataSource.canghaiTokenCheckEnabled,
     },
     ai: {
       models,
@@ -723,6 +822,7 @@ function serializeSettings(settings: SettingsPayload) {
   return {
     dataSource: {
       canghaiApiKey: settings.dataSource.canghaiApiKey,
+      canghaiTokenCheckEnabled: settings.dataSource.canghaiTokenCheckEnabled,
     },
     ai: {
       models: settings.ai.models.map(({ name, model, baseUrl, apiKey }) => ({
@@ -736,4 +836,39 @@ function serializeSettings(settings: SettingsPayload) {
     scoring: settings.scoring,
     account: settings.account,
   };
+}
+
+function tokenStatusText(value?: string) {
+  if (value === "valid") return "有效";
+  if (value === "invalid") return "无效";
+  if (value === "expired") return "已过期";
+  if (value === "error") return "异常";
+  return "未检测";
+}
+
+function tokenStatusColor(value?: string) {
+  if (value === "valid") return "success";
+  if (value === "invalid" || value === "expired") return "error";
+  if (value === "error") return "warning";
+  return "default";
+}
+
+function formatLatency(value?: number | null) {
+  return value == null ? "-" : `${value}ms`;
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
 }

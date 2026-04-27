@@ -23,6 +23,7 @@ class Setting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, unique=True, index=True)
     canghai_api_key = db.Column(db.Text, nullable=True)
+    canghai_token_check_enabled = db.Column(db.Boolean, nullable=False, default=True)
     ai_models = db.Column(
         JSONB().with_variant(db.JSON(), "sqlite"),
         nullable=False,
@@ -55,6 +56,7 @@ class Setting(db.Model):
         return {
             "dataSource": {
                 "canghaiApiKey": self.canghai_api_key or "",
+                "canghaiTokenCheckEnabled": self.canghai_token_check_enabled,
             },
             "ai": {
                 "models": self.ai_models or default_ai_models(),
