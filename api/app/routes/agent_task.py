@@ -1,7 +1,7 @@
 from flask import Blueprint, g, request
 
 from app.routes.auth import auth_required
-from app.services.agent_task_service import (
+from app.services.agent_tasks import (
     AgentTaskError,
     create_agent_task,
     delete_agent_task,

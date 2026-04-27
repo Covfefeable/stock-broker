@@ -4,7 +4,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from app.extensions import celery_app, db
 from app.models.agent_task import AgentTask
 from app.models.user import User
-from app.services.agent_task_service import AgentTaskError, mark_agent_task_failed, run_agent_iterations
+from app.services.agent_tasks import AgentTaskError, mark_agent_task_failed, run_agent_iterations
 
 
 def _get_user(user_id: int) -> User:
