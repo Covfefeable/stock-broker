@@ -14,7 +14,7 @@ services:
                -c 'statement_timeout=${POSTGRES_STATEMENT_TIMEOUT:-0}'
                -c 'idle_in_transaction_session_timeout=${POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT:-0}'
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - ./volumes/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
       interval: 10s
@@ -25,7 +25,7 @@ services:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - redis-data:/data
+      - ./volumes/redis:/data
 
   api:
     build:
@@ -110,7 +110,3 @@ services:
       - "${WEB_PORT:-3000}:3000"
     depends_on:
       - api
-
-volumes:
-  postgres-data:
-  redis-data:
