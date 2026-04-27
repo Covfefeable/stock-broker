@@ -5,7 +5,7 @@ from time import perf_counter
 from app.extensions import db
 from app.models.event_log import EventLog
 from app.models.user import User
-from app.services.task_center_service import publish_task_event
+from app.services.task_center import publish_task_event
 
 from app.services.data_center.constants import *  # noqa: F403
 from app.services.data_center.errors import DataSyncError

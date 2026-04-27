@@ -3,12 +3,9 @@ from datetime import datetime, timezone
 from app.extensions import db
 from app.models.setting import Setting
 from app.models.user import User
+from app.services.auth.errors import AuthError
 from app.utils.jwt import create_access_token
 from app.utils.security import hash_password, is_valid_email, verify_password
-
-
-class AuthError(ValueError):
-    pass
 
 
 def register_user(email: str, username: str, password: str) -> tuple[User, str]:

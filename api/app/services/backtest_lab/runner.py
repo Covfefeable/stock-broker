@@ -12,7 +12,7 @@ from app.services.backtest_lab.scoring import calculate_evaluation_score, group_
 from app.services.backtest_lab.serialization import build_strategy_evaluation_report
 from app.services.backtest_lab.target_selection import select_time_ranges
 from app.services.data_center import log_event
-from app.services.settings_service import get_performance_score_weights
+from app.services.settings import get_performance_score_weights
 
 
 def run_strategy_evaluation(evaluation: StrategyEvaluation, *, task_id: str | None = None) -> dict:

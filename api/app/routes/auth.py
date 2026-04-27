@@ -3,7 +3,7 @@ from functools import wraps
 from flask import Blueprint, g, request
 
 from app.models.user import User
-from app.services.auth_service import AuthError, authenticate_user, register_user
+from app.services.auth import AuthError, authenticate_user, register_user
 from app.utils.jwt import decode_access_token
 
 auth_bp = Blueprint("auth", __name__)
@@ -80,4 +80,3 @@ def logout():
 @auth_required
 def me():
     return {"user": g.current_user.to_dict()}
-

@@ -1,7 +1,7 @@
 from app.extensions import db
 from app.models.setting import Setting
 from app.models.user import User
-from app.services.settings_service import get_or_create_settings
+from app.services.settings import get_or_create_settings
 
 from app.services.data_center.constants import *  # noqa: F403
 from app.services.data_center.errors import DataSyncError

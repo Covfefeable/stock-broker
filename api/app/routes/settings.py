@@ -1,7 +1,12 @@
 from flask import Blueprint, g, request
 
 from app.routes.auth import auth_required
-from app.services.settings_service import SettingsError, get_or_create_settings, test_ai_model_config, update_settings
+from app.services.settings import (
+    SettingsError,
+    get_or_create_settings,
+    test_ai_model_config,
+    update_settings,
+)
 
 settings_bp = Blueprint("settings", __name__)
 

@@ -1,7 +1,7 @@
 from flask import Blueprint, g
 
 from app.routes.auth import auth_required
-from app.services.dashboard_service import get_dashboard_overview
+from app.services.dashboard import get_dashboard_overview
 
 dashboard_bp = Blueprint("dashboard", __name__)
 

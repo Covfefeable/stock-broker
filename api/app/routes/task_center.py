@@ -5,7 +5,7 @@ from flask import Blueprint, g, request
 from app.extensions import db, sock
 from app.models.user import User
 from app.routes.auth import auth_required
-from app.services.task_center_service import (
+from app.services.task_center import (
     iter_task_events,
     list_recent_task_summaries,
     subscribe_task_events,
@@ -34,12 +34,16 @@ def task_stream(ws):
         payload = decode_access_token(token)
         user = User.query.get(int(payload["sub"]))
     except Exception:
-        ws.send(json.dumps({"type": "error", "message": "访问令牌无效或已过期。"}, ensure_ascii=False))
+        ws.send(
+            json.dumps({"type": "error", "message": "访问令牌无效或已过期。"}, ensure_ascii=False)
+        )
         ws.close()
         return
 
     if not user or not user.is_active:
-        ws.send(json.dumps({"type": "error", "message": "用户不存在或已被禁用。"}, ensure_ascii=False))
+        ws.send(
+            json.dumps({"type": "error", "message": "用户不存在或已被禁用。"}, ensure_ascii=False)
+        )
         ws.close()
         return
 

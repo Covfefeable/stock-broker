@@ -13,7 +13,7 @@ from app.services.backtest_lab.scoring import (
     summarize_trade_health,
 )
 from app.services.backtest_lab.target_selection import select_cross_asset_targets, select_time_ranges, strategy_country_code
-from app.services.settings_service import get_performance_score_weights
+from app.services.settings import get_performance_score_weights
 
 
 EVALUATION_STATUS_LABELS = {

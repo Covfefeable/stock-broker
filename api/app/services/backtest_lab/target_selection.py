@@ -16,7 +16,7 @@ from app.models.user import User
 from app.services.ai_client import AIClientError, call_chat_completion_json
 from app.services.backtest_lab.errors import BacktestLabError
 from app.services.backtest_lab.evaluation import load_bars_for_range
-from app.services.settings_service import get_or_create_settings
+from app.services.settings import get_or_create_settings
 
 
 def select_cross_asset_targets(strategy: Strategy, rng: random.Random) -> list[dict]:

@@ -23,7 +23,7 @@ from app.services.agent_tasks.helpers import (
     _score_result,
 )
 from app.services.data_center import log_event
-from app.services.settings_service import get_performance_score_weights
+from app.services.settings import get_performance_score_weights
 from app.services.strategies import _load_asset_bars, _run_strategy_backtest
 
 

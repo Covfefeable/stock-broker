@@ -7,7 +7,7 @@ from typing import Any
 from app.extensions import db
 from app.models.user import User
 from app.services.performance_score import calculate_performance_score
-from app.services.settings_service import get_performance_score_weights
+from app.services.settings import get_performance_score_weights
 from app.services.strategies.assets import _load_asset_bars
 from app.services.strategies.dsl import _validate_strategy_config
 from app.services.strategies.engine import _run_strategy_backtest

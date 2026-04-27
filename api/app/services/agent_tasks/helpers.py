@@ -13,7 +13,7 @@ from app.services.agent.labels import _agent_intent_label, _agent_mode_label
 from app.services.agent.strategy_description import _describe_rule_list
 from app.services.agent_tasks.errors import AgentTaskError
 from app.services.performance_score import calculate_performance_score
-from app.services.settings_service import get_or_create_settings
+from app.services.settings import get_or_create_settings
 
 
 def _resolve_ai_model(user: User, value: Any) -> dict[str, str]:
