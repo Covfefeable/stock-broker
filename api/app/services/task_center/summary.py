@@ -1,6 +1,6 @@
 from app.models.agent_task import AgentTask
 from app.models.event_log import EventLog
-from app.services.event_log_meta import event_name_label, sync_item_label
+from app.services.event_logs import event_name_label, sync_item_label
 from app.services.task_center.agent_metrics import best_iteration_for_agent, metric_to_float
 
 

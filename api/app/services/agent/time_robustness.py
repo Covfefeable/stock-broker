@@ -4,7 +4,7 @@ from datetime import date
 
 from app.models.agent_task import AgentTask
 from app.services.agent.curve_diagnostics import _build_equity_curve_diagnostics
-from app.services.performance_score import calculate_performance_score
+from app.services.scoring import calculate_performance_score
 from app.services.strategies import _load_asset_bars, _run_strategy_backtest
 
 

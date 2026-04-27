@@ -1,4 +1,4 @@
-from app.services.ai_client import AIClientError, call_chat_completion_content
+from app.services.llm import AIClientError, call_chat_completion_content
 from app.services.settings.errors import SettingsError
 from app.services.settings.normalization import normalize_single_ai_model
 

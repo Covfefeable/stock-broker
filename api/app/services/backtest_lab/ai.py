@@ -7,7 +7,7 @@ from typing import Any
 from app.models.strategy import Strategy
 from app.models.strategy_evaluation import StrategyEvaluation
 from app.models.user import User
-from app.services.ai_client import AIClientError, call_chat_completion_json
+from app.services.llm import AIClientError, call_chat_completion_json
 from app.services.backtest_lab.errors import BacktestLabError
 from app.services.backtest_lab.target_selection import get_default_ai_model_config, strategy_country_code
 from app.services.strategies import (

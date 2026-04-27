@@ -5,7 +5,7 @@ from urllib.error import HTTPError, URLError
 
 
 from app.models.user import User
-from app.services.event_log_meta import sync_item_label
+from app.services.event_logs import sync_item_label
 
 from app.services.data_center.constants import *  # noqa: F403
 from app.services.data_center.canghai_client import build_canghai_url, fetch_json

@@ -4,7 +4,7 @@ from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
-from app.services.stock_adjustment import apply_stock_split_adjustments
+from app.services.market_data import apply_stock_split_adjustments
 
 from app.services.data_center.constants import *  # noqa: F403
 

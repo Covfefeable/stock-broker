@@ -5,7 +5,7 @@ from flask import Blueprint, g, request
 
 from app.extensions import celery_app
 from app.routes.auth import auth_required
-from app.services.event_log_meta import EVENT_CATEGORY_SYNC, sync_item_label
+from app.services.event_logs import EVENT_CATEGORY_SYNC, sync_item_label
 from app.services.data_center import (
     DATE_MODE_AUTO_FILL,
     SYNC_ITEM_COUNTRY_LIST,

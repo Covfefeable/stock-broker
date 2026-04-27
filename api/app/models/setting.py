@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.extensions import db
-from app.services.performance_score import default_performance_score_weights
+from app.services.scoring import default_performance_score_weights
 
 
 def default_ai_models() -> list[dict[str, str]]:

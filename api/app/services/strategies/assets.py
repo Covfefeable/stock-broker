@@ -5,7 +5,7 @@ from typing import Any
 
 from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock_daily_bar import StockDailyBar
-from app.services.stock_adjustment import apply_stock_split_adjustments
+from app.services.market_data import apply_stock_split_adjustments
 from app.services.strategies.dsl import INDICATOR_WARMUP_BARS
 from app.services.strategies.errors import StrategyError
 

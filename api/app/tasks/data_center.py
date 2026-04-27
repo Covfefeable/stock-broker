@@ -4,7 +4,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from app.extensions import celery_app, db
 from app.models.event_log import EventLog
 from app.models.user import User
-from app.services.event_log_meta import sync_event_name, sync_item_label
+from app.services.event_logs import sync_event_name, sync_item_label
 from app.services.data_center import (
     DataSyncError,
     SYNC_ITEM_COUNTRY_LIST,

@@ -1,6 +1,6 @@
 from app.models.agent_iteration import AgentIteration
 from app.models.agent_task import AgentTask
-from app.services.performance_score import calculate_performance_score
+from app.services.scoring import calculate_performance_score
 from app.services.settings import get_performance_score_weights
 
 

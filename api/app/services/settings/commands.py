@@ -1,7 +1,7 @@
 from app.extensions import db
 from app.models.setting import Setting
 from app.models.user import User
-from app.services.performance_score import (
+from app.services.scoring import (
     default_performance_score_weights,
     normalize_performance_score_weights,
 )

@@ -10,7 +10,7 @@ from app.models.strategy import Strategy
 from app.models.strategy_evaluation import StrategyEvaluation
 from app.models.user import User
 from app.services.dashboard.formatters import decimal_to_float, format_percent, format_score
-from app.services.event_log_meta import event_name_label, sync_item_label
+from app.services.event_logs import event_name_label, sync_item_label
 
 
 def list_backtest_ranking(user: User) -> list[dict]:

@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from app.models.strategy import Strategy
 from app.services.backtest_lab.scoring import calculate_sample_score, result_passes
-from app.services.performance_score import calculate_performance_score
+from app.services.scoring import calculate_performance_score
 from app.services.strategies import _load_asset_bars, _run_strategy_backtest
 
 

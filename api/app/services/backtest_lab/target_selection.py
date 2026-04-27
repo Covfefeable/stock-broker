@@ -13,7 +13,7 @@ from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
 from app.models.strategy import Strategy
 from app.models.user import User
-from app.services.ai_client import AIClientError, call_chat_completion_json
+from app.services.llm import AIClientError, call_chat_completion_json
 from app.services.backtest_lab.errors import BacktestLabError
 from app.services.backtest_lab.evaluation import load_bars_for_range
 from app.services.settings import get_or_create_settings

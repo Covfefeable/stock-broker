@@ -8,7 +8,7 @@ from app.services.agent.curve_diagnostics import _format_curve_diagnostics_for_m
 from app.services.agent.labels import _agent_intent_label, _agent_mode_label
 from app.services.agent.strategy_description import _describe_rule_list
 from app.services.agent.time_robustness import _format_time_robustness_for_memory
-from app.services.performance_score import calculate_performance_score
+from app.services.scoring import calculate_performance_score
 
 
 AGENT_RECENT_PROMPT_MEMORY_LIMIT = 10

@@ -12,7 +12,7 @@ from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
 from app.models.trading_calendar_day import TradingCalendarDay
-from app.services.event_log_meta import event_log_to_dict, event_types_for_category
+from app.services.event_logs import event_types_for_category, event_log_to_dict
 
 from app.services.data_center.constants import *  # noqa: F403
 
