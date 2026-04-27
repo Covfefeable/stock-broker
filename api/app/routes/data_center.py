@@ -5,8 +5,8 @@ from flask import Blueprint, g, request
 
 from app.extensions import celery_app
 from app.routes.auth import auth_required
-from app.services.event_log_meta import EVENT_CATEGORY_SYNC
-from app.services.data_center_service import (
+from app.services.event_log_meta import EVENT_CATEGORY_SYNC, sync_item_label
+from app.services.data_center import (
     DATE_MODE_AUTO_FILL,
     SYNC_ITEM_COUNTRY_LIST,
     SYNC_ITEM_EXCHANGE_LIST,
@@ -28,9 +28,11 @@ from app.services.data_center_service import (
     list_recent_event_logs,
     list_stock_options,
     log_event,
-    sync_item_label,
 )
-from app.tasks.data_center import batch_sync_stock_and_index_daily_history_task, sync_data_center_item
+from app.tasks.data_center import (
+    batch_sync_stock_and_index_daily_history_task,
+    sync_data_center_item,
+)
 
 data_center_bp = Blueprint("data_center", __name__)
 
@@ -87,7 +89,9 @@ def trading_calendar():
     exchange_code = str(request.args.get("exchangeCode") or "").strip()
     year = int(str(request.args.get("year") or datetime.now().year))
     month = int(str(request.args.get("month") or datetime.now().month))
-    return {"items": list_trading_calendar_entries(exchange_code=exchange_code, year=year, month=month)}
+    return {
+        "items": list_trading_calendar_entries(exchange_code=exchange_code, year=year, month=month)
+    }
 
 
 @data_center_bp.get("/data-center/stock-daily-coverage")
@@ -203,7 +207,9 @@ def sync_data():
 @data_center_bp.post("/data-center/sync/assets/batch-auto-fill")
 @auth_required
 def batch_sync_assets():
-    task = batch_sync_stock_and_index_daily_history_task.apply_async(kwargs={"user_id": g.current_user.id})
+    task = batch_sync_stock_and_index_daily_history_task.apply_async(
+        kwargs={"user_id": g.current_user.id}
+    )
     log_event(
         user=g.current_user,
         task_id=task.id,

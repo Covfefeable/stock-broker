@@ -1,0 +1,16 @@
+CANGHAI_COUNTRY_URL = "https://www.tsanghi.com/api/fin/index/country"
+CANGHAI_EXCHANGE_URL = "https://www.tsanghi.com/api/fin/stock/exchange"
+CANGHAI_SOURCE_KEY = "canghai"
+CANGHAI_SOURCE_NAME = "沧海数据"
+
+SYNC_ITEM_COUNTRY_LIST = "country_list"
+SYNC_ITEM_EXCHANGE_LIST = "exchange_list"
+SYNC_ITEM_STOCK_LIST = "stock_list"
+SYNC_ITEM_INDEX_LIST = "index_list"
+SYNC_ITEM_TRADING_CALENDAR = "trading_calendar"
+SYNC_ITEM_STOCK_DAILY_HISTORY = "stock_daily_history"
+SYNC_ITEM_INDEX_DAILY_HISTORY = "index_daily_history"
+
+DATE_MODE_AUTO_FILL = "auto_fill"
+DATE_MODE_CUSTOM = "custom"
+DEFAULT_FULL_HISTORY_SYNC_START_DATE = "2000-01-01"

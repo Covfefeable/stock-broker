@@ -8,7 +8,7 @@ from app.models.strategy_evaluation import StrategyEvaluation
 from app.models.user import User
 from app.services.backtest_lab.errors import BacktestLabError
 from app.services.backtest_lab.target_selection import resolve_selected_cross_asset_targets, select_cross_asset_targets_for_auto
-from app.services.data_center_service import log_event
+from app.services.data_center import log_event
 
 
 def evaluate_strategy(user: User, strategy_id: int, selected_asset_identifiers: list[str] | None = None) -> StrategyEvaluation:

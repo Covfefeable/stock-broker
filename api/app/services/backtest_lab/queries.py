@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from sqlalchemy import and_, asc, desc, nullslast, or_
+from sqlalchemy import and_, asc, desc, false, nullslast, or_
 
-from app.extensions import db
 from app.models.strategy import Strategy
 from app.models.strategy_evaluation import StrategyEvaluation
 from app.models.user import User
 from app.services.backtest_lab.errors import BacktestLabError
-from app.services.backtest_lab.serialization import backtest_lab_strategy_to_dict
+from app.services.backtest_lab.serialization import EVALUATION_SOURCE_LABEL, backtest_lab_strategy_to_dict
 
 
 def list_backtest_lab_strategies(
@@ -27,9 +26,13 @@ def list_backtest_lab_strategies(
     normalized_keyword = keyword.strip()
     if normalized_keyword:
         pattern = f"%{normalized_keyword}%"
-        query = query.filter(or_(Strategy.name.ilike(pattern), Strategy.type.ilike(pattern), Strategy.source.ilike(pattern)))
+        keyword_filters = [Strategy.name.ilike(pattern), Strategy.type.ilike(pattern)]
+        if normalized_keyword in EVALUATION_SOURCE_LABEL:
+            keyword_filters.append(Strategy.id.isnot(None))
+        query = query.filter(or_(*keyword_filters))
     if source:
-        query = query.filter(Strategy.source == source)
+        if source != EVALUATION_SOURCE_LABEL:
+            query = query.filter(false())
 
     if evaluation_status:
         if evaluation_status == "not_evaluated":
@@ -70,20 +73,11 @@ def list_backtest_lab_strategies(
         ).all()
     }
 
-    source_options = [
-        value
-        for value in db.session.query(Strategy.source)
-        .filter(Strategy.user_id == user.id)
-        .distinct()
-        .order_by(Strategy.source.asc())
-        .all()
-    ]
-
     return {
         "items": [backtest_lab_strategy_to_dict(strategy, evaluations.get(strategy.id)) for strategy in items],
         "pagination": {"page": page, "pageSize": page_size, "total": total},
         "filters": {
-            "sources": [value for (value,) in source_options if value],
+            "sources": [EVALUATION_SOURCE_LABEL],
             "evaluationStatuses": ["not_evaluated", "evaluating", "success", "failure"],
         },
     }

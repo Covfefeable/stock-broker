@@ -15,7 +15,7 @@ from app.services.agent_tasks.helpers import (
     _resolve_asset_name,
 )
 from app.services.agent_tasks.queries import get_agent_task
-from app.services.data_center_service import log_event
+from app.services.data_center import log_event
 from app.services.strategies import list_strategy_asset_options
 
 

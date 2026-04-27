@@ -1,0 +1,2 @@
+class DataSyncError(ValueError):
+    pass

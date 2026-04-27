@@ -5,7 +5,7 @@ from app.extensions import celery_app, db
 from app.models.event_log import EventLog
 from app.models.user import User
 from app.services.event_log_meta import sync_event_name, sync_item_label
-from app.services.data_center_service import (
+from app.services.data_center import (
     DataSyncError,
     SYNC_ITEM_COUNTRY_LIST,
     SYNC_ITEM_EXCHANGE_LIST,
@@ -89,7 +89,9 @@ def sync_data_center_item(
         _log_task_timeout(user, task_id, sync_item)
         raise DataSyncError("同步任务超时") from exc
     except Exception as exc:
-        _log_task_failed(user, task_id, sync_item, f"{sync_item_label(sync_item)}任务执行失败：{exc}")
+        _log_task_failed(
+            user, task_id, sync_item, f"{sync_item_label(sync_item)}任务执行失败：{exc}"
+        )
         raise
 
 
@@ -118,7 +120,13 @@ def batch_sync_stock_daily_history_task(*, user_id: int) -> dict:
         )
         raise DataSyncError("批量同步股票日线任务超时") from exc
     except Exception as exc:
-        _log_task_failed(user, task_id, SYNC_ITEM_STOCK_DAILY_HISTORY, f"批量同步股票日线任务执行失败：{exc}", batch=True)
+        _log_task_failed(
+            user,
+            task_id,
+            SYNC_ITEM_STOCK_DAILY_HISTORY,
+            f"批量同步股票日线任务执行失败：{exc}",
+            batch=True,
+        )
         raise
 
 
@@ -164,7 +172,13 @@ def batch_sync_stock_and_index_daily_history_task(*, user_id: int) -> dict:
         )
         raise DataSyncError("批量同步股票/指数日线任务超时") from exc
     except Exception as exc:
-        _log_task_failed(user, task_id, SYNC_ITEM_STOCK_DAILY_HISTORY, f"批量同步股票/指数日线任务执行失败：{exc}", batch=True)
+        _log_task_failed(
+            user,
+            task_id,
+            SYNC_ITEM_STOCK_DAILY_HISTORY,
+            f"批量同步股票/指数日线任务执行失败：{exc}",
+            batch=True,
+        )
         raise
 
 

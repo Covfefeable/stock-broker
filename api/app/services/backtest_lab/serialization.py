@@ -24,6 +24,7 @@ EVALUATION_STATUS_LABELS = {
     "success": "已完成",
     "failure": "失败",
 }
+EVALUATION_SOURCE_LABEL = "自动创建"
 
 
 def build_strategy_evaluation_report(strategy: Strategy, evaluation_id: int, evaluation_payload: dict | None = None) -> dict:
@@ -108,7 +109,7 @@ def backtest_lab_strategy_to_dict(strategy: Strategy, evaluation: StrategyEvalua
         "id": strategy.id,
         "name": strategy.name,
         "type": strategy.type,
-        "source": strategy.source,
+        "source": EVALUATION_SOURCE_LABEL,
         "status": strategy.status,
         "countryRegion": strategy.country_region,
         "assetName": strategy.asset_name,

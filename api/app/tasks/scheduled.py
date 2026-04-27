@@ -1,7 +1,7 @@
 from celery import current_task
 
 from app.extensions import celery_app
-from app.services.data_center_service import check_canghai_data_source_status
+from app.services.data_center import check_canghai_data_source_status
 
 
 @celery_app.task(name="app.tasks.scheduled.check_canghai_data_source_status")

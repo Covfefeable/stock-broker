@@ -331,7 +331,7 @@ export default function BacktestLabPage() {
         render: (_, record) => record.evaluation?.stabilityConclusion || "-",
       },
       {
-        title: "风险结论",
+        title: "交易健康结论",
         key: "risk",
         width: 150,
         render: (_, record) => record.evaluation?.riskConclusion || "-",
