@@ -3,6 +3,7 @@
 import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { Button, Card, Input, Modal, message, Select, Space, Table, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
+import type { SorterResult } from "antd/es/table/interface";
 import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -77,6 +78,8 @@ type QueryState = {
   keyword: string;
   source?: string;
   evaluationStatus?: EvaluationStatus;
+  sortBy?: "score";
+  sortOrder?: "asc" | "desc";
 };
 
 const defaultQueryState: QueryState = {
@@ -136,6 +139,8 @@ export default function BacktestLabPage() {
       if (nextState.keyword) params.set("keyword", nextState.keyword);
       if (nextState.source) params.set("source", nextState.source);
       if (nextState.evaluationStatus) params.set("evaluationStatus", nextState.evaluationStatus);
+      if (nextState.sortBy) params.set("sortBy", nextState.sortBy);
+      if (nextState.sortOrder) params.set("sortOrder", nextState.sortOrder);
       const response = await apiGet<LabStrategiesResponse>(`/backtest-lab/strategies?${params.toString()}`, token);
       setItems(response.items);
       setSources(response.filters.sources);
@@ -159,6 +164,8 @@ export default function BacktestLabPage() {
       keyword: draftKeyword.trim(),
       source: draftSource,
       evaluationStatus: draftEvaluationStatus,
+      sortBy: queryState.sortBy,
+      sortOrder: queryState.sortOrder,
     });
   };
 
@@ -245,12 +252,6 @@ export default function BacktestLabPage() {
       total: pagination.total,
       showSizeChanger: false,
       showTotal: (total: number, range: [number, number]) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
-      onChange: (page, pageSize) =>
-        setQueryState((current) => ({
-          ...current,
-          page,
-          pageSize: pageSize || current.pageSize,
-        })),
     }),
     [pagination],
   );
@@ -303,6 +304,13 @@ export default function BacktestLabPage() {
         title: "综合评分",
         key: "score",
         width: 120,
+        sorter: true,
+        sortOrder:
+          queryState.sortBy === "score"
+            ? queryState.sortOrder === "asc"
+              ? "ascend"
+              : "descend"
+            : null,
         render: (_, record) =>
           record.evaluation?.score !== null && record.evaluation?.score !== undefined ? (
             <Text className="positive-text">{record.evaluation.score.toFixed(2)}</Text>
@@ -366,8 +374,24 @@ export default function BacktestLabPage() {
         ),
       },
     ],
-    [evaluatingId, handleEvaluate],
+    [evaluatingId, openEvaluateModal, queryState.sortBy, queryState.sortOrder],
   );
+
+  const handleTableChange = (
+    nextPagination: TablePaginationConfig,
+    _filters: Record<string, unknown>,
+    sorter: SorterResult<LabStrategyRow> | SorterResult<LabStrategyRow>[],
+  ) => {
+    const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+    const nextSortOrder = activeSorter?.order === "ascend" ? "asc" : activeSorter?.order === "descend" ? "desc" : undefined;
+    setQueryState((current) => ({
+      ...current,
+      page: nextPagination.current || current.page,
+      pageSize: nextPagination.pageSize || current.pageSize,
+      sortBy: nextSortOrder ? "score" : undefined,
+      sortOrder: nextSortOrder,
+    }));
+  };
 
   return (
     <AppShell>
@@ -422,6 +446,7 @@ export default function BacktestLabPage() {
             emptyText: <EmptyState title="暂无可评估策略" description="请先在策略搭建页创建策略。" compact />,
           }}
           pagination={tablePagination}
+          onChange={handleTableChange}
           scroll={{ x: 1820 }}
         />
       </Card>

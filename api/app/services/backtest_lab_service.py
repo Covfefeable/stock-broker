@@ -8,7 +8,7 @@ from math import isnan, sqrt
 import random
 from typing import Any
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, asc, desc, func, nullslast, or_
 
 from app.extensions import db
 from app.models.index_asset import IndexAsset
@@ -53,10 +53,13 @@ def list_backtest_lab_strategies(
     keyword: str = "",
     source: str = "",
     evaluation_status: str = "",
+    sort_by: str = "",
+    sort_order: str = "",
     page: int = 1,
     page_size: int = 10,
 ) -> dict:
     query = Strategy.query.filter(Strategy.user_id == user.id)
+    evaluation_joined = False
 
     normalized_keyword = keyword.strip()
     if normalized_keyword:
@@ -70,18 +73,30 @@ def list_backtest_lab_strategies(
             query = query.outerjoin(StrategyEvaluation, StrategyEvaluation.strategy_id == Strategy.id).filter(
                 StrategyEvaluation.id.is_(None)
             )
+            evaluation_joined = True
         elif evaluation_status == "evaluating":
             query = query.join(StrategyEvaluation, StrategyEvaluation.strategy_id == Strategy.id).filter(
                 StrategyEvaluation.user_id == user.id,
                 StrategyEvaluation.status.in_(("queued", "running")),
             )
+            evaluation_joined = True
         else:
             query = query.join(StrategyEvaluation, StrategyEvaluation.strategy_id == Strategy.id).filter(
                 StrategyEvaluation.user_id == user.id,
                 StrategyEvaluation.status == evaluation_status,
             )
+            evaluation_joined = True
 
-    query = query.order_by(Strategy.updated_at.desc())
+    if sort_by == "score":
+        if not evaluation_joined:
+            query = query.outerjoin(
+                StrategyEvaluation,
+                and_(StrategyEvaluation.strategy_id == Strategy.id, StrategyEvaluation.user_id == user.id),
+            )
+        direction = asc if sort_order == "asc" else desc
+        query = query.order_by(nullslast(direction(StrategyEvaluation.score)), Strategy.updated_at.desc(), Strategy.id.desc())
+    else:
+        query = query.order_by(Strategy.updated_at.desc())
     total = query.count()
     items = query.offset((page - 1) * page_size).limit(page_size).all()
     evaluations = {

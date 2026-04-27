@@ -79,12 +79,6 @@ def _build_generation_prompt(
 
 风险参数必须固定为：
 {json.dumps({
-    "initialCapital": float(task.initial_capital),
-    "positionSize": float(task.position_size),
-    "stopLoss": float(task.stop_loss),
-    "takeProfit": float(task.take_profit),
-    "minAddPositionInterval": task.min_add_position_interval,
-    "maxHoldingDays": task.max_holding_days,
     "forceCloseOnEnd": True,
     "backtestStartDate": task.backtest_start_date.isoformat(),
     "backtestEndDate": task.backtest_end_date.isoformat(),
@@ -122,61 +116,60 @@ def _build_generation_prompt(
 - 优先考虑把基础趋势因子与波动率、区间位置、量能变化、收益率变化、RSI、MACD、KDJ、ATR、BIAS、highest/lowest、std、pct_change 等组合起来，寻找更不容易过拟合的结构。
 - 每次 analysis 必须说明本轮是否使用了非基础因子；如果仍然主要使用 close/MA，必须解释为什么这样比使用其他因子更合理。
 
-返回 JSON，结构必须为：
-{{
-  "mode": "continue_best 或 refine_recent 或 explore_new 或 mutate",
-  "intent": "trend_following 或 trend_pullback 或 breakout 或 mean_reversion 或 dip_buying 或 momentum_acceleration 或 volatility_breakout 或 defensive_timing 或 range_trading",
-  "analysis": "先思考历史表现、买入持有基准、曲线诊断、当前目标和本轮选择原因；必须额外分析历史 tradeCount 是否过低、过密；必须总结 timeRobustness 的通过率、最差区间和失败原因，并判断是否过拟合或陷入局部最优；必须说明本轮是否使用非基础因子，若仍以 close/MA 为主则解释原因",
-  "plan": "基于本轮 intent 说明准备怎样设计 DSL，以及它预计会怎样改变交易行为",
-  "strategy": {{
-    "entry": {{
-      "type": "group",
-      "logic": "and" 或 "or",
-      "children": [ 条件或子组 ]
-    }},
-    "exit": {{
-      "type": "group",
-      "logic": "and" 或 "or",
-      "children": [ 条件或子组 ]
-    }},
-    "risk": {{
-      "initialCapital": number,
-      "positionSize": number,
-      "stopLoss": number,
-      "takeProfit": number,
-      "minAddPositionInterval": number,
-      "maxHoldingDays": number,
-      "backtestStartDate": "YYYY-MM-DD",
-      "backtestEndDate": "YYYY-MM-DD"
-    }}
-  }}
-}}
+返回 JSON 顶层字段协议：
+- mode：必须是 continue_best、refine_recent、explore_new、mutate 之一。
+- intent：必须是上方交易风格枚举之一。
+- analysis：字符串，必须分析历史表现、tradeCount、timeRobustness、买入持有基准、本轮选择原因、是否使用非基础因子。
+- plan：字符串，必须说明本轮 intent 如何落到 DSL，以及预计会怎样改变真实交易行为。
+- strategy：对象，只能包含 entryRules、exitRules、risk。
+- 不要输出 markdown、注释、自然语言前后缀或 JSON 以外的内容。
 
-条件节点格式：
-{{
-  "type": "condition",
-  "leftExpression": [
-    {{"type": "variable", "name": "close"}}
-  ],
-  "operator": ">",
-  "rightExpression": [
-    {{
-      "type": "function",
-      "name": "highest",
-      "args": [
-        [{{"type": "variable", "name": "close"}}],
-        [{{"type": "number", "value": 60}}]
-      ]
-    }}
-  ]
-}}
+规则列表说明：
+- entryRules 和 exitRules 都是按顺序判断的优先级列表，不要在规则之间设置 and/or。
+- entryRules 可以包含多条买入规则，exitRules 也可以包含多条卖出规则；不要默认只生成一条买入规则。
+- 每天先判断 exitRules，再判断 entryRules；同一侧从上到下命中第一条就执行，后续规则不再执行。
+- 如果存在不同买入场景，例如趋势突破、趋势回踩、低吸反转、动能加速、波动收敛后突破，应优先拆成 2 到 4 条 entryRules，并按优先级排序，而不是全部塞进一条巨大的 or 条件。
+- 多条买入规则可以使用不同 action.size；例如强确认买入 0.6，回踩试仓买入 0.3，突破加仓买入 0.4。
+- 只有当本轮确实只存在一个清晰买入场景时，才返回单条 entryRules；否则应主动使用多条买入规则探索更多入场路径。
+- 每条规则内部仍然使用 conditions 里的 and/or/嵌套条件组表达复杂逻辑。
+- 每一条规则的 conditions 必须永远是 {{"type": "group", "logic": "and 或 or", "children": [...]}}。
+- 禁止把单个 condition 直接放到规则的 conditions 上；即使只有一个条件，也必须包在 group.children 里。
+- action.size 表示本次仓位变化比例，0.33 表示买入或卖出 33% 总资金仓位，1 表示 100%；卖出 1 等同于清仓。
+- action.type 只能是 buy 或 sell；entryRules 中只能是 buy，exitRules 中只能是 sell。
+- action.size 必须是大于 0 且小于等于 1 的 JSON 数字，不能写成字符串、百分号、70、100 或中文。
+- 买入实际执行数量为 min(规则要求买入仓位, 剩余可用仓位)，因此不会超过满仓。
+- 卖出实际执行数量为 min(规则要求卖出仓位, 当前持仓仓位)，因此不会卖空。
+- 买入和卖出的仓位比例必须写在每条规则自己的 action.size 里，不存在全局买入仓位。
+- 止损、止盈、最长持仓等退出逻辑也必须表达成高优先级卖出规则，不能放在 risk 或额外字段里。
+- 不要描述或依赖 DSL 无法表达的隐藏状态，例如“持仓以来最高价”“真实追踪止损”“移动止盈水位”；如果要近似，只能使用可用字段、函数和表达式规则表达。
 
-表达式 token 只能使用：
-- {{"type": "variable", "name": "close", "offset": -1}}，offset 可省略，且必须 <= 0
-- {{"type": "number", "value": 20}}
-- {{"type": "operator", "value": "+"}}，value 只能是 + - * /
-- {{"type": "groupStart"}} 和 {{"type": "groupEnd"}}
-- {{"type": "function", "name": "avg", "args": [[表达式 tokens], [{{"type": "number", "value": 20}}]]}}
+DSL 结构硬性要求，违反任何一条都会被系统拒绝：
+- strategy 里只能使用 entryRules / exitRules / risk，不要返回旧字段 entry 或 exit。
+- entryRules 和 exitRules 都必须是数组，数组内每项必须包含 name、action、conditions。
+- mode 只能是 continue_best、refine_recent、explore_new、mutate 之一；intent 只能从上方 intent 枚举中选择英文值，不能写中文。
+- risk 必须原样使用上方固定风险参数，不要增加 initialCapital、positionSize、stopLoss、takeProfit、maxHoldingDays 等字段。
+- conditions 的 type 必须是 group；group.logic 只能是 and 或 or；group.children 里才能放 condition 或子 group，且 children 不能为空。
+- condition 必须同时包含 type、leftExpression、operator、rightExpression。
+- condition.operator 只能是 >、>=、<、<=、==、!=、cross_over、cross_under 之一，不能写中文、英文描述或符号以外的词。
+- leftExpression 和 rightExpression 必须是表达式 token 数组，不能是字符串、对象或数字。
+- 表达式 token 的语法是一个小型中缀表达式语法：Expression = Operand (ArithmeticOperator Operand)*。
+- Operand 只能是 variable、number、function，或由 groupStart / Expression / groupEnd 包裹的表达式。
+- token.type 只能是 variable、number、operator、groupStart、groupEnd、function。
+- variable token：type 必须是 variable；name 必须使用“可用字段”中的英文 value；offset 可省略，只能是 <= 0 的整数。
+- number token：type 必须是 number；value 必须是 JSON 数字，不能是字符串、百分号或中文。
+- operator token：type 必须是 operator；value 只能是 +、-、*、/；它只用于表达式内部算术，不能用于条件比较。
+- function token：type 必须是 function；name 必须是可用函数名；args 必须是表达式 token 数组的数组。
+- 函数名只能放在 function.name，不能放在 token.type；字段名只能放在 variable.name，不能放在 token.type。
+- 可用函数只有 abs、min、max、sum、avg、std、highest、lowest、change、pct_change；不要使用 ma、ema、sma、if、and、or、cross、rank 等未列出的函数。
+- 函数参数个数必须匹配：abs 1 个；min/max 2 个；sum/avg/std/highest/lowest/change/pct_change 2 个。
+- sum/avg/std/highest/lowest/change/pct_change 的第 2 个参数必须是单个正整数 number token 的表达式数组。
+- 如果需要移动平均，请优先使用字段 ma5/ma10/ma20/ma60/ma120；如需自定义窗口，可使用 avg(close, n) 的 function token。
+- 表达式数组不能为空；不能连续出现两个 Operand；二元 operator 前后都必须有 Operand。
+- 允许一元 + 或 -，但只允许出现在表达式开头、operator 之后或 groupStart 之后；负数阈值优先直接写成 number.value。
+- groupStart 和 groupEnd 必须成对出现，不能用字符串 "(" 或 ")" 代替。
+- 条件比较由 condition.operator 表达，表达式 token 内禁止出现 >、>=、<、<=、==、!=、cross_over、cross_under。
+- 量纲必须一致：收益率字段和收益率阈值比较，价格字段和价格表达式比较，波动/ATR 字段不能直接和 position_return 比较。
+- 规则的 conditions 必须永远是 group；即使只有一个条件，也要放在 group.children 中。
 
 要求：
 - 买入规则里不要使用持仓收益率和持仓天数

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import desc, func
+from sqlalchemy import desc
 
 from app.extensions import db
 from app.models.agent_task import AgentTask
@@ -12,6 +12,7 @@ from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock import Stock
 from app.models.stock_daily_bar import StockDailyBar
 from app.models.strategy import Strategy
+from app.models.strategy_evaluation import StrategyEvaluation
 from app.models.user import User
 from app.services.event_log_meta import event_name_label, sync_item_label
 
@@ -25,13 +26,14 @@ def get_dashboard_overview(user: User) -> dict:
             AgentTask.status.in_(("queued", "running")),
         ).count()
     )
-    best_strategy = (
-        Strategy.query.filter(
-            Strategy.user_id == user.id,
+    best_evaluation = (
+        StrategyEvaluation.query.join(Strategy, Strategy.id == StrategyEvaluation.strategy_id)
+        .filter(
+            StrategyEvaluation.user_id == user.id,
+            StrategyEvaluation.score.isnot(None),
             Strategy.archived_at.is_(None),
-            Strategy.annual_return.isnot(None),
         )
-        .order_by(desc(Strategy.annual_return), desc(Strategy.updated_at), desc(Strategy.id))
+        .order_by(desc(StrategyEvaluation.score), desc(StrategyEvaluation.updated_at), desc(StrategyEvaluation.id))
         .first()
     )
 
@@ -39,14 +41,14 @@ def get_dashboard_overview(user: User) -> dict:
         "metrics": {
             "syncedAssetCount": _synced_asset_count(),
             "strategyCount": strategy_count,
-            "bestAnnualReturn": _format_percent(best_strategy.annual_return if best_strategy else None),
+            "bestScore": _format_score(best_evaluation.score if best_evaluation else None),
             "agentTaskCount": agent_count,
             "runningAgentTaskCount": running_agent_count,
         },
-        "ranking": _list_strategy_ranking(user),
+        "ranking": _list_backtest_ranking(user),
         "agentTasks": _list_running_agent_tasks(user),
         "syncStatus": _list_sync_status(),
-        "recentBacktests": _list_recent_backtests(user),
+        "recentStrategies": _list_recent_strategies(user),
         "strategyAlerts": _list_strategy_alerts(user),
     }
 
@@ -71,27 +73,27 @@ def _synced_asset_count() -> int:
     return int(stock_count or 0) + int(index_count or 0)
 
 
-def _list_strategy_ranking(user: User) -> list[dict]:
+def _list_backtest_ranking(user: User) -> list[dict]:
     rows = (
-        Strategy.query.filter(
-            Strategy.user_id == user.id,
+        StrategyEvaluation.query.join(Strategy, Strategy.id == StrategyEvaluation.strategy_id)
+        .filter(
+            StrategyEvaluation.user_id == user.id,
+            StrategyEvaluation.score.isnot(None),
             Strategy.archived_at.is_(None),
-            Strategy.annual_return.isnot(None),
         )
-        .order_by(desc(Strategy.annual_return), desc(Strategy.updated_at), desc(Strategy.id))
-        .limit(8)
+        .order_by(desc(StrategyEvaluation.score), desc(StrategyEvaluation.updated_at), desc(StrategyEvaluation.id))
+        .limit(5)
         .all()
     )
     return [
         {
-            "id": row.id,
+            "id": row.strategy_id,
             "rank": index + 1,
-            "name": row.name,
-            "type": row.type,
-            "source": row.source,
-            "annualReturn": _format_percent(row.annual_return),
-            "drawdown": _format_percent(row.max_drawdown),
-            "status": row.status,
+            "name": row.strategy.name if row.strategy else "-",
+            "type": row.strategy.type if row.strategy else "-",
+            "source": row.strategy.source if row.strategy else "-",
+            "score": _format_score(row.score),
+            "conclusion": row.conclusion,
             "updatedAt": row.updated_at.isoformat() if row.updated_at else None,
         }
         for index, row in enumerate(rows)
@@ -172,22 +174,21 @@ def _sync_target_status(target: str) -> str:
     return "empty"
 
 
-def _list_recent_backtests(user: User) -> list[dict]:
+def _list_recent_strategies(user: User) -> list[dict]:
     rows = (
         Strategy.query.filter(
             Strategy.user_id == user.id,
-            Strategy.annual_return.isnot(None),
+            Strategy.archived_at.is_(None),
         )
         .order_by(desc(Strategy.updated_at), desc(Strategy.id))
-        .limit(6)
+        .limit(5)
         .all()
     )
     return [
         {
             "id": row.id,
             "name": row.name,
-            "annualReturn": _format_percent(row.annual_return),
-            "drawdown": _format_percent(row.max_drawdown),
+            "source": row.source,
             "status": row.status,
             "updatedAt": row.updated_at.isoformat() if row.updated_at else None,
         }
@@ -221,6 +222,12 @@ def _format_percent(value: Decimal | None) -> str | None:
     if value is None:
         return None
     return f"{float(value):.2f}%"
+
+
+def _format_score(value: Decimal | None) -> str | None:
+    if value is None:
+        return None
+    return f"{float(value):.2f}"
 
 
 def _decimal_to_float(value: Decimal | None) -> float:

@@ -23,12 +23,6 @@ export type AgentTaskItem = {
   targetAnnualReturn: number | null;
   maxDrawdownLimit: number | null;
   minSharpe: number | null;
-  initialCapital: number | null;
-  positionSize: number | null;
-  stopLoss: number | null;
-  takeProfit: number | null;
-  minAddPositionInterval: number;
-  maxHoldingDays: number;
   backtestStartDate: string | null;
   backtestEndDate: string | null;
   bestAnnualReturn: number | null;
@@ -52,6 +46,7 @@ export type AgentIterationItem = {
   maxDrawdown: number | null;
   sharpe: number | null;
   score?: number | null;
+  benchmarkScore?: number | null;
   strategyConfig: Record<string, unknown>;
   intent?: string | null;
   intentLabel?: string | null;
@@ -60,6 +55,10 @@ export type AgentIterationItem = {
   analysis?: string | null;
   actionPlan?: string | null;
   summary: string;
+  equityPreview?: {
+    equityCurve: Array<{ date: string; value: number }>;
+    benchmarkCurve: Array<{ date: string; value: number }>;
+  } | null;
   createdAt: string | null;
 };
 

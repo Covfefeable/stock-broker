@@ -65,25 +65,35 @@ export type RuleGroup = {
 
 export type RuleNode = RuleCondition | RuleGroup;
 
+export type StrategyRuleAction = {
+  type: "buy" | "sell";
+  size: number;
+};
+
+export type StrategyRule = {
+  id: string;
+  name: string;
+  action: StrategyRuleAction;
+  conditions: RuleGroup;
+};
+
 export type RiskBacktestConfig = {
-  initialCapital: number;
-  positionSize: number;
-  stopLoss: number;
-  takeProfit: number;
-  minAddPositionInterval: number;
-  maxHoldingDays: number;
   forceCloseOnEnd: boolean;
   backtestStartDate: string;
   backtestEndDate: string;
 };
 
 export type StrategyDslConfig = {
-  entry: RuleGroup;
-  exit: RuleGroup;
+  entryRules: StrategyRule[];
+  exitRules: StrategyRule[];
+  entry?: RuleGroup;
+  exit?: RuleGroup;
   risk: RiskBacktestConfig;
 };
 
 export type StrategyPreviewResult = {
+  score?: number;
+  benchmarkScore?: number;
   annualReturn: number;
   benchmarkAnnualReturn: number;
   totalReturn: number;
@@ -124,7 +134,7 @@ export type StrategyPreviewResult = {
     unrealizedReturn: number | null;
   };
   nextAction: {
-    action: "下一个交易日开盘买入" | "下一个交易日开盘卖出" | "继续持有" | "继续观望";
+    action: string;
     reason: string;
   };
 };

@@ -78,6 +78,7 @@ EXPRESSION_FUNCTION_ARITY = {
 WINDOW_FUNCTIONS = {"sum", "avg", "std", "highest", "lowest"}
 CHANGE_FUNCTIONS = {"change", "pct_change"}
 INDICATOR_WARMUP_BARS = 180
+MIN_ANNUALIZATION_PERIODS = 60
 
 
 def _parse_optional_metric(value: Any) -> Decimal | None:
@@ -515,13 +516,53 @@ def _to_float(value: Any) -> float | None:
 
 
 def _validate_strategy_config(strategy_config: dict) -> None:
-    entry_group = strategy_config.get("entry")
-    exit_group = strategy_config.get("exit")
     risk = strategy_config.get("risk")
-    if not isinstance(entry_group, dict) or not isinstance(exit_group, dict) or not isinstance(risk, dict):
+    entry_rules = _normalize_strategy_rules(strategy_config, "entry")
+    exit_rules = _normalize_strategy_rules(strategy_config, "exit")
+    if not isinstance(risk, dict):
         raise StrategyError("规则配置缺少买入规则、卖出规则或风控参数。")
-    _validate_rule_group(entry_group, "买入规则")
-    _validate_rule_group(exit_group, "卖出规则")
+    _validate_ordered_rules(entry_rules, "买入规则", "buy")
+    _validate_ordered_rules(exit_rules, "卖出规则", "sell")
+
+
+def _normalize_strategy_rules(strategy_config: dict, scope: str) -> list[dict]:
+    rules_key = "entryRules" if scope == "entry" else "exitRules"
+    legacy_key = "entry" if scope == "entry" else "exit"
+    action_type = "buy" if scope == "entry" else "sell"
+
+    rules = strategy_config.get(rules_key)
+    if isinstance(rules, list) and rules:
+        return rules
+
+    legacy_group = strategy_config.get(legacy_key)
+    if isinstance(legacy_group, dict):
+        return [
+            {
+                "id": f"{scope}_legacy",
+                "name": "买入规则" if scope == "entry" else "卖出规则",
+                "action": {"type": action_type, "size": 1.0},
+                "conditions": legacy_group,
+            }
+        ]
+    return []
+
+
+def _validate_ordered_rules(rules: list[dict], label: str, action_type: str) -> None:
+    if not isinstance(rules, list) or not rules:
+        raise StrategyError(f"{label}不能为空。")
+    for index, rule in enumerate(rules, start=1):
+        if not isinstance(rule, dict):
+            raise StrategyError(f"{label}第 {index} 条规则格式无效。")
+        conditions = rule.get("conditions")
+        action = rule.get("action")
+        if not isinstance(conditions, dict) or not isinstance(action, dict):
+            raise StrategyError(f"{label}第 {index} 条规则缺少条件或动作。")
+        if action.get("type") != action_type:
+            raise StrategyError(f"{label}第 {index} 条规则动作类型无效。")
+        size = _parse_number_token(action.get("size"), f"{label}第 {index} 条规则仓位")
+        if size <= 0 or size > 1:
+            raise StrategyError(f"{label}第 {index} 条规则仓位必须大于 0 且不超过 100%。")
+        _validate_rule_group(conditions, f"{label}第 {index} 条规则")
 
 
 def _validate_rule_group(group: dict, label: str) -> None:
@@ -567,6 +608,10 @@ def _validate_expression_tokens(tokens: Any, label: str) -> None:
         elif token_type == "operator":
             if token.get("value") not in EXPRESSION_OPERATOR_VALUES:
                 raise StrategyError(f"{label}第 {index} 个运算符无效。")
+            if token.get("value") in {"+", "-"} and previous_kind in {None, "operator", "groupStart"}:
+                current_kind = "unaryOperator"
+                previous_kind = current_kind
+                continue
             if previous_kind not in {"value", "groupEnd"}:
                 raise StrategyError(f"{label}第 {index} 个运算符前缺少值。")
             current_kind = "operator"
@@ -589,7 +634,7 @@ def _validate_expression_tokens(tokens: Any, label: str) -> None:
 
     if balance != 0:
         raise StrategyError(f"{label}括号不匹配。")
-    if previous_kind in {"operator", "groupStart"}:
+    if previous_kind in {"operator", "groupStart", "unaryOperator"}:
         raise StrategyError(f"{label}结尾缺少值。")
 
 
@@ -634,6 +679,33 @@ def _parse_number_token(value: Any, label: str) -> float:
         raise StrategyError(f"{label}格式无效。") from exc
 
 
+def _find_triggered_strategy_rule(rules: list[dict], contexts: list[dict], current_index: int) -> dict | None:
+    for rule in rules:
+        conditions = rule.get("conditions") or {}
+        if _evaluate_group(conditions, contexts, current_index):
+            return rule
+    return None
+
+
+def _rule_action_size(rule: dict | None, default: float) -> float:
+    if not rule:
+        return default
+    action = rule.get("action") or {}
+    try:
+        return max(min(float(action.get("size", default)), 1.0), 0.0)
+    except (TypeError, ValueError):
+        return default
+
+
+def _format_rule_reason(rule: dict | None, fallback: str) -> str:
+    if not rule:
+        return fallback
+    name = str(rule.get("name") or "").strip()
+    if not name:
+        return fallback
+    return f"{name}触发"
+
+
 def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     first_backtest_index = next(
         (index for index, bar in enumerate(bars) if not bar.get("isWarmup")),
@@ -645,29 +717,21 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     indicators = _calculate_indicators(bars)
     risk = strategy_config.get("risk") or {}
     initial_capital = float(risk.get("initialCapital") or 100000)
-    position_size = float(risk.get("positionSize") or 1.0)
-    min_add_position_interval_value = risk.get("minAddPositionInterval", 3)
-    min_add_position_interval = max(
-        int(min_add_position_interval_value if min_add_position_interval_value not in (None, "") else 3),
-        0,
-    )
-    stop_loss = float(risk.get("stopLoss") or 0)
-    take_profit = float(risk.get("takeProfit") or 0)
-    max_holding_days = int(risk.get("maxHoldingDays") or 0)
     force_close_on_end = bool(risk.get("forceCloseOnEnd", True))
 
-    entry_group = strategy_config.get("entry") or {}
-    exit_group = strategy_config.get("exit") or {}
+    entry_rules = _normalize_strategy_rules(strategy_config, "entry")
+    exit_rules = _normalize_strategy_rules(strategy_config, "exit")
 
     cash = initial_capital
     shares = 0.0
     entry_price: float | None = None
     entry_index: int | None = None
-    last_buy_index: int | None = None
     trades: list[dict[str, Any]] = []
     wins = 0
     pending_buy_signal = False
     pending_sell_signal = False
+    pending_buy_size = 0.0
+    pending_sell_size = 0.0
     pending_entry_reason: str | None = None
     pending_exit_reason: str | None = None
 
@@ -696,37 +760,55 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                 }
             )
             continue
-        if close_price is None:
-            equity_curve.append(cash)
+        if close_price is None or close_price <= 0:
+            equity_curve.append(equity_curve[-1] if equity_curve else cash)
             benchmark_curve.append(benchmark_curve[-1] if benchmark_curve else initial_capital)
             continue
 
-        if shares > 0 and pending_sell_signal and open_price is not None:
-            proceeds = shares * open_price
+        if shares > 0 and pending_sell_signal and open_price is not None and open_price > 0:
+            total_equity_at_open = cash + shares * open_price
+            current_position_value = shares * open_price
+            normalized_sell_size = max(min(pending_sell_size or 1.0, 1.0), 0.0)
+            target_sell_value = current_position_value if normalized_sell_size >= 1.0 else total_equity_at_open * normalized_sell_size
+            sell_value = min(current_position_value, target_sell_value)
+            sell_shares = sell_value / open_price if open_price > 0 else 0.0
+            proceeds = sell_shares * open_price
             cash += proceeds
             pnl_ratio = ((open_price - entry_price) / entry_price) if entry_price else 0.0
             if pnl_ratio > 0:
                 wins += 1
+            remaining_shares = max(0.0, shares - sell_shares)
+            next_position_ratio = (
+                (remaining_shares * open_price) / (cash + remaining_shares * open_price) * 100
+                if remaining_shares > 0 and cash + remaining_shares * open_price > 0
+                else 0.0
+            )
             trades.append(
                 {
                     "date": bar["date"].isoformat(),
                     "side": "sell",
                     "price": round(open_price, 4),
-                    "shares": round(shares, 6),
-                    "positionRatio": 0.0,
+                    "shares": round(sell_shares, 6),
+                    "positionRatio": round(next_position_ratio, 2),
                     "return": round(pnl_ratio * 100, 2),
                     "reason": pending_exit_reason or "卖出规则触发",
                 }
             )
-            shares = 0.0
-            entry_price = None
-            entry_index = None
+            shares = remaining_shares
+            if shares <= 1e-8:
+                shares = 0.0
+                entry_price = None
+                entry_index = None
             pending_sell_signal = False
+            pending_sell_size = 0.0
+            pending_exit_reason = None
+        elif pending_sell_signal and (open_price is None or open_price <= 0):
+            pending_sell_signal = False
+            pending_sell_size = 0.0
             pending_exit_reason = None
 
-        can_execute_buy_by_interval = last_buy_index is None or index - last_buy_index >= min_add_position_interval
-        if pending_buy_signal and open_price is not None and can_execute_buy_by_interval:
-            normalized_position_size = max(min(position_size, 1.0), 0.0)
+        if pending_buy_signal and open_price is not None and open_price > 0:
+            normalized_position_size = max(min(pending_buy_size, 1.0), 0.0)
             total_equity_at_open = cash + shares * open_price
             current_position_ratio = (
                 (shares * open_price) / total_equity_at_open
@@ -734,12 +816,11 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                 else 0.0
             )
             available_position_ratio = max(0.0, 1.0 - current_position_ratio)
-            order_position_ratio = normalized_position_size
+            order_position_ratio = min(normalized_position_size, available_position_ratio)
             investable_cash = total_equity_at_open * order_position_ratio
 
             if (
                 order_position_ratio > 0
-                and available_position_ratio + 1e-6 >= order_position_ratio
                 and cash + 1e-6 >= investable_cash
                 and investable_cash > 0
             ):
@@ -753,8 +834,6 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                 entry_price = total_cost / total_shares if total_shares > 0 else None
                 if entry_index is None:
                     entry_index = index
-                last_buy_index = index
-
                 trades.append(
                     {
                         "date": bar["date"].isoformat(),
@@ -768,6 +847,11 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                     }
                 )
             pending_buy_signal = False
+            pending_buy_size = 0.0
+            pending_entry_reason = None
+        elif pending_buy_signal and (open_price is None or open_price <= 0):
+            pending_buy_signal = False
+            pending_buy_size = 0.0
             pending_entry_reason = None
 
         context = {
@@ -781,19 +865,11 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
         current_context_index = len(evaluation_contexts) - 1
 
         if shares > 0:
-            position_return = context["position_return"]
-            holding_days = context["holding_days"]
-            risk_reason: str | None = None
-            if stop_loss and position_return is not None and position_return <= -abs(stop_loss):
-                risk_reason = "止损触发"
-            if take_profit and position_return is not None and position_return >= abs(take_profit):
-                risk_reason = "止盈触发"
-            if max_holding_days and holding_days is not None and holding_days >= max_holding_days:
-                risk_reason = "最大持仓天数触发"
-
-            if risk_reason or _evaluate_group(exit_group, evaluation_contexts, current_context_index):
+            triggered_exit_rule = _find_triggered_strategy_rule(exit_rules, evaluation_contexts, current_context_index)
+            if triggered_exit_rule:
                 pending_sell_signal = True
-                pending_exit_reason = risk_reason or "卖出规则触发"
+                pending_sell_size = _rule_action_size(triggered_exit_rule, 1.0)
+                pending_exit_reason = _format_rule_reason(triggered_exit_rule, "卖出规则触发")
 
         total_equity_for_signal = cash + shares * close_price
         current_position_ratio_for_signal = (
@@ -801,16 +877,14 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             if shares > 0 and total_equity_for_signal > 0
             else 0.0
         )
-        normalized_position_size_for_signal = max(min(position_size, 1.0), 0.0)
-        can_add_by_interval = last_buy_index is None or index + 1 - last_buy_index >= min_add_position_interval
-        can_add_position = (
-            normalized_position_size_for_signal > 0
-            and current_position_ratio_for_signal + normalized_position_size_for_signal <= 1.0 + 1e-6
-            and can_add_by_interval
-        )
-        if not pending_sell_signal and can_add_position and _evaluate_group(entry_group, evaluation_contexts, current_context_index):
+        triggered_entry_rule = _find_triggered_strategy_rule(entry_rules, evaluation_contexts, current_context_index)
+        normalized_position_size_for_signal = _rule_action_size(triggered_entry_rule, 0.0)
+        available_position_ratio_for_signal = max(0.0, 1.0 - current_position_ratio_for_signal)
+        can_add_position = normalized_position_size_for_signal > 0 and available_position_ratio_for_signal > 1e-6
+        if not pending_sell_signal and triggered_entry_rule and can_add_position:
             pending_buy_signal = True
-            pending_entry_reason = "买入规则触发"
+            pending_buy_size = normalized_position_size_for_signal
+            pending_entry_reason = _format_rule_reason(triggered_entry_rule, "买入规则触发")
 
         total_equity = cash + shares * close_price
         equity_curve.append(total_equity)
@@ -832,13 +906,15 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     }
 
     if shares > 0 and pending_sell_signal:
+        sell_percent = round(max(min(pending_sell_size or 1.0, 1.0), 0.0) * 100, 2)
         next_action = {
-            "action": "下一个交易日开盘卖出",
+            "action": f"下一个交易日开盘卖出 {sell_percent:g}%",
             "reason": pending_exit_reason or "卖出规则触发",
         }
     elif shares > 0 and pending_buy_signal:
+        buy_percent = round(max(min(pending_buy_size, 1.0), 0.0) * 100, 2)
         next_action = {
-            "action": "下一个交易日开盘加仓",
+            "action": f"下一个交易日开盘加仓 {buy_percent:g}%",
             "reason": pending_entry_reason or "买入规则触发",
         }
     elif shares > 0:
@@ -847,8 +923,9 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             "reason": "当前未触发卖出条件或风控条件。",
         }
     elif pending_buy_signal:
+        buy_percent = round(max(min(pending_buy_size, 1.0), 0.0) * 100, 2)
         next_action = {
-            "action": "下一个交易日开盘买入",
+            "action": f"下一个交易日开盘买入 {buy_percent:g}%",
             "reason": pending_entry_reason or "买入规则触发",
         }
     else:
@@ -857,13 +934,11 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             "reason": "当前未触发买入条件。",
         }
 
-    if force_close_on_end and shares > 0 and backtest_bars[-1]["close"] is not None:
+    if force_close_on_end and shares > 0 and backtest_bars[-1]["close"] is not None and backtest_bars[-1]["close"] > 0:
         close_price = backtest_bars[-1]["close"]
         proceeds = shares * close_price
         cash += proceeds
         pnl_ratio = ((close_price - entry_price) / entry_price) if entry_price else 0.0
-        if pnl_ratio > 0:
-            wins += 1
         trades.append(
                 {
                     "date": backtest_bars[-1]["date"].isoformat(),
@@ -873,6 +948,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
                     "positionRatio": 0.0,
                     "return": round(pnl_ratio * 100, 2),
                     "reason": "回测结束强制平仓",
+                    "isForcedExit": True,
                 }
             )
         shares = 0.0
@@ -881,15 +957,11 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     final_equity = equity_curve[-1] if equity_curve else initial_capital
     total_return_ratio = (final_equity / initial_capital) - 1 if initial_capital else 0.0
     periods = max(len(equity_curve) - 1, 1)
-    annual_return_ratio = (final_equity / initial_capital) ** (252 / periods) - 1 if initial_capital and final_equity > 0 else 0.0
+    annual_return_ratio = _calculate_annual_return(final_equity, initial_capital, periods)
     max_drawdown_ratio = _calculate_max_drawdown(equity_curve)
     benchmark_final = benchmark_curve[-1] if benchmark_curve else initial_capital
     benchmark_return_ratio = (benchmark_final / initial_capital) - 1 if initial_capital else 0.0
-    benchmark_annual_return_ratio = (
-        (benchmark_final / initial_capital) ** (252 / periods) - 1
-        if initial_capital and benchmark_final > 0
-        else 0.0
-    )
+    benchmark_annual_return_ratio = _calculate_annual_return(benchmark_final, initial_capital, periods)
     daily_returns = _calculate_daily_returns(equity_curve)
     benchmark_daily_returns = _calculate_daily_returns(benchmark_curve)
     volatility_ratio = _calculate_annualized_volatility(daily_returns)
@@ -897,7 +969,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
     sharpe_ratio = _calculate_sharpe_ratio(daily_returns)
     benchmark_sharpe_ratio = _calculate_sharpe_ratio(benchmark_daily_returns)
     benchmark_max_drawdown_ratio = _calculate_max_drawdown(benchmark_curve)
-    sell_trades = [trade for trade in trades if trade["side"] == "sell"]
+    sell_trades = [trade for trade in trades if trade["side"] == "sell" and not trade.get("isForcedExit")]
     benchmark_up_days = sum(1 for item in benchmark_daily_returns if item > 0)
     benchmark_win_rate = (benchmark_up_days / len(benchmark_daily_returns) * 100) if benchmark_daily_returns else 0.0
 
@@ -946,6 +1018,15 @@ def _calculate_max_drawdown(equity_curve: list[float]) -> float:
         if peak > 0:
             max_drawdown = max(max_drawdown, (peak - value) / peak)
     return max_drawdown
+
+
+def _calculate_annual_return(final_equity: float, initial_capital: float, periods: int) -> float:
+    if not initial_capital or final_equity <= 0:
+        return 0.0
+    total_return = (final_equity / initial_capital) - 1
+    if periods < MIN_ANNUALIZATION_PERIODS:
+        return total_return
+    return (final_equity / initial_capital) ** (252 / periods) - 1
 
 
 def _calculate_daily_returns(equity_curve: list[float]) -> list[float]:
@@ -1349,12 +1430,21 @@ def _evaluate_condition(condition: dict, contexts: list[dict[str, Any]], context
 def _evaluate_expression(tokens: list[dict], contexts: list[dict[str, Any]], context_index: int) -> float | None:
     output: list[float] = []
     operators: list[str] = []
-    precedence = {"+": 1, "-": 1, "*": 2, "/": 2}
+    precedence = {"+": 1, "-": 1, "*": 2, "/": 2, "u+": 3, "u-": 3}
+    previous_kind: str | None = None
 
     def apply_operator() -> bool:
-        if len(output) < 2 or not operators:
+        if not operators:
             return False
         operator = operators.pop()
+        if operator in {"u+", "u-"}:
+            if not output:
+                return False
+            value = output.pop()
+            output.append(value if operator == "u+" else -value)
+            return True
+        if len(output) < 2:
+            return False
         right = output.pop()
         left = output.pop()
         if operator == "+":
@@ -1378,14 +1468,19 @@ def _evaluate_expression(tokens: list[dict], contexts: list[dict[str, Any]], con
             if value is None:
                 return None
             output.append(value)
+            previous_kind = "value"
         elif token_type == "operator":
             operator = token.get("value")
+            if operator in {"+", "-"} and previous_kind in {None, "operator", "groupStart"}:
+                operator = f"u{operator}"
             while operators and operators[-1] != "(" and precedence[operators[-1]] >= precedence.get(operator, 0):
                 if not apply_operator():
                     return None
             operators.append(operator)
+            previous_kind = "operator"
         elif token_type == "groupStart":
             operators.append("(")
+            previous_kind = "groupStart"
         elif token_type == "groupEnd":
             while operators and operators[-1] != "(":
                 if not apply_operator():
@@ -1393,6 +1488,7 @@ def _evaluate_expression(tokens: list[dict], contexts: list[dict[str, Any]], con
             if not operators or operators[-1] != "(":
                 return None
             operators.pop()
+            previous_kind = "value"
         else:
             return None
 

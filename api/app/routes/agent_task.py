@@ -29,6 +29,8 @@ def get_agent_tasks():
         country_code=request.args.get("countryCode", default="", type=str),
         asset_type=request.args.get("assetType", default="", type=str),
         status=request.args.get("status", default="", type=str),
+        sort_by=request.args.get("sortBy", default="", type=str),
+        sort_order=request.args.get("sortOrder", default="", type=str),
         page=page,
         page_size=page_size,
     )

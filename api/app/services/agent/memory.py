@@ -6,7 +6,7 @@ from app.models.agent_iteration import AgentIteration
 from app.models.agent_task import AgentTask
 from app.services.agent.curve_diagnostics import _format_curve_diagnostics_for_memory
 from app.services.agent.labels import _agent_intent_label, _agent_mode_label
-from app.services.agent.strategy_description import _describe_group
+from app.services.agent.strategy_description import _describe_rule_list
 from app.services.agent.time_robustness import _format_time_robustness_for_memory
 from app.services.performance_score import calculate_performance_score
 
@@ -111,8 +111,8 @@ def _build_iteration_memory(
             "tradeCount": preview.get("tradeCount"),
         },
         "strategyDigest": {
-            "entry": _describe_group(strategy_config.get("entry") or {}),
-            "exit": _describe_group(strategy_config.get("exit") or {}),
+            "entry": _describe_rule_list(strategy_config, "entry"),
+            "exit": _describe_rule_list(strategy_config, "exit"),
         },
         "curveDiagnostics": curve_diagnostics,
         "timeRobustness": time_robustness,
@@ -162,8 +162,8 @@ def _build_iteration_detail_analysis(task: AgentTask, iteration: AgentIteration)
 
 def _build_iteration_detail_action_plan(task: AgentTask, iteration: AgentIteration) -> str:
     strategy_config = iteration.strategy_config or {}
-    entry_desc = _describe_group(strategy_config.get("entry") or {})
-    exit_desc = _describe_group(strategy_config.get("exit") or {})
+    entry_desc = _describe_rule_list(strategy_config, "entry")
+    exit_desc = _describe_rule_list(strategy_config, "exit")
     annual_return = float(iteration.annual_return) if iteration.annual_return is not None else None
     max_drawdown = float(iteration.max_drawdown) if iteration.max_drawdown is not None else None
     sharpe = float(iteration.sharpe) if iteration.sharpe is not None else None

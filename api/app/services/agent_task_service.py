@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import desc, or_
+from sqlalchemy import asc, desc, nullslast, or_
 
 from app.extensions import db
 from app.models.agent_iteration import AgentIteration
@@ -22,7 +22,7 @@ from app.services.agent.memory import (
     _build_iteration_memory,
     _select_agent_prompt_memories,
 )
-from app.services.agent.strategy_description import _describe_group
+from app.services.agent.strategy_description import _describe_rule_list
 from app.services.agent.time_robustness import (
     _build_time_robustness_summary,
     _resolve_preview_range,
@@ -52,6 +52,8 @@ def list_agent_tasks(
     country_code: str = "",
     asset_type: str = "",
     status: str = "",
+    sort_by: str = "",
+    sort_order: str = "",
     page: int = 1,
     page_size: int = 10,
 ) -> dict:
@@ -75,7 +77,11 @@ def list_agent_tasks(
     if status:
         query = query.filter(AgentTask.status == status)
 
-    query = query.order_by(desc(AgentTask.updated_at), desc(AgentTask.id))
+    if sort_by == "bestAnnualReturn":
+        direction = asc if sort_order == "asc" else desc
+        query = query.order_by(nullslast(direction(AgentTask.best_annual_return)), desc(AgentTask.updated_at), desc(AgentTask.id))
+    else:
+        query = query.order_by(desc(AgentTask.updated_at), desc(AgentTask.id))
     total = query.count()
     items = query.offset((page - 1) * page_size).limit(page_size).all()
 
@@ -118,6 +124,17 @@ def get_agent_task_detail(user: User, task_id: int) -> dict:
     task_payload = task.to_dict()
     score_weights = get_performance_score_weights(user)
     best_iteration = _get_best_iteration(task, score_weights=score_weights)
+    bars = _load_asset_bars(
+        task.asset_type,
+        task.asset_identifier,
+        task.country_code,
+        {
+            "risk": {
+                "backtestStartDate": task.backtest_start_date.isoformat(),
+                "backtestEndDate": task.backtest_end_date.isoformat(),
+            }
+        },
+    )
     task_payload["bestMaxDrawdown"] = (
         round(float(best_iteration.max_drawdown), 2)
         if best_iteration and best_iteration.max_drawdown is not None
@@ -126,7 +143,10 @@ def get_agent_task_detail(user: User, task_id: int) -> dict:
     task_payload["bestScore"] = _score_iteration(best_iteration, weights=score_weights)
     return {
         "task": task_payload,
-        "iterations": [_serialize_agent_iteration_detail(task, item, score_weights=score_weights) for item in task.iterations],
+        "iterations": [
+            _serialize_agent_iteration_detail(task, item, score_weights=score_weights, bars=bars)
+            for item in task.iterations
+        ],
     }
 
 
@@ -163,6 +183,17 @@ def preview_agent_iteration(
     preview = _run_strategy_backtest(bars, iteration.strategy_config or {})
     preview["rangeKey"] = range_config["key"]
     preview["rangeLabel"] = range_config["label"]
+    score_weights = get_performance_score_weights(user)
+    preview["score"] = round(_score_result(preview, weights=score_weights), 2)
+    preview["benchmarkScore"] = round(
+        calculate_performance_score(
+            preview.get("benchmarkAnnualReturn"),
+            preview.get("benchmarkSharpe"),
+            preview.get("benchmarkMaxDrawdown"),
+            weights=score_weights,
+        ),
+        2,
+    )
     return preview
 
 
@@ -185,7 +216,13 @@ def _get_best_iteration(task: AgentTask, *, score_weights: dict[str, float] | No
     )
 
 
-def _serialize_agent_iteration_detail(task: AgentTask, iteration: AgentIteration, *, score_weights: dict[str, float] | None = None) -> dict:
+def _serialize_agent_iteration_detail(
+    task: AgentTask,
+    iteration: AgentIteration,
+    *,
+    score_weights: dict[str, float] | None = None,
+    bars: list[dict] | None = None,
+) -> dict:
     payload = iteration.to_dict()
     payload["score"] = _score_iteration(iteration, weights=score_weights)
     payload["intentLabel"] = _agent_intent_label(payload.get("intent")) if payload.get("intent") else None
@@ -203,7 +240,54 @@ def _serialize_agent_iteration_detail(task: AgentTask, iteration: AgentIteration
     payload["analysis"] = analysis
     payload["actionPlan"] = action_plan
     payload["memory"] = memory
+    preview_summary = _build_iteration_equity_preview(iteration, bars or [], score_weights=score_weights)
+    payload["equityPreview"] = preview_summary.get("equityPreview") if preview_summary else None
+    payload["benchmarkScore"] = preview_summary.get("benchmarkScore") if preview_summary else None
     return payload
+
+
+def _build_iteration_equity_preview(
+    iteration: AgentIteration,
+    bars: list[dict],
+    *,
+    score_weights: dict[str, float] | None = None,
+) -> dict | None:
+    if not bars or not iteration.strategy_config:
+        return None
+    try:
+        preview = _run_strategy_backtest(bars, iteration.strategy_config or {})
+    except Exception:  # noqa: BLE001
+        return None
+    return {
+        "equityPreview": {
+            "equityCurve": _downsample_curve(preview.get("equityCurve") or []),
+            "benchmarkCurve": _downsample_curve(preview.get("benchmarkCurve") or []),
+        },
+        "benchmarkScore": round(
+            calculate_performance_score(
+                preview.get("benchmarkAnnualReturn"),
+                preview.get("benchmarkSharpe"),
+                preview.get("benchmarkMaxDrawdown"),
+                weights=score_weights,
+            ),
+            2,
+        ),
+    }
+
+
+def _downsample_curve(curve: list[dict], max_points: int = 80) -> list[dict]:
+    if len(curve) <= max_points:
+        return curve
+    step = (len(curve) - 1) / (max_points - 1)
+    sampled: list[dict] = []
+    seen: set[int] = set()
+    for index in range(max_points):
+        source_index = round(index * step)
+        if source_index in seen:
+            continue
+        seen.add(source_index)
+        sampled.append(curve[source_index])
+    return sampled
 
 
 def _score_iteration(iteration: AgentIteration | None, *, weights: dict[str, float] | None = None) -> float | None:
@@ -273,12 +357,12 @@ def create_agent_task(user: User, payload: dict) -> AgentTask:
         target_annual_return=_parse_decimal(payload.get("targetAnnualReturn"), "目标年化收益率"),
         max_drawdown_limit=_parse_decimal(payload.get("maxDrawdownLimit"), "最大可接受回撤"),
         min_sharpe=_parse_decimal(payload.get("minSharpe"), "最低 Sharpe"),
-        initial_capital=_parse_decimal(payload.get("initialCapital"), "初始资金"),
-        position_size=_parse_decimal(payload.get("positionSize"), "每次买入仓位"),
-        stop_loss=_parse_decimal(payload.get("stopLoss"), "止损比例"),
-        take_profit=_parse_decimal(payload.get("takeProfit"), "止盈比例"),
-        min_add_position_interval=_parse_int(payload.get("minAddPositionInterval", 3), "最小加仓间隔"),
-        max_holding_days=_parse_int(payload.get("maxHoldingDays"), "最大持仓天数"),
+        initial_capital=Decimal("100000"),
+        position_size=Decimal("1"),
+        stop_loss=Decimal("0"),
+        take_profit=Decimal("0"),
+        min_add_position_interval=0,
+        max_holding_days=0,
         backtest_start_date=_parse_date(payload.get("backtestStartDate"), "回测开始日期"),
         backtest_end_date=_parse_date(payload.get("backtestEndDate"), "回测结束日期"),
     )
@@ -339,12 +423,6 @@ def rerun_agent_task(user: User, task_id: int) -> AgentTask:
             "targetAnnualReturn": task.target_annual_return,
             "maxDrawdownLimit": task.max_drawdown_limit,
             "minSharpe": task.min_sharpe,
-            "initialCapital": task.initial_capital,
-            "positionSize": task.position_size,
-            "stopLoss": task.stop_loss,
-            "takeProfit": task.take_profit,
-            "minAddPositionInterval": task.min_add_position_interval,
-            "maxHoldingDays": task.max_holding_days,
             "backtestStartDate": task.backtest_start_date.isoformat(),
             "backtestEndDate": task.backtest_end_date.isoformat(),
         },
@@ -556,8 +634,8 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
                 "sharpe": preview["sharpe"],
                 "tradeCount": preview.get("tradeCount"),
                 "timeRobustness": time_robustness.get("summary") or {},
-                "entry": _describe_group(strategy_config.get("entry") or {}),
-                "exit": _describe_group(strategy_config.get("exit") or {}),
+                "entry": _describe_rule_list(strategy_config, "entry"),
+                "exit": _describe_rule_list(strategy_config, "exit"),
             }
         )
 
@@ -808,8 +886,8 @@ def _build_iteration_summary(
     intent: str | None = None,
     score_weights: dict[str, float] | None = None,
 ) -> str:
-    entry_desc = _describe_group(strategy_config.get("entry") or {})
-    exit_desc = _describe_group(strategy_config.get("exit") or {})
+    entry_desc = _describe_rule_list(strategy_config, "entry")
+    exit_desc = _describe_rule_list(strategy_config, "exit")
 
     summary_parts = [
         f"本轮模式：{_agent_mode_label(mode)}。",
@@ -854,8 +932,8 @@ def _build_analysis_fallback(task: AgentTask, preview: dict, benchmark_metrics: 
 
 
 def _build_action_plan_fallback(strategy_config: dict, preview: dict, benchmark_metrics: dict[str, float]) -> str:
-    entry_desc = _describe_group(strategy_config.get("entry") or {})
-    exit_desc = _describe_group(strategy_config.get("exit") or {})
+    entry_desc = _describe_rule_list(strategy_config, "entry")
+    exit_desc = _describe_rule_list(strategy_config, "exit")
     if preview["annualReturn"] < benchmark_metrics["benchmarkAnnualReturn"]:
         return f"继续调整当前策略，重点优化买入“{entry_desc}”和卖出“{exit_desc}”的阈值，争取先超过买入持有基准。"
     return f"保留当前“{entry_desc} / {exit_desc}”的核心思路，再围绕回撤和 Sharpe 做微调。"
@@ -888,12 +966,6 @@ def _build_noop_strategy_config(task: AgentTask) -> dict:
             ],
         },
         "risk": {
-            "initialCapital": float(task.initial_capital),
-            "positionSize": float(task.position_size),
-            "stopLoss": float(task.stop_loss),
-            "takeProfit": float(task.take_profit),
-            "minAddPositionInterval": task.min_add_position_interval,
-            "maxHoldingDays": task.max_holding_days,
             "backtestStartDate": task.backtest_start_date.isoformat(),
             "backtestEndDate": task.backtest_end_date.isoformat(),
         },

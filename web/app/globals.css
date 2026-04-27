@@ -723,11 +723,19 @@ select {
 }
 
 .agent-task-title {
+  gap: 10px;
   margin-bottom: 10px;
+  min-width: 0;
 }
 
 .agent-task-title strong {
   color: var(--text-main);
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-task-title .ant-tag {
+  flex: 0 0 auto;
 }
 
 .agent-task-meta {
@@ -754,19 +762,62 @@ select {
   border-bottom: 1px solid var(--panel-border);
   display: grid;
   gap: 10px;
-  grid-template-columns: 1.5fr 0.7fr 0.7fr 0.5fr 0.7fr;
+  grid-template-columns: minmax(0, 1.7fr) 0.7fr 0.7fr 0.5fr;
   padding-bottom: 10px;
 }
 
-.compact-row span {
+.compact-row-link {
+  color: inherit;
+  grid-template-columns: minmax(0, 1fr) auto;
+  text-decoration: none;
+}
+
+.compact-row-link:hover .dashboard-ellipsis {
+  color: var(--primary);
+}
+
+.compact-row span,
+.dashboard-ellipsis {
   color: var(--text-main);
   min-width: 0;
+}
+
+.dashboard-ellipsis,
+.dashboard-ellipsis-strong {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.dashboard-ellipsis-strong {
+  color: var(--text-main);
+}
+
+.compact-row-name {
+  width: 100%;
+}
+
+.ant-table-cell .dashboard-ellipsis {
+  width: 100%;
 }
 
 .warning-item {
   align-items: flex-start;
   display: flex;
   gap: 10px;
+  min-width: 0;
+}
+
+.warning-item .ant-tag {
+  flex: 0 0 auto;
+}
+
+.warning-item .dashboard-ellipsis {
+  flex: 1;
+  width: 100%;
 }
 
 .ranking-panel {
@@ -1412,6 +1463,50 @@ select {
   white-space: nowrap;
 }
 
+.backtest-lab-target-meta {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.backtest-lab-target-meta > span:first-child {
+  min-width: 0;
+}
+
+.backtest-lab-target-meta .ant-tag {
+  flex: 0 0 auto;
+  margin-inline-end: 0;
+}
+
+.backtest-mini-chart {
+  display: block;
+  height: 42px;
+  width: 118px;
+}
+
+.backtest-mini-chart-strategy,
+.backtest-mini-chart-benchmark {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.backtest-mini-chart-strategy {
+  stroke: #6366f1;
+  stroke-width: 2.2;
+}
+
+.backtest-mini-chart-benchmark {
+  stroke: #14b8a6;
+  stroke-width: 1.8;
+}
+
+.backtest-mini-chart-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .backtest-detail-grid {
   display: grid;
   gap: 20px;
@@ -1845,6 +1940,38 @@ select {
   overflow: hidden;
 }
 
+.strategy-rule-list {
+  display: grid;
+  gap: 14px;
+}
+
+.strategy-rule-list-hint {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.strategy-rule-item-card {
+  border-color: rgba(99, 102, 241, 0.24) !important;
+}
+
+.strategy-rule-action-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1fr) 120px 160px;
+  margin-bottom: 14px;
+}
+
+.strategy-rule-action-row label {
+  display: grid;
+  gap: 6px;
+}
+
+.strategy-rule-action-row label > span {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .strategy-rule-group {
   background: linear-gradient(180deg, rgba(27, 38, 59, 0.94), rgba(23, 32, 51, 0.96));
   border: 1px solid rgba(99, 102, 241, 0.16);
@@ -2248,6 +2375,10 @@ select {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.strategy-preview-panel .strategy-preview-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .strategy-preview-metric-card {
   background: rgba(15, 23, 42, 0.55);
   border: 1px solid rgba(99, 102, 241, 0.12);
@@ -2303,16 +2434,29 @@ select {
 }
 
 .strategy-preview-chart {
+  border-top: 1px solid rgba(99, 102, 241, 0.14);
   height: 220px;
+  margin-top: 8px;
+  padding-top: 18px;
   width: 100%;
 }
 
 .strategy-preview-trades {
-  margin-top: 4px;
+  border-top: 1px solid rgba(99, 102, 241, 0.14);
+  margin-top: 16px;
+  padding-top: 16px;
 }
 
 .strategy-preview-trades .ant-table-body {
   scrollbar-width: thin;
+}
+
+.strategy-preview-trades .strategy-trade-row-active > td {
+  background: rgba(99, 102, 241, 0.16) !important;
+}
+
+.strategy-preview-trades .strategy-trade-row-active td:first-child {
+  border-left: 2px solid rgba(99, 102, 241, 0.92);
 }
 
 .strategy-preview-metrics-single {
@@ -2383,7 +2527,17 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .strategy-preview-panel .strategy-preview-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .strategy-preview-metric-values {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .strategy-preview-panel .strategy-preview-metrics {
     grid-template-columns: 1fr;
   }
 }
@@ -2396,6 +2550,12 @@ select {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
   margin-bottom: 20px;
+}
+
+.agent-iteration-detail-rule-section {
+  border-top: 1px solid rgba(99, 102, 241, 0.14);
+  margin-top: 18px;
+  padding-top: 18px;
 }
 
 .agent-task-detail-meta {

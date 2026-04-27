@@ -3,6 +3,26 @@ from __future__ import annotations
 from app.services.agent.rule_definitions import FIELD_LABELS_BY_VALUE, OPERATOR_LABELS
 
 
+def _describe_rule_list(strategy_config: dict, scope: str) -> str:
+    rules_key = "entryRules" if scope == "entry" else "exitRules"
+    legacy_key = "entry" if scope == "entry" else "exit"
+    rules = strategy_config.get(rules_key)
+    if not isinstance(rules, list) or not rules:
+        legacy_group = strategy_config.get(legacy_key)
+        return _describe_group(legacy_group) if isinstance(legacy_group, dict) else "未配置"
+    parts: list[str] = []
+    for index, rule in enumerate(rules, start=1):
+        action = rule.get("action") or {}
+        action_label = "买入" if action.get("type") == "buy" else "卖出"
+        try:
+            size_label = f"{float(action.get('size') or 0) * 100:g}%"
+        except (TypeError, ValueError):
+            size_label = "-"
+        name = str(rule.get("name") or f"规则 {index}").strip()
+        parts.append(f"{index}. {name}（{action_label}{size_label}）：{_describe_group(rule.get('conditions') or {})}")
+    return "；".join(parts)
+
+
 def _describe_group(group: dict) -> str:
     children = group.get("children") or []
     if not children:

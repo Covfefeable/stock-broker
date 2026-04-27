@@ -6,7 +6,7 @@ import {
   RobotOutlined,
   RiseOutlined,
 } from "@ant-design/icons";
-import { Badge, Button, Card, Col, Progress, Row, Space, Table, Tag, Typography } from "antd";
+import { Badge, Button, Card, Col, Progress, Row, Space, Table, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -23,9 +23,8 @@ type RankingRow = {
   name: string;
   type: string;
   source: string;
-  annualReturn: string | null;
-  drawdown: string | null;
-  status: string;
+  score: string | null;
+  conclusion: string | null;
   updatedAt: string | null;
 };
 
@@ -46,11 +45,10 @@ type SyncStatusRow = {
   latestEvent: { status: string; message: string; time: string | null } | null;
 };
 
-type RecentBacktestRow = {
+type RecentStrategyRow = {
   id: number;
   name: string;
-  annualReturn: string | null;
-  drawdown: string | null;
+  source: string;
   status: string;
   updatedAt: string | null;
 };
@@ -66,14 +64,14 @@ type DashboardOverview = {
   metrics: {
     syncedAssetCount: number;
     strategyCount: number;
-    bestAnnualReturn: string | null;
+    bestScore: string | null;
     agentTaskCount: number;
     runningAgentTaskCount: number;
   };
   ranking: RankingRow[];
   agentTasks: AgentTaskRow[];
   syncStatus: SyncStatusRow[];
-  recentBacktests: RecentBacktestRow[];
+  recentStrategies: RecentStrategyRow[];
   strategyAlerts: StrategyAlert[];
 };
 
@@ -81,20 +79,25 @@ const emptyOverview: DashboardOverview = {
   metrics: {
     syncedAssetCount: 0,
     strategyCount: 0,
-    bestAnnualReturn: null,
+    bestScore: null,
     agentTaskCount: 0,
     runningAgentTaskCount: 0,
   },
   ranking: [],
   agentTasks: [],
   syncStatus: [],
-  recentBacktests: [],
+  recentStrategies: [],
   strategyAlerts: [],
 };
 
 const rankingColumns: ColumnsType<RankingRow> = [
   { title: "排名", dataIndex: "rank", width: 70 },
-  { title: "策略名称", dataIndex: "name" },
+  {
+    title: "策略名称",
+    dataIndex: "name",
+    width: 360,
+    render: (value: string) => <EllipsisText value={value} />,
+  },
   {
     title: "类型",
     dataIndex: "type",
@@ -106,21 +109,23 @@ const rankingColumns: ColumnsType<RankingRow> = [
     render: (value: string) => <Tag color={value === "AI 生成" ? "purple" : "blue"}>{value}</Tag>,
   },
   {
-    title: "年化收益",
-    dataIndex: "annualReturn",
-    render: (value: string | null) => <Text className={value?.startsWith("-") ? "negative-text" : "positive-text"}>{value ?? "-"}</Text>,
+    title: "综合评分",
+    dataIndex: "score",
+    width: 110,
+    render: (value: string | null) => <Text className="positive-text">{value ?? "-"}</Text>,
   },
   {
-    title: "最大回撤",
-    dataIndex: "drawdown",
-    render: (value: string | null) => <Text className="negative-text">{value ?? "-"}</Text>,
+    title: "评估结论",
+    dataIndex: "conclusion",
+    width: 110,
+    render: (value: string | null) => <Tag>{value ?? "-"}</Tag>,
   },
-  { title: "状态", dataIndex: "status", render: (value: string) => <Tag>{value}</Tag> },
   { title: "更新时间", dataIndex: "updatedAt", render: formatDate },
   {
     title: "操作",
+    width: 72,
     render: (_value, row) => (
-      <Link href={`/strategy-builder/${row.id}`}>
+      <Link href={`/backtest-lab/${row.id}`}>
         查看
       </Link>
     ),
@@ -159,10 +164,10 @@ export default function Home() {
         icon: <NodeIndexOutlined />,
       },
       {
-        title: "最佳年化收益",
-        value: overview.metrics.bestAnnualReturn ?? "-",
+        title: "最佳评分",
+        value: overview.metrics.bestScore ?? "-",
         icon: <RiseOutlined />,
-        positive: Boolean(overview.metrics.bestAnnualReturn && !overview.metrics.bestAnnualReturn.startsWith("-")),
+        positive: Boolean(overview.metrics.bestScore && !overview.metrics.bestScore.startsWith("-")),
       },
       {
         title: "AI Agent 任务",
@@ -208,7 +213,7 @@ export default function Home() {
 
       <Row gutter={[20, 20]} className="dashboard-main-row equal-height-row">
         <Col xs={24} xl={16}>
-          <Card className="dashboard-card ranking-panel ranking-panel-main" title="策略排行榜" loading={loading}>
+          <Card className="dashboard-card ranking-panel ranking-panel-main" title="回测排行榜" loading={loading}>
             <Table
               columns={rankingColumns}
               dataSource={overview.ranking}
@@ -232,7 +237,7 @@ export default function Home() {
               {overview.agentTasks.map((task) => (
                 <div className="agent-task" key={task.name}>
                   <div className="agent-task-title">
-                    <strong>{task.name}</strong>
+                    <EllipsisText value={task.name} strong />
                     <Tag>{task.currentIteration}/{task.maxIterations}</Tag>
                   </div>
                   <Progress percent={getProgressPercent(task.currentIteration, task.maxIterations)} showInfo={false} />
@@ -270,22 +275,18 @@ export default function Home() {
         </Col>
 
         <Col xs={24} xl={8}>
-          <Card className="dashboard-card" title="最近回测" loading={loading}>
-            {overview.recentBacktests.length ? (
+          <Card className="dashboard-card" title="最近策略" loading={loading}>
+            {overview.recentStrategies.length ? (
               <div className="compact-table">
-              {overview.recentBacktests.map((item) => (
-                <div className="compact-row" key={item.id}>
-                  <span>{item.name}</span>
-                  <Text className={item.annualReturn?.startsWith("-") ? "negative-text" : "positive-text"}>
-                    {item.annualReturn ?? "-"}
-                  </Text>
-                  <Text className="negative-text">{item.drawdown ?? "-"}</Text>
-                  <Tag>{item.status}</Tag>
-                </div>
+              {overview.recentStrategies.map((item) => (
+                <Link className="compact-row compact-row-link" href={`/strategy-builder/${item.id}`} key={item.id}>
+                  <EllipsisText value={item.name} className="compact-row-name" />
+                  <Text>{formatDate(item.updatedAt)}</Text>
+                </Link>
               ))}
               </div>
             ) : (
-              <EmptyState title="暂无回测结果" compact />
+              <EmptyState title="暂无策略" compact />
             )}
           </Card>
         </Col>
@@ -297,7 +298,7 @@ export default function Home() {
                 {overview.strategyAlerts.map((item) => (
                   <div className="warning-item" key={item.id}>
                     <Tag color={item.level === "danger" ? "red" : "orange"}>{item.type}</Tag>
-                    <Text>{item.message}</Text>
+                    <EllipsisText value={item.message} />
                   </div>
                 ))}
               </Space>
@@ -309,6 +310,28 @@ export default function Home() {
       </Row>
 
     </AppShell>
+  );
+}
+
+function EllipsisText({
+  value,
+  className,
+  strong = false,
+}: {
+  value: string;
+  className?: string;
+  strong?: boolean;
+}) {
+  const content = (
+    <span className={["dashboard-ellipsis", className].filter(Boolean).join(" ")}>
+      {value}
+    </span>
+  );
+
+  return (
+    <Tooltip title={value} placement="topLeft">
+      {strong ? <strong className="dashboard-ellipsis-strong">{content}</strong> : content}
+    </Tooltip>
   );
 }
 

@@ -3,6 +3,7 @@
 import { PlusOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { Button, Card, Input, Popconfirm, Select, Space, Table, Tag, Typography, message } from "antd";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
+import type { SorterResult } from "antd/es/table/interface";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
@@ -20,6 +21,8 @@ type QueryState = {
   assetType?: "stock" | "index";
   countryCode?: string;
   status?: AgentTaskStatus;
+  sortBy?: "bestAnnualReturn";
+  sortOrder?: "asc" | "desc";
 };
 
 const defaultQueryState: QueryState = {
@@ -68,6 +71,8 @@ export default function AgentTasksPage() {
         if (nextQuery.assetType) params.set("assetType", nextQuery.assetType);
         if (nextQuery.countryCode) params.set("countryCode", nextQuery.countryCode);
         if (nextQuery.status) params.set("status", nextQuery.status);
+        if (nextQuery.sortBy) params.set("sortBy", nextQuery.sortBy);
+        if (nextQuery.sortOrder) params.set("sortOrder", nextQuery.sortOrder);
 
         const response = await apiGet<AgentTaskListResponse>(`/agent-tasks?${params.toString()}`, token);
         setRows(response.items);
@@ -99,6 +104,8 @@ export default function AgentTasksPage() {
       assetType,
       countryCode,
       status,
+      sortBy: queryState.sortBy,
+      sortOrder: queryState.sortOrder,
     });
   };
 
@@ -195,7 +202,14 @@ export default function AgentTasksPage() {
         title: "当前最佳收益",
         dataIndex: "bestAnnualReturn",
         key: "bestAnnualReturn",
-        width: 130,
+        width: 150,
+        sorter: true,
+        sortOrder:
+          queryState.sortBy === "bestAnnualReturn"
+            ? queryState.sortOrder === "asc"
+              ? "ascend"
+              : "descend"
+            : null,
         render: (value: number | null) =>
           value !== null ? <Text className="positive-text">{value.toFixed(2)}%</Text> : <Text type="secondary">-</Text>,
       },
@@ -216,10 +230,10 @@ export default function AgentTasksPage() {
       {
         title: "操作",
         key: "actions",
-        width: 300,
+        width: 250,
         fixed: "right",
         render: (_, record) => (
-          <Space size={12} className="table-action-links">
+          <Space size={10} className="table-action-links">
             <Link href={`/agent-tasks/${record.id}`}>查看</Link>
             <Link href={`/agent-tasks/new?copyId=${record.id}`}>复制</Link>
             {record.status === "queued" || record.status === "running" ? (
@@ -258,8 +272,24 @@ export default function AgentTasksPage() {
         ),
       },
     ],
-    [handleDelete, handleRerun, handleStop, rerunningId, stoppingId],
+    [handleDelete, handleRerun, handleStop, queryState.sortBy, queryState.sortOrder, rerunningId, stoppingId],
   );
+
+  const handleTableChange = (
+    nextPagination: TablePaginationConfig,
+    _filters: Record<string, unknown>,
+    sorter: SorterResult<AgentTaskItem> | SorterResult<AgentTaskItem>[],
+  ) => {
+    const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+    const nextSortOrder = activeSorter?.order === "ascend" ? "asc" : activeSorter?.order === "descend" ? "desc" : undefined;
+    setQueryState((current) => ({
+      ...current,
+      page: nextPagination.current || current.page,
+      pageSize: nextPagination.pageSize || current.pageSize,
+      sortBy: nextSortOrder ? "bestAnnualReturn" : undefined,
+      sortOrder: nextSortOrder,
+    }));
+  };
 
   return (
     <AppShell>
@@ -335,14 +365,9 @@ export default function AgentTasksPage() {
           pagination={{
             ...pagination,
             showSizeChanger: false,
-            onChange: (page, pageSize) =>
-              setQueryState((current) => ({
-                ...current,
-                page,
-                pageSize: pageSize || current.pageSize,
-              })),
           }}
-          scroll={{ x: 1220 }}
+          onChange={handleTableChange}
+          scroll={{ x: 1190 }}
         />
       </Card>
     </AppShell>

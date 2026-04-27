@@ -635,10 +635,6 @@ def _diagnose_position_behavior(position_ratios: list[float], holding_flags: lis
 def _diagnose_risk_behavior(reason_counts: dict, losing_sells: list[float]) -> str:
     if not reason_counts:
         return "暂无风控样本"
-    if reason_counts.get("stopLoss", 0) >= max(2, reason_counts.get("exitRule", 0)):
-        return "止损触发较多，需关注入场质量"
-    if reason_counts.get("takeProfit", 0) >= 2:
-        return "止盈触发较多，需检查是否过早截断趋势"
     if losing_sells and _average(losing_sells) <= -8:
         return "亏损卖出幅度偏大，出场可能滞后"
     return "风控触发分布正常"
@@ -768,9 +764,6 @@ def _build_position_behavior(
 def _build_risk_behavior(trades: list[dict]) -> dict:
     sell_reasons = [str(trade.get("reason") or "") for trade in trades if trade.get("side") == "sell"]
     reason_counts = {
-        "stopLoss": sum(1 for reason in sell_reasons if "止损" in reason),
-        "takeProfit": sum(1 for reason in sell_reasons if "止盈" in reason),
-        "maxHoldingDays": sum(1 for reason in sell_reasons if "最大持仓天数" in reason),
         "exitRule": sum(1 for reason in sell_reasons if "卖出规则" in reason),
         "forceClose": sum(1 for reason in sell_reasons if "强制平仓" in reason),
     }

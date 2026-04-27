@@ -18,6 +18,7 @@ import type {
   RuleNode,
   RuleOperator,
   RuleScope,
+  StrategyRule,
   StrategyDslConfig,
   StrategyPreviewResult,
 } from "@/components/strategy-builder/types";
@@ -197,21 +198,71 @@ function createGroup(): RuleGroup {
   };
 }
 
+function createStrategyRule(scope: RuleScope, index = 1): StrategyRule {
+  return {
+    id: createId(`${scope}_rule`),
+    name: scope === "entry" ? `买入规则 ${index}` : `卖出规则 ${index}`,
+    action: {
+      type: scope === "entry" ? "buy" : "sell",
+      size: scope === "entry" ? 1 : 1,
+    },
+    conditions: createGroup(),
+  };
+}
+
 export function createDefaultStrategyDslConfig(): StrategyDslConfig {
   return {
-    entry: createGroup(),
-    exit: createGroup(),
+    entryRules: [createStrategyRule("entry")],
+    exitRules: [createStrategyRule("exit")],
     risk: {
-      initialCapital: 100000,
-      positionSize: 1,
-      stopLoss: 0.08,
-      takeProfit: 0.2,
-      minAddPositionInterval: 3,
-      maxHoldingDays: 30,
       forceCloseOnEnd: true,
       backtestStartDate: "2020-01-01",
       backtestEndDate: new Date().toISOString().slice(0, 10),
     },
+  };
+}
+
+export function normalizeStrategyDslConfig(input?: Partial<StrategyDslConfig> | null): StrategyDslConfig {
+  const defaults = createDefaultStrategyDslConfig();
+  if (!input || typeof input !== "object") {
+    return defaults;
+  }
+
+  const inputRisk = (input.risk ?? {}) as Partial<RiskBacktestConfig>;
+  const risk: RiskBacktestConfig = {
+    forceCloseOnEnd: inputRisk.forceCloseOnEnd ?? defaults.risk.forceCloseOnEnd,
+    backtestStartDate: inputRisk.backtestStartDate ?? defaults.risk.backtestStartDate,
+    backtestEndDate: inputRisk.backtestEndDate ?? defaults.risk.backtestEndDate,
+  };
+  const entryRules: StrategyRule[] = Array.isArray(input.entryRules) && input.entryRules.length
+    ? input.entryRules.map((rule, index) => normalizeStrategyRule(rule, "entry", index + 1))
+    : input.entry
+      ? [{ ...createStrategyRule("entry"), name: "买入规则", action: { type: "buy", size: 1 }, conditions: input.entry }]
+      : defaults.entryRules;
+  const exitRules: StrategyRule[] = Array.isArray(input.exitRules) && input.exitRules.length
+    ? input.exitRules.map((rule, index) => normalizeStrategyRule(rule, "exit", index + 1))
+    : input.exit
+      ? [{ ...createStrategyRule("exit"), name: "卖出规则", action: { type: "sell", size: 1 }, conditions: input.exit }]
+      : defaults.exitRules;
+
+  return {
+    entryRules,
+    exitRules,
+    risk,
+  };
+}
+
+function normalizeStrategyRule(rule: Partial<StrategyRule>, scope: RuleScope, index: number): StrategyRule {
+  const fallback = createStrategyRule(scope, index);
+  const actionType = scope === "entry" ? "buy" : "sell";
+  return {
+    id: rule.id || fallback.id,
+    name: rule.name || fallback.name,
+    action: {
+      type: actionType,
+      size: Number(rule.action?.size ?? fallback.action.size),
+    },
+    conditions: rule.conditions ?? fallback.conditions,
   };
 }
 
@@ -223,21 +274,22 @@ export function RuleEngine({
   previewResult,
   previewDisabled = false,
 }: Props) {
-  const entrySummary = useMemo(() => summarizeGroup(value.entry), [value.entry]);
-  const exitSummary = useMemo(() => summarizeGroup(value.exit), [value.exit]);
+  const normalizedValue = useMemo(() => normalizeStrategyDslConfig(value), [value]);
+  const entrySummary = useMemo(() => summarizeRules(normalizedValue.entryRules), [normalizedValue.entryRules]);
+  const exitSummary = useMemo(() => summarizeRules(normalizedValue.exitRules), [normalizedValue.exitRules]);
 
-  const updateGroup = (scope: RuleScope, nextGroup: RuleGroup) => {
+  const updateRules = (scope: RuleScope, nextRules: StrategyRule[]) => {
     onChange({
-      ...value,
-      [scope]: nextGroup,
+      ...normalizedValue,
+      [scope === "entry" ? "entryRules" : "exitRules"]: nextRules,
     });
   };
 
   const updateRisk = <K extends keyof RiskBacktestConfig>(key: K, nextValue: RiskBacktestConfig[K]) => {
     onChange({
-      ...value,
+      ...normalizedValue,
       risk: {
-        ...value.risk,
+        ...normalizedValue.risk,
         [key]: nextValue,
       },
     });
@@ -252,12 +304,12 @@ export function RuleEngine({
           {
             key: "entry",
             label: "买入规则",
-            children: <RuleGroupEditor value={value.entry} scope="entry" depth={0} onChange={(nextGroup) => updateGroup("entry", nextGroup)} />,
+            children: <RuleListEditor rules={normalizedValue.entryRules} scope="entry" onChange={(nextRules) => updateRules("entry", nextRules)} />,
           },
           {
             key: "exit",
             label: "卖出规则",
-            children: <RuleGroupEditor value={value.exit} scope="exit" depth={0} onChange={(nextGroup) => updateGroup("exit", nextGroup)} />,
+            children: <RuleListEditor rules={normalizedValue.exitRules} scope="exit" onChange={(nextRules) => updateRules("exit", nextRules)} />,
           },
           {
             key: "risk",
@@ -266,30 +318,6 @@ export function RuleEngine({
               <div className="strategy-risk-grid">
                 <Card className="strategy-rule-card" size="small" title="风险参数">
                   <div className="strategy-risk-form">
-                    <label>
-                      <span>初始资金</span>
-                      <InputNumber min={0} value={value.risk.initialCapital} onChange={(next) => updateRisk("initialCapital", Number(next ?? 0))} />
-                    </label>
-                    <label>
-                      <span>每次买入仓位</span>
-                      <InputNumber min={0} max={1} step={0.1} value={value.risk.positionSize} onChange={(next) => updateRisk("positionSize", Number(next ?? 0))} />
-                    </label>
-                    <label>
-                      <span>止损比例</span>
-                      <InputNumber min={0} max={1} step={0.01} value={value.risk.stopLoss} onChange={(next) => updateRisk("stopLoss", Number(next ?? 0))} />
-                    </label>
-                    <label>
-                      <span>止盈比例</span>
-                      <InputNumber min={0} max={2} step={0.01} value={value.risk.takeProfit} onChange={(next) => updateRisk("takeProfit", Number(next ?? 0))} />
-                    </label>
-                    <label>
-                      <span>最小加仓间隔</span>
-                      <InputNumber min={0} step={1} value={value.risk.minAddPositionInterval ?? 3} onChange={(next) => updateRisk("minAddPositionInterval", Number(next ?? 0))} />
-                    </label>
-                    <label>
-                      <span>最大持仓天数</span>
-                      <InputNumber min={1} value={value.risk.maxHoldingDays} onChange={(next) => updateRisk("maxHoldingDays", Number(next ?? 1))} />
-                    </label>
                     <label className="strategy-risk-switch-row">
                       <span>
                         强制期末平仓
@@ -297,7 +325,7 @@ export function RuleEngine({
                           <QuestionCircleOutlined className="strategy-preview-metric-help" />
                         </Tooltip>
                       </span>
-                      <Switch checked={value.risk.forceCloseOnEnd !== false} onChange={(checked) => updateRisk("forceCloseOnEnd", checked)} />
+                      <Switch checked={normalizedValue.risk.forceCloseOnEnd !== false} onChange={(checked) => updateRisk("forceCloseOnEnd", checked)} />
                     </label>
                   </div>
                 </Card>
@@ -306,11 +334,11 @@ export function RuleEngine({
                   <div className="strategy-risk-form">
                     <label>
                       <span>开始日期</span>
-                      <Input type="date" value={value.risk.backtestStartDate} onChange={(event) => updateRisk("backtestStartDate", event.target.value)} />
+                      <Input type="date" value={normalizedValue.risk.backtestStartDate} onChange={(event) => updateRisk("backtestStartDate", event.target.value)} />
                     </label>
                     <label>
                       <span>结束日期</span>
-                      <Input type="date" value={value.risk.backtestEndDate} onChange={(event) => updateRisk("backtestEndDate", event.target.value)} />
+                      <Input type="date" value={normalizedValue.risk.backtestEndDate} onChange={(event) => updateRisk("backtestEndDate", event.target.value)} />
                     </label>
                   </div>
                 </Card>
@@ -330,7 +358,7 @@ export function RuleEngine({
                     </div>
                   </Card>
                   <Card className="strategy-rule-card" size="small" title="JSON DSL">
-                    <pre>{JSON.stringify(value, null, 2)}</pre>
+                    <pre>{JSON.stringify(normalizedValue, null, 2)}</pre>
                   </Card>
                 </div>
 
@@ -491,26 +519,129 @@ export function RuleEngine({
 }
 
 export function RuleReadonlyPreview({ value, compact = false }: { value?: StrategyDslConfig | null; compact?: boolean }) {
-  if (!value?.entry || !value?.exit) {
+  if (!value) {
+    return <EmptyState title="暂无规则内容" compact />;
+  }
+  const normalizedValue = normalizeStrategyDslConfig(value);
+  if (!normalizedValue.entryRules.length || !normalizedValue.exitRules.length) {
     return <EmptyState title="暂无规则内容" compact />;
   }
 
   return (
     <div className={compact ? "strategy-rule-readonly strategy-rule-readonly-compact" : "strategy-rule-readonly"}>
-      <RuleReadonlySection title="买入规则" group={value.entry} />
-      <RuleReadonlySection title="卖出规则" group={value.exit} />
+      <RuleReadonlySection title="买入规则" rules={normalizedValue.entryRules} />
+      <RuleReadonlySection title="卖出规则" rules={normalizedValue.exitRules} />
     </div>
   );
 }
 
-function RuleReadonlySection({ title, group }: { title: string; group: RuleGroup }) {
+function RuleReadonlySection({ title, rules }: { title: string; rules: StrategyRule[] }) {
   return (
     <div className="strategy-rule-readonly-section">
       <div className="strategy-rule-readonly-title">
         <span>{title}</span>
-        <Tag color={group.logic === "and" ? "blue" : "gold"}>{group.logic === "and" ? "满足全部条件" : "满足任一条件"}</Tag>
+        <Tag color="blue">按顺序命中第一条</Tag>
       </div>
-      <div className="strategy-rule-readonly-expression">{summarizeGroup(group) || "暂无条件"}</div>
+      <div className="strategy-rule-readonly-expression">
+        {rules.map((rule, index) => (
+          <div key={rule.id || index}>
+            {index + 1}. {rule.name || "未命名规则"}（{rule.action.type === "buy" ? "买入" : "卖出"} {formatActionSize(rule.action.size)}）：
+            {summarizeGroup(rule.conditions) || "暂无条件"}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RuleListEditor({ rules, scope, onChange }: { rules: StrategyRule[]; scope: RuleScope; onChange: (nextRules: StrategyRule[]) => void }) {
+  const safeRules = rules.length ? rules : [createStrategyRule(scope)];
+
+  const updateRule = (ruleId: string, nextRule: StrategyRule) => {
+    onChange(safeRules.map((rule) => (rule.id === ruleId ? nextRule : rule)));
+  };
+
+  const removeRule = (ruleId: string) => {
+    const nextRules = safeRules.filter((rule) => rule.id !== ruleId);
+    onChange(nextRules.length ? nextRules : [createStrategyRule(scope)]);
+  };
+
+  const moveRule = (ruleId: string, direction: -1 | 1) => {
+    const index = safeRules.findIndex((rule) => rule.id === ruleId);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= safeRules.length) {
+      return;
+    }
+    const nextRules = [...safeRules];
+    const [item] = nextRules.splice(index, 1);
+    nextRules.splice(targetIndex, 0, item);
+    onChange(nextRules);
+  };
+
+  return (
+    <div className="strategy-rule-list">
+      <div className="strategy-rule-list-hint">按顺序判断优先级，命中第一条后执行对应仓位动作。</div>
+      {safeRules.map((rule, index) => (
+        <Card
+          key={rule.id}
+          className="strategy-rule-card strategy-rule-item-card"
+          size="small"
+          title={`${scope === "entry" ? "买入" : "卖出"}规则 ${index + 1}`}
+          extra={
+            <div className="strategy-rule-group-toolbar">
+              <Button size="small" disabled={index === 0} onClick={() => moveRule(rule.id, -1)}>
+                上移
+              </Button>
+              <Button size="small" disabled={index === safeRules.length - 1} onClick={() => moveRule(rule.id, 1)}>
+                下移
+              </Button>
+              <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => removeRule(rule.id)} />
+            </div>
+          }
+        >
+          <div className="strategy-rule-action-row">
+            <label>
+              <span>规则名称</span>
+              <Input value={rule.name} onChange={(event) => updateRule(rule.id, { ...rule, name: event.target.value })} />
+            </label>
+            <label>
+              <span>动作</span>
+              <Input value={scope === "entry" ? "买入" : "卖出"} disabled />
+            </label>
+            <label>
+              <span>仓位比例</span>
+              <InputNumber
+                min={0.01}
+                max={1}
+                step={0.01}
+                value={rule.action.size}
+                formatter={(value) => `${Number(value ?? 0) * 100}%`}
+                parser={(value) => Number(String(value || "").replace("%", "")) / 100}
+                onChange={(next) =>
+                  updateRule(rule.id, {
+                    ...rule,
+                    action: { type: scope === "entry" ? "buy" : "sell", size: Number(next ?? 0) },
+                  })
+                }
+              />
+            </label>
+          </div>
+          <RuleGroupEditor
+            value={rule.conditions}
+            scope={scope}
+            depth={0}
+            onChange={(nextGroup) => updateRule(rule.id, { ...rule, conditions: nextGroup })}
+          />
+        </Card>
+      ))}
+      <Button
+        size="small"
+        className="strategy-rule-action-button"
+        icon={<PlusOutlined />}
+        onClick={() => onChange([...safeRules, createStrategyRule(scope, safeRules.length + 1)])}
+      >
+        添加{scope === "entry" ? "买入" : "卖出"}规则
+      </Button>
     </div>
   );
 }
@@ -1086,6 +1217,16 @@ function summarizeGroup(group: RuleGroup): string {
       return `${formatExpression(child.leftExpression, FIELD_OPTIONS)} ${operatorLabel} ${formatExpression(child.rightExpression, FIELD_OPTIONS)}`;
     })
     .join(joiner);
+}
+
+function summarizeRules(rules: StrategyRule[]): string {
+  return rules
+    .map((rule, index) => `${index + 1}. ${rule.name || "未命名规则"}（${rule.action.type === "buy" ? "买入" : "卖出"} ${formatActionSize(rule.action.size)}）`)
+    .join("；");
+}
+
+function formatActionSize(size: number | undefined): string {
+  return `${Math.round(Number(size ?? 0) * 10000) / 100}%`;
 }
 
 function formatExpression(tokens: ExpressionToken[] | undefined, availableFields: RuleFieldOption[]): string {

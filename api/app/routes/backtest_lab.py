@@ -24,6 +24,8 @@ def get_backtest_lab_strategies():
         keyword=request.args.get("keyword", default="", type=str),
         source=request.args.get("source", default="", type=str),
         evaluation_status=request.args.get("evaluationStatus", default="", type=str),
+        sort_by=request.args.get("sortBy", default="", type=str),
+        sort_order=request.args.get("sortOrder", default="", type=str),
         page=page,
         page_size=page_size,
     )

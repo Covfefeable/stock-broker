@@ -45,12 +45,6 @@ type CreateAgentTaskFormValues = {
   maxDrawdownLimit: number;
   minSharpe: number;
   maxIterations: number;
-  initialCapital: number;
-  positionSize: number;
-  stopLoss: number;
-  takeProfit: number;
-  minAddPositionInterval: number;
-  maxHoldingDays: number;
   backtestStartDate: { format: (template: string) => string };
   backtestEndDate: { format: (template: string) => string };
 };
@@ -135,12 +129,6 @@ export default function NewAgentTaskPage() {
           maxDrawdownLimit: sourceTask.maxDrawdownLimit ?? 20,
           minSharpe: sourceTask.minSharpe ?? 0.6,
           maxIterations: sourceTask.maxIterations,
-          initialCapital: sourceTask.initialCapital ?? 100000,
-          positionSize: sourceTask.positionSize ?? 0.25,
-          stopLoss: sourceTask.stopLoss ?? 0.08,
-          takeProfit: sourceTask.takeProfit ?? 0.2,
-          minAddPositionInterval: sourceTask.minAddPositionInterval ?? 3,
-          maxHoldingDays: sourceTask.maxHoldingDays,
           backtestStartDate: sourceTask.backtestStartDate ? dayjs(sourceTask.backtestStartDate) : dayjs().subtract(5, "year"),
           backtestEndDate: sourceTask.backtestEndDate ? dayjs(sourceTask.backtestEndDate) : dayjs(),
         });
@@ -370,12 +358,6 @@ export default function NewAgentTaskPage() {
           targetAnnualReturn: 20,
           maxDrawdownLimit: 20,
           minSharpe: 0.6,
-          initialCapital: 100000,
-          positionSize: 0.25,
-          stopLoss: 0.08,
-          takeProfit: 0.2,
-          minAddPositionInterval: 3,
-          maxHoldingDays: 30,
           backtestStartDate: dayjs().subtract(5, "year"),
           backtestEndDate: dayjs(),
         }}
@@ -465,30 +447,6 @@ export default function NewAgentTaskPage() {
 
         <Card className="dashboard-card strategy-form-card" title="回测参数" bordered>
           <div className="strategy-form-grid">
-            <Form.Item label="初始资金" name="initialCapital" rules={[{ required: true, message: "请输入初始资金" }]}>
-              <InputNumber min={1} step={1000} className="strategy-number-input" />
-            </Form.Item>
-
-            <Form.Item label="每次买入仓位" name="positionSize" rules={[{ required: true, message: "请输入每次买入仓位" }]}>
-              <InputNumber min={0.01} max={1} step={0.01} className="strategy-number-input" />
-            </Form.Item>
-
-            <Form.Item label="止损比例" name="stopLoss" rules={[{ required: true, message: "请输入止损比例" }]}>
-              <InputNumber min={0} step={0.01} className="strategy-number-input" />
-            </Form.Item>
-
-            <Form.Item label="止盈比例" name="takeProfit" rules={[{ required: true, message: "请输入止盈比例" }]}>
-              <InputNumber min={0} step={0.01} className="strategy-number-input" />
-            </Form.Item>
-
-            <Form.Item label="最小加仓间隔" name="minAddPositionInterval" rules={[{ required: true, message: "请输入最小加仓间隔" }]}>
-              <InputNumber min={0} step={1} className="strategy-number-input" />
-            </Form.Item>
-
-            <Form.Item label="最大持仓天数" name="maxHoldingDays" rules={[{ required: true, message: "请输入最大持仓天数" }]}>
-              <InputNumber min={1} step={1} className="strategy-number-input" />
-            </Form.Item>
-
             <Form.Item label="回测开始日期" name="backtestStartDate" rules={[{ required: true, message: "请选择回测开始日期" }]}>
               <DatePicker className="strategy-number-input" format="YYYY-MM-DD" />
             </Form.Item>

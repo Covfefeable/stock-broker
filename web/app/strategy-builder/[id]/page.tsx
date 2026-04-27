@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppLoader } from "@/components/app-loader";
 import { AppShell } from "@/components/app-shell";
 import type { CountryOption, IndexDailyCoverage, StockDailyCoverage, SyncEnqueueResponse } from "@/components/data-center/types";
-import { RuleEngine, createDefaultStrategyDslConfig } from "@/components/strategy-builder/rule-engine";
+import { RuleEngine, createDefaultStrategyDslConfig, normalizeStrategyDslConfig } from "@/components/strategy-builder/rule-engine";
 import type { StrategyDslConfig, StrategyPreviewResult } from "@/components/strategy-builder/types";
 import { getAccessToken } from "@/lib/auth";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
@@ -61,19 +61,7 @@ const strategyTypeOptions = [
 ];
 
 function mergeStrategyConfig(input?: Partial<StrategyDslConfig> | null): StrategyDslConfig {
-  const defaults = createDefaultStrategyDslConfig();
-  if (!input || typeof input !== "object") {
-    return defaults;
-  }
-
-  return {
-    entry: input.entry ?? defaults.entry,
-    exit: input.exit ?? defaults.exit,
-    risk: {
-      ...defaults.risk,
-      ...(input.risk ?? {}),
-    },
-  };
+  return normalizeStrategyDslConfig(input);
 }
 
 export default function StrategyDetailPage() {

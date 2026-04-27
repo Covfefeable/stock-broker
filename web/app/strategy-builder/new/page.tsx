@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import type { CountryOption, IndexDailyCoverage, StockDailyCoverage, SyncEnqueueResponse } from "@/components/data-center/types";
-import { RuleEngine, createDefaultStrategyDslConfig } from "@/components/strategy-builder/rule-engine";
+import { RuleEngine, createDefaultStrategyDslConfig, normalizeStrategyDslConfig } from "@/components/strategy-builder/rule-engine";
 import type { StrategyDslConfig, StrategyPreviewResult } from "@/components/strategy-builder/types";
 import { getAccessToken } from "@/lib/auth";
 import { apiGet, apiPost } from "@/lib/api";
@@ -101,7 +101,7 @@ export default function NewStrategyPage() {
         assetType: draft.assetType,
       });
       if (draft.strategyConfig) {
-        setStrategyDsl(draft.strategyConfig);
+        setStrategyDsl(normalizeStrategyDslConfig(draft.strategyConfig));
       }
       if (draft.assetIdentifier) {
         setPendingPrefillAssetIdentifier(draft.assetIdentifier);

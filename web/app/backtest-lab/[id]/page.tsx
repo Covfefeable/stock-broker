@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { AppShell } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { RuleReadonlyPreview } from "@/components/strategy-builder/rule-engine";
-import { StrategyPreviewChart } from "@/components/strategy-builder/strategy-preview-chart";
+import { StrategyBacktestDetailPanel } from "@/components/strategy-builder/strategy-backtest-detail-panel";
 import type { StrategyDslConfig, StrategyPreviewResult } from "@/components/strategy-builder/types";
 import { apiGet, apiPost } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth";
@@ -152,7 +152,12 @@ const conclusionColor: Record<string, string> = {
 };
 
 function asStrategyDslConfig(value: Record<string, unknown> | null | undefined): StrategyDslConfig | null {
-  if (!value || typeof value !== "object" || !("entry" in value) || !("exit" in value)) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const hasRuleList = Array.isArray(value.entryRules) && Array.isArray(value.exitRules);
+  const hasLegacyRule = "entry" in value && "exit" in value;
+  if (!hasRuleList && !hasLegacyRule) {
     return null;
   }
   return value as unknown as StrategyDslConfig;
@@ -531,84 +536,20 @@ function EvaluationResultDetail({ result }: { result: EvaluationResult }) {
   }
 
   return (
-    <div className="strategy-preview-panel">
-      <div className="strategy-preview-metrics">
-        {[
-          ["综合分数", formatNumber(result.score), formatNumber(result.benchmarkScore)],
-          ["年化收益", formatPercent(detail.annualReturn), formatPercent(detail.benchmarkAnnualReturn)],
-          ["总收益", formatPercent(detail.totalReturn), formatPercent(detail.benchmarkReturn)],
-          ["最大回撤", formatPercent(detail.maxDrawdown), formatPercent(detail.benchmarkMaxDrawdown)],
-          ["波动率", formatPercent(detail.volatility), formatPercent(detail.benchmarkVolatility)],
-          ["Sharpe", formatNumber(detail.sharpe), formatNumber(detail.benchmarkSharpe)],
-          ["胜率", formatPercent(detail.winRate), formatPercent(detail.benchmarkWinRate)],
-          ["交易次数", formatNumber(detail.tradeCount), formatNumber(detail.benchmarkTradeCount)],
-        ].map(([label, strategyValue, benchmarkValue]) => (
-          <div key={label} className="strategy-preview-metric-card">
-            <div className="strategy-preview-metric-header">
-              <span>{label}</span>
-            </div>
-            <div className="strategy-preview-metric-values">
-              <div>
-                <small>策略</small>
-                <strong>{strategyValue}</strong>
-              </div>
-              <div>
-                <small>买入持有基准</small>
-                <strong>{benchmarkValue}</strong>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <StrategyPreviewChart preview={detail} />
-
-      <div className="strategy-preview-range">
-        <Text type="secondary">
-          回测区间：{detail.dateRange.start ?? "--"} 至 {detail.dateRange.end ?? "--"}
-        </Text>
-      </div>
-
-      <Table
-        className="strategy-preview-trades"
-        size="small"
-        pagination={false}
-        scroll={{ y: 260 }}
-        rowKey={(record) => `${record.date}_${record.side}_${record.price}_${record.shares}`}
-        dataSource={detail.trades}
-        locale={{ emptyText: <EmptyState title="暂无成交记录" compact /> }}
-        columns={[
-          { title: "日期", dataIndex: "date", width: 120 },
-          {
-            title: "方向",
-            dataIndex: "side",
-            width: 80,
-            render: (value: "buy" | "sell") => (
-              <Tag color={value === "buy" ? "blue" : "volcano"}>{value === "buy" ? "买入" : "卖出"}</Tag>
-            ),
-          },
-          { title: "价格", dataIndex: "price", width: 100 },
-          { title: "数量", dataIndex: "shares", width: 100 },
-          {
-            title: "仓位",
-            dataIndex: "positionRatio",
-            width: 100,
-            render: (value?: number) => (value == null ? "--" : `${Number(value).toFixed(2)}%`),
-          },
-          {
-            title: "收益率",
-            dataIndex: "return",
-            render: (value?: number) => (value == null ? "--" : `${value.toFixed(2)}%`),
-          },
-          {
-            title: "触发原因",
-            dataIndex: "reason",
-            ellipsis: true,
-            render: (value: string) => value || "-",
-          },
-        ]}
-      />
-    </div>
+    <StrategyBacktestDetailPanel
+      preview={detail}
+      tradeScrollY={260}
+      metrics={[
+        { label: "综合分数", strategyValue: formatNumber(result.score), benchmarkValue: formatNumber(result.benchmarkScore) },
+        { label: "年化收益", strategyValue: formatPercent(detail.annualReturn), benchmarkValue: formatPercent(detail.benchmarkAnnualReturn) },
+        { label: "总收益", strategyValue: formatPercent(detail.totalReturn), benchmarkValue: formatPercent(detail.benchmarkReturn) },
+        { label: "最大回撤", strategyValue: formatPercent(detail.maxDrawdown), benchmarkValue: formatPercent(detail.benchmarkMaxDrawdown) },
+        { label: "波动率", strategyValue: formatPercent(detail.volatility), benchmarkValue: formatPercent(detail.benchmarkVolatility) },
+        { label: "Sharpe", strategyValue: formatNumber(detail.sharpe), benchmarkValue: formatNumber(detail.benchmarkSharpe) },
+        { label: "胜率", strategyValue: formatPercent(detail.winRate), benchmarkValue: formatPercent(detail.benchmarkWinRate) },
+        { label: "交易次数", strategyValue: formatNumber(detail.tradeCount), benchmarkValue: formatNumber(detail.benchmarkTradeCount) },
+      ]}
+    />
   );
 }
 
@@ -622,20 +563,18 @@ function useResultColumns(firstTitle: string, onViewDetail: (record: EvaluationR
         render: (_, record) => (
           <div className="backtest-lab-asset">
             <span>{record.rangeLabel || record.assetName || "-"}</span>
-            <Text type="secondary">{record.assetIdentifier || formatRange(record.dateRange)}</Text>
+            <span className="backtest-lab-target-meta">
+              <Text type="secondary">{record.assetIdentifier || formatRange(record.dateRange)}</Text>
+              {renderResultTag(record)}
+            </span>
           </div>
         ),
       },
       {
-        title: "结果",
-        key: "passed",
-        width: 100,
-        render: (_, record) =>
-          record.status === "success" ? (
-            <Tag color={record.passed ? "green" : "red"}>{record.passed ? "通过" : "未通过"}</Tag>
-          ) : (
-            <Tag color="error">失败</Tag>
-          ),
+        title: "净值对比",
+        key: "equityPreview",
+        width: 150,
+        render: (_, record) => <MiniEquityCompareChart preview={record.detail} />,
       },
       {
         title: "综合分数",
@@ -720,6 +659,51 @@ function useResultColumns(firstTitle: string, onViewDetail: (record: EvaluationR
       },
     ],
     [firstTitle, onViewDetail],
+  );
+}
+
+function renderResultTag(record: EvaluationResult) {
+  if (record.status !== "success") {
+    return <Tag color="error">失败</Tag>;
+  }
+  return <Tag color={record.passed ? "green" : "red"}>{record.passed ? "通过" : "未通过"}</Tag>;
+}
+
+function MiniEquityCompareChart({ preview }: { preview?: StrategyPreviewResult | null }) {
+  const width = 118;
+  const height = 42;
+  const padding = 3;
+  const strategyValues = preview?.equityCurve?.map((item) => item.value).filter((value) => Number.isFinite(value)) ?? [];
+  const benchmarkValues = preview?.benchmarkCurve?.map((item) => item.value).filter((value) => Number.isFinite(value)) ?? [];
+  const total = Math.min(strategyValues.length, benchmarkValues.length);
+
+  if (!preview || total < 2) {
+    return <span className="backtest-mini-chart-empty">暂无曲线</span>;
+  }
+
+  const strategySeries = strategyValues.slice(0, total);
+  const benchmarkSeries = benchmarkValues.slice(0, total);
+  const allValues = [...strategySeries, ...benchmarkSeries];
+  const minValue = Math.min(...allValues);
+  const maxValue = Math.max(...allValues);
+  const span = maxValue - minValue || 1;
+
+  const toPath = (values: number[]) =>
+    values
+      .map((value, index) => {
+        const x = padding + (index / Math.max(values.length - 1, 1)) * (width - padding * 2);
+        const y = padding + (1 - (value - minValue) / span) * (height - padding * 2);
+        return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(" ");
+
+  return (
+    <Tooltip title="策略净值 vs 买入持有基准">
+      <svg className="backtest-mini-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="策略净值和买入持有基准对比">
+        <path d={toPath(benchmarkSeries)} className="backtest-mini-chart-benchmark" />
+        <path d={toPath(strategySeries)} className="backtest-mini-chart-strategy" />
+      </svg>
+    </Tooltip>
   );
 }
 
