@@ -1,0 +1,14 @@
+.venv
+.uv-cache
+.ruff_cache
+.pytest_cache
+__pycache__
+*.py[cod]
+celerybeat-schedule*
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+Dockerfile
+docker-compose*.yml

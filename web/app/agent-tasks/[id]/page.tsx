@@ -75,7 +75,7 @@ function buildTaskCenterWsUrl(token: string): string {
   }
 
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${protocol}://localhost:8000/ws/tasks?token=${encodeURIComponent(token)}`;
+  return `${protocol}://${window.location.host}/ws/tasks?token=${encodeURIComponent(token)}`;
 }
 
 function asStrategyDslConfig(value: Record<string, unknown> | null | undefined): StrategyDslConfig | null {

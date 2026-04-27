@@ -4,6 +4,7 @@ import { FundProjectionScreenOutlined, LockOutlined, MailOutlined } from "@ant-d
 import { Button, Checkbox, Form, Input, Typography, message } from "antd";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AuthThemeToggle } from "@/components/auth-theme-toggle";
 import { setAccessToken } from "@/lib/auth";
 import { apiPost } from "@/lib/api";
 
@@ -31,6 +32,7 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       {contextHolder}
+      <AuthThemeToggle />
       <section className="login-hero">
         <div className="login-brand">
           <span className="login-brand-mark">
