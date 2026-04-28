@@ -134,16 +134,4 @@ export type StrategyPreviewResult = {
     start: string | null;
     end: string | null;
   };
-  currentPosition: {
-    status: "空仓" | "持仓中";
-    shares: number;
-    entryPrice: number | null;
-    positionRatio: number;
-    holdingDays: number | null;
-    unrealizedReturn: number | null;
-  };
-  nextAction: {
-    action: string;
-    reason: string;
-  };
 };

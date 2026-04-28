@@ -232,49 +232,6 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
         benchmark_curve.append(benchmark_shares * close_price if benchmark_shares > 0 else initial_capital)
         context_history.append(context.copy())
 
-    live_close_price = backtest_bars[-1]["close"] if backtest_bars else None
-    current_position = {
-        "status": "持仓中" if shares > 0 else "空仓",
-        "shares": round(shares, 6),
-        "entryPrice": round(entry_price, 4) if entry_price is not None else None,
-        "positionRatio": round(((shares * live_close_price) / (cash + shares * live_close_price)) * 100, 2)
-        if shares > 0 and live_close_price is not None and (cash + shares * live_close_price) > 0
-        else 0.0,
-        "holdingDays": (len(bars) - 1 - entry_index) if shares > 0 and entry_index is not None else None,
-        "unrealizedReturn": round(((live_close_price - entry_price) / entry_price) * 100, 2)
-        if shares > 0 and live_close_price is not None and entry_price
-        else None,
-    }
-
-    if shares > 0 and pending_sell_signal:
-        sell_percent = round(max(min(pending_sell_size or 1.0, 1.0), 0.0) * 100, 2)
-        next_action = {
-            "action": f"下一个交易日开盘卖出 {sell_percent:g}%",
-            "reason": pending_exit_reason or "卖出规则触发",
-        }
-    elif shares > 0 and pending_buy_signal:
-        buy_percent = round(max(min(pending_buy_size, 1.0), 0.0) * 100, 2)
-        next_action = {
-            "action": f"下一个交易日开盘加仓 {buy_percent:g}%",
-            "reason": pending_entry_reason or "买入规则触发",
-        }
-    elif shares > 0:
-        next_action = {
-            "action": "继续持有",
-            "reason": "当前未触发卖出条件或风控条件。",
-        }
-    elif pending_buy_signal:
-        buy_percent = round(max(min(pending_buy_size, 1.0), 0.0) * 100, 2)
-        next_action = {
-            "action": f"下一个交易日开盘买入 {buy_percent:g}%",
-            "reason": pending_entry_reason or "买入规则触发",
-        }
-    else:
-        next_action = {
-            "action": "继续观望",
-            "reason": "当前未触发买入条件。",
-        }
-
     if force_close_on_end and shares > 0 and backtest_bars[-1]["close"] is not None and backtest_bars[-1]["close"] > 0:
         close_price = backtest_bars[-1]["close"]
         proceeds = shares * close_price
@@ -344,6 +301,4 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
             "start": backtest_bars[0]["date"].isoformat() if backtest_bars else None,
             "end": backtest_bars[-1]["date"].isoformat() if backtest_bars else None,
         },
-        "currentPosition": current_position,
-        "nextAction": next_action,
     }

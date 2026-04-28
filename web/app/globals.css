@@ -2018,6 +2018,153 @@ select {
   width: 168px;
 }
 
+.trade-decision-card {
+  margin-bottom: 20px;
+}
+
+.trade-decision-form {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
+}
+
+.trade-decision-form-section {
+  background: rgba(15, 23, 42, 0.18);
+  border: 1px solid rgba(99, 102, 241, 0.14);
+  border-radius: 10px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.app-shell-light .trade-decision-form-section {
+  background: rgba(248, 250, 252, 0.72);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.trade-decision-form-section-main {
+  grid-column: span 1;
+}
+
+.trade-decision-form-section-head {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.trade-decision-form-title {
+  color: var(--text-main) !important;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.trade-decision-field-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.trade-decision-field-grid label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.trade-decision-field-grid label > span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.trade-decision-field-wide {
+  grid-column: span 2;
+}
+
+.trade-decision-position-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.trade-decision-form .ant-input-number {
+  width: 100%;
+}
+
+.trade-decision-position-empty {
+  align-items: center;
+  border: 1px dashed rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  display: flex;
+  min-height: 62px;
+  padding: 0 14px;
+}
+
+.trade-decision-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.trade-decision-actions .ant-btn {
+  min-width: 120px;
+}
+
+.trade-decision-result-card {
+  min-height: 520px;
+}
+
+.trade-decision-summary {
+  align-items: center;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(99, 102, 241, 0.1));
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  border-radius: 10px;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+}
+
+.trade-decision-summary > div {
+  display: grid;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.trade-decision-summary strong {
+  color: var(--text-main);
+  font-family: "General Sans", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.trade-decision-strategy-cell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trade-decision-strategy-cell .ant-typography {
+  font-size: 12px;
+}
+
+@media (max-width: 1180px) {
+  .trade-decision-form {
+    grid-template-columns: 1fr;
+  }
+
+  .trade-decision-field-grid,
+  .trade-decision-position-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trade-decision-field-wide {
+    grid-column: auto;
+  }
+}
+
 .scheduled-plan-form {
   margin-top: 8px;
 }
@@ -2684,36 +2831,6 @@ select {
   grid-template-columns: 1fr;
 }
 
-.strategy-preview-next-action-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.strategy-preview-next-action-grid > div,
-.strategy-preview-next-action-block {
-  display: grid;
-  gap: 4px;
-}
-
-.strategy-preview-next-action-grid small,
-.strategy-preview-next-action-block small {
-  color: rgba(148, 163, 184, 0.82);
-  font-size: 11px;
-}
-
-.strategy-preview-next-action-grid strong,
-.strategy-preview-next-action-block strong {
-  color: #f8fafc;
-  font-size: 18px;
-  line-height: 1.25;
-}
-
-.strategy-preview-next-action-block {
-  min-height: 92px;
-  align-content: start;
-}
-
 .strategy-dsl-preview pre {
   background: rgba(15, 23, 42, 0.7);
   border: 1px solid rgba(99, 102, 241, 0.14);
@@ -2996,7 +3113,6 @@ select {
 .app-shell-light .agent-best-progress-row,
 .app-shell-light .agent-iteration-thought,
 .app-shell-light .strategy-preview-metric-card,
-.app-shell-light .strategy-preview-next-action-block,
 .app-shell-light .strategy-rule-readonly-section,
 .app-shell-light .strategy-expression-function-arg {
   background: rgba(248, 250, 252, 0.86);
@@ -3009,9 +3125,7 @@ select {
 .app-shell-light .agent-task-asset-name,
 .app-shell-light .strategy-rule-readonly-title span,
 .app-shell-light .strategy-rule-readonly-expression,
-.app-shell-light .strategy-preview-metric-values strong,
-.app-shell-light .strategy-preview-next-action-grid strong,
-.app-shell-light .strategy-preview-next-action-block strong {
+.app-shell-light .strategy-preview-metric-values strong {
   color: #111827 !important;
 }
 
@@ -3020,8 +3134,7 @@ select {
 .app-shell-light .agent-iteration-thought-section span,
 .app-shell-light .agent-best-progress-row span,
 .app-shell-light .strategy-preview-metric-header,
-.app-shell-light .strategy-preview-metric-values span,
-.app-shell-light .strategy-preview-next-action-grid span {
+.app-shell-light .strategy-preview-metric-values span {
   color: #64748b !important;
 }
 

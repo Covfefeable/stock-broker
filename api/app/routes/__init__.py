@@ -9,6 +9,7 @@ from app.routes.health import health_bp
 from app.routes.settings import settings_bp
 from app.routes.scheduled_plan import scheduled_plan_bp
 from app.routes.strategy import strategy_bp
+from app.routes.trade_decision import trade_decision_bp
 from app.routes.task_center import task_center_bp
 
 
@@ -22,4 +23,5 @@ def register_routes(app: Flask) -> None:
     app.register_blueprint(settings_bp, url_prefix="/api")
     app.register_blueprint(scheduled_plan_bp, url_prefix="/api")
     app.register_blueprint(strategy_bp, url_prefix="/api")
+    app.register_blueprint(trade_decision_bp, url_prefix="/api")
     app.register_blueprint(task_center_bp, url_prefix="/api")

@@ -12,6 +12,7 @@ import {
   RobotOutlined,
   SettingOutlined,
   SunOutlined,
+  AimOutlined,
 } from "@ant-design/icons";
 import { Avatar, Button, Layout, Menu, Popover, Space, Switch, Typography } from "antd";
 import Link from "next/link";
@@ -29,6 +30,7 @@ const navItems = [
   { key: "/", icon: <AppstoreOutlined />, label: <Link href="/">总览</Link> },
   { key: "/data-center", icon: <DatabaseOutlined />, label: <Link href="/data-center">数据中心</Link> },
   { key: "/strategy-builder", icon: <BulbOutlined />, label: <Link href="/strategy-builder">策略搭建</Link> },
+  { key: "/trade-decisions", icon: <AimOutlined />, label: <Link href="/trade-decisions">交易决策台</Link> },
   { key: "/backtest-lab", icon: <BarChartOutlined />, label: <Link href="/backtest-lab">回测实验室</Link> },
   { key: "/agent-tasks", icon: <RobotOutlined />, label: <Link href="/agent-tasks">AI Agent 任务</Link> },
   { key: "/scheduled-plans", icon: <CalendarOutlined />, label: <Link href="/scheduled-plans">计划任务</Link> },
