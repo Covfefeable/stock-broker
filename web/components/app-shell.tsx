@@ -17,7 +17,7 @@ import {
 import { Avatar, Button, Layout, Menu, Popover, Space, Switch, Typography } from "antd";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useThemeMode } from "@/app/providers";
 import { AuthGuard } from "@/components/auth-guard";
 import { TaskCenter } from "@/components/task-center";
@@ -25,13 +25,14 @@ import { clearAccessToken, type AuthUser } from "@/lib/auth";
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "genesis-sidebar-collapsed";
 
 const navItems = [
   { key: "/", icon: <AppstoreOutlined />, label: <Link href="/">总览</Link> },
   { key: "/data-center", icon: <DatabaseOutlined />, label: <Link href="/data-center">数据中心</Link> },
   { key: "/strategy-builder", icon: <BulbOutlined />, label: <Link href="/strategy-builder">策略搭建</Link> },
-  { key: "/trade-decisions", icon: <AimOutlined />, label: <Link href="/trade-decisions">交易决策台</Link> },
   { key: "/backtest-lab", icon: <BarChartOutlined />, label: <Link href="/backtest-lab">回测实验室</Link> },
+  { key: "/trade-decisions", icon: <AimOutlined />, label: <Link href="/trade-decisions">交易决策台</Link> },
   { key: "/agent-tasks", icon: <RobotOutlined />, label: <Link href="/agent-tasks">AI Agent 任务</Link> },
   { key: "/scheduled-plans", icon: <CalendarOutlined />, label: <Link href="/scheduled-plans">计划任务</Link> },
   { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">系统设置</Link> },
@@ -42,8 +43,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [collapsedHydrated, setCollapsedHydrated] = useState(false);
   const isDark = mode === "dark";
   const selectedKey = navItems.some((item) => item.key === pathname) ? pathname : "/";
+
+  useEffect(() => {
+    setCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true");
+    setCollapsedHydrated(true);
+  }, []);
+
+  const updateCollapsed = (nextCollapsed: boolean) => {
+    setCollapsed(nextCollapsed);
+    localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(nextCollapsed));
+  };
 
   return (
     <AuthGuard>
@@ -72,10 +84,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="topbar-left">
                 <Button
                   icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                  onClick={() => setCollapsed((current) => !current)}
+                  onClick={() => updateCollapsed(!collapsed)}
                   shape="circle"
                   title={collapsed ? "展开侧边栏" : "收起侧边栏"}
                   type="text"
+                  disabled={!collapsedHydrated}
                 />
               </div>
               <Space size={18} className="topbar-meta">

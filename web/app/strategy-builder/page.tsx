@@ -302,12 +302,15 @@ export default function StrategyBuilderPage() {
       {
         title: "操作",
         key: "action",
-        width: 220,
+        width: 280,
         fixed: "right",
         render: (_value: unknown, record: StrategyRow) => (
           <Space size={4}>
             <Button size="small" type="link" href={`/strategy-builder/${record.id}`}>
               查看
+            </Button>
+            <Button size="small" type="link" href={`/backtest-lab/${record.id}`}>
+              查看回测
             </Button>
             <Button
               size="small"
@@ -414,7 +417,7 @@ export default function StrategyBuilderPage() {
           }}
           pagination={tablePagination}
           onChange={handleTableChange}
-          scroll={{ x: 1280 }}
+          scroll={{ x: 1340 }}
         />
       </Card>
     </AppShell>
