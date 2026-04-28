@@ -47,9 +47,7 @@ export default function LoginPage() {
         <div className="login-copy">
           <div>
             <Title>进入策略工作台</Title>
-            <Text>
-              管理多市场行情数据、构建规则策略、运行回测，并让 AI Agent 持续探索更稳健的策略假设。
-            </Text>
+            <Text>管理多市场行情数据、构建规则策略、运行回测，并让 AI Agent 持续探索更稳健的策略假设。</Text>
           </div>
         </div>
       </section>

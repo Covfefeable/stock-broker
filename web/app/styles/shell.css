@@ -1,0 +1,486 @@
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-shell-dark {
+  --app-bg: var(--dark-bg);
+  --panel-bg: var(--dark-panel);
+  --panel-soft: var(--dark-panel-soft);
+  --panel-border: var(--dark-border);
+  --text-main: var(--dark-text);
+  --text-muted: var(--dark-muted);
+  background: var(--app-bg);
+}
+
+.app-shell-light {
+  --app-bg: var(--light-bg);
+  --panel-bg: var(--light-panel);
+  --panel-soft: var(--light-panel-soft);
+  --panel-border: var(--light-border);
+  --text-main: var(--light-text);
+  --text-muted: var(--light-muted);
+  background: var(--app-bg);
+}
+
+.sidebar {
+  position: sticky !important;
+  top: 0;
+  height: 100vh;
+  border-right: 1px solid var(--panel-border);
+  padding: 18px 12px;
+}
+
+.brand-block {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin: 4px 6px 28px;
+  min-height: 40px;
+}
+
+.brand-mark {
+  background: transparent;
+  border-radius: 8px;
+  display: grid;
+  height: 40px;
+  place-items: center;
+  width: 40px;
+}
+
+.brand-mark img {
+  display: block;
+  height: 40px;
+  width: 40px;
+}
+
+.brand-block strong,
+.dashboard-heading h1,
+.ant-card-head-title {
+  font-family: "General Sans", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+.brand-block small {
+  color: var(--text-muted);
+  display: block;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.ant-layout-sider-collapsed .brand-block {
+  justify-content: center;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.ant-layout-sider-collapsed .brand-copy {
+  display: none;
+}
+
+.side-menu {
+  background: transparent !important;
+  border-inline-end: 0 !important;
+}
+
+.workspace {
+  min-width: 0;
+}
+
+.topbar {
+  align-items: center;
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  height: 60px;
+  justify-content: space-between;
+  line-height: normal;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(16px);
+}
+
+.topbar-left {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+
+.topbar strong,
+.brand-block strong {
+  color: var(--text-main);
+}
+
+.topbar-label {
+  color: var(--text-muted) !important;
+  display: block;
+  font-size: 12px;
+}
+
+.topbar-meta {
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.avatar {
+  background: var(--primary);
+  font-weight: 700;
+}
+
+.topbar-user-trigger {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  padding: 0;
+}
+
+.topbar-user-popover {
+  display: grid;
+  gap: 6px;
+  min-width: 120px;
+}
+
+.topbar-user-popover-name {
+  color: var(--text-main) !important;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.topbar-user-popover-action {
+  justify-content: flex-start;
+  padding-left: 0 !important;
+}
+
+.content-area {
+  background:
+    radial-gradient(circle at top right, rgba(99, 102, 241, 0.14), transparent 28%),
+    var(--app-bg);
+  min-height: calc(100vh - 60px);
+  padding: 24px;
+}
+
+.task-center-fab-wrap {
+  bottom: 24px;
+  position: fixed;
+  right: 24px;
+  z-index: 1100;
+}
+
+.task-center-fab {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 9999px;
+  cursor: pointer;
+  display: flex;
+  height: 92px;
+  justify-content: center;
+  padding: 0;
+  touch-action: none;
+  transition: transform 180ms ease;
+  user-select: none;
+  width: 92px;
+}
+
+.task-center-fab:hover {
+  transform: scale(1.06);
+}
+
+.task-center-fab-lottie {
+  height: 92px;
+  width: 92px;
+}
+
+.task-center-drawer .ant-drawer-content,
+.task-center-drawer .ant-drawer-header {
+  background: var(--panel-bg) !important;
+}
+
+.task-center-drawer .ant-drawer-header {
+  border-bottom-color: var(--panel-border) !important;
+}
+
+.task-center-drawer .ant-drawer-title,
+.task-center-section-head .ant-typography,
+.task-center-card-title strong {
+  color: var(--text-main) !important;
+}
+
+.task-center-drawer .ant-drawer-close {
+  color: var(--text-muted) !important;
+}
+
+.task-center-section {
+  display: grid;
+  gap: 12px;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.task-center-section-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.task-center-section-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.task-center-section-head .ant-typography {
+  margin: 0;
+}
+
+.task-center-subtle {
+  color: var(--text-muted) !important;
+  font-size: 12px;
+}
+
+.task-center-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  height: 100%;
+  min-height: 0;
+}
+
+.task-center-list {
+  min-height: 0;
+  overflow: auto;
+  width: 100%;
+}
+
+.task-center-card {
+  background: var(--panel-soft);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.task-center-card-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.task-center-card-title {
+  align-items: center;
+  color: var(--text-main);
+  display: flex;
+  gap: 8px;
+}
+
+.task-center-meta {
+  color: var(--text-muted);
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+}
+
+.task-center-progress-text {
+  color: var(--text-muted) !important;
+  font-size: 12px;
+}
+
+.task-center-log-list {
+  display: grid;
+  gap: 6px;
+}
+
+.task-center-log-item {
+  align-items: center;
+  color: var(--text-main);
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.task-center-log-dot {
+  background: var(--primary);
+  border-radius: 9999px;
+  flex: 0 0 auto;
+  height: 6px;
+  width: 6px;
+}
+
+.task-center-agent-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.task-center-agent-asset {
+  display: grid;
+  gap: 2px;
+}
+
+.task-center-agent-asset strong {
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.task-center-agent-metrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.task-center-agent-metric {
+  background: rgba(15, 23, 42, 0.34);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.task-center-agent-metric span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.task-center-agent-metric strong {
+  color: var(--text-main);
+  font-family: "General Sans", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.15;
+}
+
+.task-center-action {
+  justify-self: flex-start;
+  padding-left: 0 !important;
+}
+
+.auth-guard-loading {
+  align-items: center;
+  display: flex;
+  height: calc(100vh - 60px);
+  justify-content: center;
+}
+
+.dashboard-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.dashboard-heading h1 {
+  color: var(--text-main);
+  font-size: 40px;
+  line-height: 1;
+  margin: 4px 0 6px;
+}
+
+.overline {
+  color: var(--primary) !important;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.page-description,
+.metric-hint {
+  color: var(--text-muted) !important;
+}
+
+.ant-card {
+  background: var(--panel-bg) !important;
+  border-color: var(--panel-border) !important;
+  box-shadow: none;
+}
+
+.ant-card-head {
+  border-color: var(--panel-border) !important;
+}
+
+.ant-card-head-title {
+  color: var(--text-main);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.metric-card {
+  min-height: 126px;
+}
+
+.equal-height-row {
+  align-items: stretch;
+}
+
+.equal-height-row > .ant-col {
+  display: flex;
+  min-width: 0;
+}
+
+.dashboard-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+.dashboard-card > .ant-card-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.dashboard-main-row .dashboard-card {
+  height: 420px;
+}
+
+.dashboard-secondary-row .dashboard-card {
+  height: 328px;
+}
+
+.metric-card-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.metric-card-head .ant-typography,
+.metric-hint {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.metric-icon {
+  color: var(--text-muted);
+  font-size: 22px;
+}
+
+.metric-card strong {
+  color: var(--text-main);
+  display: block;
+  font-family: "General Sans", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 30px;
+  line-height: 1;
+  margin: 18px 0 14px;
+}
+
+.positive-text {
+  color: var(--success) !important;
+  font-weight: 700;
+}
+
+.negative-text {
+  color: var(--error) !important;
+  font-weight: 700;
+}
+
+.dashboard-main-row {
+  margin-top: 20px;
+}
+
+.dashboard-secondary-row {
+  margin-top: 20px;
+}

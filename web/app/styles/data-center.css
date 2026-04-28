@@ -1,0 +1,512 @@
+.ranking-panel-main,
+.agent-panel {
+  height: 100%;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.agent-task-title,
+.agent-task-meta,
+.status-list div,
+.compact-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.agent-task-title {
+  gap: 10px;
+  margin-bottom: 10px;
+  min-width: 0;
+}
+
+.agent-task-title strong {
+  color: var(--text-main);
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-task-title .ant-tag {
+  flex: 0 0 auto;
+}
+
+.agent-task-meta {
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.status-list {
+  display: grid;
+  gap: 14px;
+}
+
+.status-list div {
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 12px;
+}
+
+.compact-table {
+  display: grid;
+  gap: 10px;
+}
+
+.compact-row {
+  border-bottom: 1px solid var(--panel-border);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1.7fr) 0.7fr 0.7fr 0.5fr;
+  padding-bottom: 10px;
+}
+
+.compact-row-link {
+  color: inherit;
+  grid-template-columns: minmax(0, 1fr) auto;
+  text-decoration: none;
+}
+
+.compact-row-link:hover .dashboard-ellipsis {
+  color: var(--primary);
+}
+
+.compact-row span,
+.dashboard-ellipsis {
+  color: var(--text-main);
+  min-width: 0;
+}
+
+.dashboard-ellipsis,
+.dashboard-ellipsis-strong {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.dashboard-ellipsis-strong {
+  color: var(--text-main);
+}
+
+.compact-row-name {
+  width: 100%;
+}
+
+.ant-table-cell .dashboard-ellipsis {
+  width: 100%;
+}
+
+.warning-item {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.warning-item .ant-tag {
+  flex: 0 0 auto;
+}
+
+.warning-item .dashboard-ellipsis {
+  flex: 1;
+  width: 100%;
+}
+
+.ranking-panel {
+  margin-top: 20px;
+}
+
+.ranking-panel-main {
+  margin-top: 0;
+}
+
+.ant-table {
+  background: transparent !important;
+}
+
+.ant-table-thead > tr > th {
+  background: var(--panel-soft) !important;
+}
+
+.app-shell-dark .ant-table-cell {
+  border-color: var(--panel-border) !important;
+}
+
+.sync-timeline,
+.source-list {
+  display: grid;
+  gap: 16px;
+}
+
+.data-sync-panel .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sync-timeline-scroll {
+  flex: 1;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.sync-task {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  gap: 12px;
+  padding-bottom: 14px;
+}
+
+.sync-task strong,
+.source-item strong {
+  color: var(--text-main);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.sync-task .ant-typography,
+.source-item .ant-typography {
+  color: var(--text-muted);
+}
+
+.source-status-panel {
+  display: grid;
+  gap: 22px;
+}
+
+.source-status-card {
+  min-height: 420px;
+}
+
+.source-status-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.source-status-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.source-status-copy strong {
+  color: var(--text-main);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.source-status-copy .ant-typography {
+  color: var(--text-muted);
+}
+
+.source-status-metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.source-status-metric {
+  background: var(--panel-soft);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.source-status-metric span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.source-status-metric strong {
+  color: var(--text-main);
+  font-family: "General Sans", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 18px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.source-status-coverage {
+  display: grid;
+  gap: 14px;
+}
+
+.source-status-coverage-title {
+  color: var(--text-main) !important;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+@media (max-width: 1200px) {
+  .task-center-grid,
+  .source-status-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+.calendar-audit-bar {
+  background: var(--panel-soft);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
+  padding: 14px 16px;
+}
+
+.calendar-audit-bar div {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.source-item {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding-bottom: 14px;
+}
+
+.source-meta {
+  align-items: flex-end;
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.source-item-simple {
+  align-items: center;
+}
+
+.quality-progress > div:first-child {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.quality-progress strong {
+  color: var(--text-main);
+}
+
+.data-browser-card,
+.data-log-card {
+  margin-top: 20px;
+}
+
+.data-browser-card {
+  height: 690px;
+}
+
+.data-log-card {
+  height: 328px;
+}
+
+.data-browser-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.data-browser-select {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+.data-browser-select-wide {
+  flex-basis: 320px;
+}
+
+.data-browser-query-button {
+  flex: 0 0 120px;
+  width: 120px;
+}
+
+.data-browser-meta-row {
+  align-items: flex-start;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.data-browser-meta-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.data-browser-meta-copy .ant-typography {
+  margin: 0;
+}
+
+.app-empty-state-frame,
+.data-browser-empty-chart {
+  align-items: center;
+  display: flex;
+  min-height: 220px;
+  justify-content: center;
+  width: 100%;
+}
+
+.data-browser-empty-chart {
+  height: 460px;
+}
+
+.data-browser-kline-chart {
+  height: 460px;
+  width: 100%;
+}
+
+.app-empty-state,
+.data-browser-empty-state {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  min-height: 160px;
+  padding: 18px;
+  text-align: center;
+}
+
+.app-empty-state-compact {
+  min-height: 112px;
+  padding: 10px;
+}
+
+.app-empty-state-lottie,
+.data-browser-empty-lottie {
+  height: 140px;
+  width: 140px;
+}
+
+.app-empty-state-compact .app-empty-state-lottie {
+  height: 96px;
+  width: 96px;
+}
+
+.app-empty-state-copy,
+.data-browser-empty-text {
+  color: var(--text-secondary);
+  display: grid;
+  font-size: 14px;
+  gap: 4px;
+  line-height: 1.4;
+}
+
+.app-empty-state-copy strong {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.app-empty-state-copy span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.trading-calendar-card {
+  min-height: 760px;
+}
+
+.trading-calendar-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.trading-calendar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.trading-calendar-select {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+.trading-calendar-query-button {
+  flex: 0 0 120px;
+  width: 120px;
+}
+
+.trading-calendar-summary {
+  margin-bottom: 4px;
+}
+
+.trading-calendar-card .ant-picker-calendar {
+  background: transparent;
+  flex: 1;
+}
+
+.trading-calendar-card .ant-picker-panel {
+  background: transparent !important;
+}
+
+.trading-calendar-card .ant-picker-calendar-date {
+  background: transparent !important;
+  border-top: 0 !important;
+  height: 100%;
+}
+
+.trading-calendar-cell {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 100%;
+  min-height: 88px;
+  padding: 8px;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.trading-calendar-cell-open {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.22);
+}
+
+.trading-calendar-cell-closed {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.16);
+}
+
+.trading-calendar-cell-other-month {
+  opacity: 0.45;
+}
+
+.trading-calendar-cell-date {
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.trading-calendar-cell-status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.trading-calendar-empty {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 72px;
+}
+

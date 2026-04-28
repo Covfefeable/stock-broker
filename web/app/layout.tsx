@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 import { AppSplash } from "@/components/app-splash";
 import { AppProviders } from "./providers";
-import "./globals.css";
+import "./styles/base.css";
+import "./styles/shell.css";
+import "./styles/data-center.css";
+import "./styles/settings.css";
+import "./styles/backtest.css";
+import "./styles/auth.css";
+import "./styles/strategy.css";
+import "./styles/agent.css";
 
 export const metadata: Metadata = {
   title: "Genesis 量化策略平台",

@@ -1,0 +1,222 @@
+@import url("https://api.fontshare.com/v2/css?f[]=general-sans@600,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root {
+  --primary: #6366f1;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --dark-bg: #0f172a;
+  --dark-panel: #172033;
+  --dark-panel-soft: #1b263b;
+  --dark-border: #27344d;
+  --dark-text: #e5e7eb;
+  --dark-muted: #8d99ae;
+  --light-bg: #fafafa;
+  --light-panel: #ffffff;
+  --light-panel-soft: #f5f6fa;
+  --light-border: #e8e8ec;
+  --light-text: #0a0a0a;
+  --light-muted: #6b6b6b;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-color: rgba(141, 153, 174, 0.38) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(141, 153, 174, 0.34);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(141, 153, 174, 0.58);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+body {
+  background: var(--dark-bg);
+  color: var(--dark-text);
+  margin: 0;
+  font-family: "DM Sans", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+body[data-theme="dark"] {
+  --app-bg: var(--dark-bg);
+  --panel-bg: var(--dark-panel);
+  --panel-soft: var(--dark-panel-soft);
+  --panel-border: var(--dark-border);
+  --text-main: var(--dark-text);
+  --text-muted: var(--dark-muted);
+  --text-primary: var(--dark-text);
+  --text-secondary: var(--dark-muted);
+  background: var(--dark-bg);
+  color: var(--dark-text);
+}
+
+body[data-theme="light"] {
+  --app-bg: var(--light-bg);
+  --panel-bg: var(--light-panel);
+  --panel-soft: var(--light-panel-soft);
+  --panel-border: var(--light-border);
+  --text-main: var(--light-text);
+  --text-muted: var(--light-muted);
+  --text-primary: var(--light-text);
+  --text-secondary: var(--light-muted);
+  background: var(--light-bg);
+  color: var(--light-text);
+}
+
+.theme-root {
+  background: var(--app-bg);
+  color: var(--text-main);
+  min-height: 100vh;
+}
+
+.theme-dark {
+  --app-bg: var(--dark-bg);
+  --panel-bg: var(--dark-panel);
+  --panel-soft: var(--dark-panel-soft);
+  --panel-border: var(--dark-border);
+  --text-main: var(--dark-text);
+  --text-muted: var(--dark-muted);
+  --text-primary: var(--dark-text);
+  --text-secondary: var(--dark-muted);
+}
+
+.theme-light {
+  --app-bg: var(--light-bg);
+  --panel-bg: var(--light-panel);
+  --panel-soft: var(--light-panel-soft);
+  --panel-border: var(--light-border);
+  --text-main: var(--light-text);
+  --text-muted: var(--light-muted);
+  --text-primary: var(--light-text);
+  --text-secondary: var(--light-muted);
+}
+
+.initial-splash-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+.app-splash {
+  align-items: center;
+  animation: splash-fade-in 180ms ease-out;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(99, 102, 241, 0.2), transparent 24%),
+    rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(18px);
+  color: var(--dark-text);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  opacity: 1;
+  position: fixed;
+  transition: opacity 320ms ease, visibility 320ms ease;
+  visibility: visible;
+  z-index: 9999;
+}
+
+.app-splash-leaving {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.app-splash-panel {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transform: translateY(-8px);
+}
+
+.app-loader {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 160px;
+  width: 100%;
+}
+
+.app-loader-fullscreen {
+  background:
+    radial-gradient(circle at top right, rgba(99, 102, 241, 0.14), transparent 28%),
+    var(--app-bg, #0f172a);
+  min-height: 100vh;
+}
+
+.app-loader-panel,
+.app-splash-panel {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transform: translateY(-8px);
+}
+
+.app-loader-panel-compact {
+  transform: translateY(-8px);
+}
+
+.app-loader-lottie,
+.app-splash-lottie {
+  height: 144px;
+  width: 144px;
+}
+
+.app-loader-copy,
+.app-splash-copy {
+  display: grid;
+  gap: 6px;
+  text-align: center;
+}
+
+.app-loader-copy strong,
+.app-splash-copy strong {
+  color: var(--text-main, #f8fafc);
+  font-family: "General Sans", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 22px;
+  letter-spacing: 0;
+}
+
+.app-loader-copy span,
+.app-splash-copy span {
+  color: var(--text-muted, var(--dark-muted));
+  font-size: 13px;
+}
+
+@keyframes splash-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
