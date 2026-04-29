@@ -147,7 +147,6 @@ DSL 结构硬性要求，违反任何一条都会被系统拒绝：
 - strategy 里只能使用 entryRules / exitRules / risk，不要返回旧字段 entry 或 exit。
 - entryRules 和 exitRules 都必须是数组，数组内每项必须包含 name、action、conditions。
 - mode 只能是 continue_best、refine_recent、explore_new、mutate 之一；intent 只能从上方 intent 枚举中选择英文值，不能写中文。
-- risk 必须原样使用上方固定风险参数，不要增加 initialCapital、positionSize、stopLoss、takeProfit、maxHoldingDays 等字段。
 - conditions 的 type 必须是 group；group.logic 只能是 and 或 or；group.children 里才能放 condition 或子 group，且 children 不能为空。
 - condition 必须同时包含 type、leftExpression、operator、rightExpression。
 - condition.operator 只能是 >、>=、<、<=、==、!=、cross_over、cross_under 之一，不能写中文、英文描述或符号以外的词。

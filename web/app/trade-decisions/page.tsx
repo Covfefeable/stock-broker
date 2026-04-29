@@ -65,6 +65,7 @@ type DecisionItem = {
     size: number;
     ruleName: string | null;
     reason: string;
+    ruleDetail: string | null;
   };
 };
 
@@ -329,11 +330,21 @@ export default function TradeDecisionsPage() {
         title: "命中规则",
         dataIndex: ["recommendation", "ruleName"],
         width: 220,
-        render: (_value: string | null, record) => (
-          <Tooltip title={record.recommendation.reason}>
-            <span className="dashboard-ellipsis">{record.recommendation.ruleName || "-"}</span>
-          </Tooltip>
-        ),
+        render: (_value: string | null, record) => {
+          const tooltipTitle = record.recommendation.ruleDetail ? (
+            <div>
+              <div>{record.recommendation.reason}</div>
+              <div>{record.recommendation.ruleDetail}</div>
+            </div>
+          ) : (
+            record.recommendation.reason
+          );
+          return (
+            <Tooltip title={tooltipTitle}>
+              <span className="dashboard-ellipsis">{record.recommendation.ruleName || "-"}</span>
+            </Tooltip>
+          );
+        },
       },
       {
         title: "年化收益",

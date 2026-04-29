@@ -14,6 +14,7 @@ from app.models.strategy import Strategy
 from app.models.strategy_evaluation import StrategyEvaluation
 from app.models.user import User
 from app.services.market_data import apply_stock_split_adjustments
+from app.services.agent.strategy_description import _describe_group
 from app.services.strategies.dsl import _normalize_strategy_rules
 from app.services.strategies.expression import _evaluate_group
 from app.services.strategies.indicators import _calculate_indicators
@@ -345,16 +346,19 @@ def _build_recommendation(
         size = _rule_size(triggered_exit_rule, 1.0)
         sell_ratio = min(position_ratio, size)
         action = "sell" if sell_ratio >= position_ratio else "reduce"
+        rule_detail = _rule_detail(triggered_exit_rule)
         return {
             "action": action,
             "label": f"{'卖出' if action == 'sell' else '减仓'} {sell_ratio * 100:.0f}%",
             "size": round(sell_ratio, 4),
             "ruleName": _rule_name(triggered_exit_rule),
             "reason": f"{_rule_name(triggered_exit_rule)}触发",
+            "ruleDetail": rule_detail,
         }
     if triggered_entry_rule:
         size = _rule_size(triggered_entry_rule, 0.0)
         buy_ratio = min(max(1.0 - position_ratio, 0.0), size)
+        rule_detail = _rule_detail(triggered_entry_rule)
         if buy_ratio <= 0:
             return {
                 "action": "hold" if position_ratio > 0 else "watch",
@@ -362,6 +366,7 @@ def _build_recommendation(
                 "size": 0.0,
                 "ruleName": _rule_name(triggered_entry_rule),
                 "reason": "买入规则触发，但当前仓位已满。",
+                "ruleDetail": rule_detail,
             }
         action = "buy" if position_ratio <= 0 else "add"
         return {
@@ -370,6 +375,7 @@ def _build_recommendation(
             "size": round(buy_ratio, 4),
             "ruleName": _rule_name(triggered_entry_rule),
             "reason": f"{_rule_name(triggered_entry_rule)}触发",
+            "ruleDetail": rule_detail,
         }
     return {
         "action": "hold" if position_ratio > 0 else "watch",
@@ -377,6 +383,7 @@ def _build_recommendation(
         "size": 0.0,
         "ruleName": None,
         "reason": "当前未触发可执行规则。",
+        "ruleDetail": None,
     }
 
 
@@ -436,6 +443,17 @@ def _rule_size(rule: dict, fallback: float) -> float:
 
 def _rule_name(rule: dict) -> str:
     return str(rule.get("name") or "规则")
+
+
+def _rule_detail(rule: dict | None) -> str | None:
+    if not rule:
+        return None
+    action = rule.get("action") or {}
+    action_type = action.get("type")
+    action_label = "买入" if action_type == "buy" else "卖出"
+    size = _rule_size(rule, 1.0)
+    conditions_text = _describe_group(rule.get("conditions") or {})
+    return f"{_rule_name(rule)}（{action_label} {size * 100:.0f}%）：{conditions_text}"
 
 
 def _to_float(value: Any, fallback: float) -> float:

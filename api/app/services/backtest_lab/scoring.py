@@ -93,6 +93,8 @@ def group_conclusion(score: float) -> str:
         return "表现稳健"
     if score >= 60:
         return "基本可观察"
+    if score >= 52:
+        return "低分通过"
     if score >= 45:
         return "存在明显分化"
     return "稳定性不足"

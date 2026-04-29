@@ -46,7 +46,6 @@ def _format_agent_memory_item(item: dict) -> str:
 
     metrics = payload.get("metrics") or {}
     strategy_digest = payload.get("strategyDigest") or {}
-    reflection = payload.get("reflection") or {}
     diagnostics_text = _format_curve_diagnostics_for_memory(payload.get("curveDiagnostics") or {})
     time_robustness_text = _format_time_robustness_for_memory(payload.get("timeRobustness") or {})
     return (
@@ -63,9 +62,7 @@ def _format_agent_memory_item(item: dict) -> str:
         f"  买入：{strategy_digest.get('entry', '-')}\n"
         f"  卖出：{strategy_digest.get('exit', '-')}\n"
         f"  曲线诊断：{diagnostics_text}\n"
-        f"  跨时间验证：{time_robustness_text}\n"
-        f"  分析：{reflection.get('analysis', '-')}\n"
-        f"  决策：{reflection.get('plan', '-')}"
+        f"  跨时间验证：{time_robustness_text}"
     )
 
 
