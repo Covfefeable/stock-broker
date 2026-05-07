@@ -99,17 +99,6 @@ def get_agent_task_detail(user: User, task_id: int) -> dict:
     task_payload = task.to_dict()
     score_weights = get_performance_score_weights(user)
     best_iteration = _get_best_iteration(task, score_weights=score_weights)
-    bars = _load_asset_bars(
-        task.asset_type,
-        task.asset_identifier,
-        task.country_code,
-        {
-            "risk": {
-                "backtestStartDate": task.backtest_start_date.isoformat(),
-                "backtestEndDate": task.backtest_end_date.isoformat(),
-            }
-        },
-    )
     task_payload["bestMaxDrawdown"] = (
         round(float(best_iteration.max_drawdown), 2)
         if best_iteration and best_iteration.max_drawdown is not None
@@ -119,7 +108,7 @@ def get_agent_task_detail(user: User, task_id: int) -> dict:
     return {
         "task": task_payload,
         "iterations": [
-            _serialize_agent_iteration_detail(task, item, score_weights=score_weights, bars=bars)
+            _serialize_agent_iteration_detail(task, item, score_weights=score_weights)
             for item in task.iterations
         ],
     }
@@ -177,7 +166,6 @@ def _serialize_agent_iteration_detail(
     iteration: AgentIteration,
     *,
     score_weights: dict[str, float] | None = None,
-    bars: list[dict] | None = None,
 ) -> dict:
     payload = iteration.to_dict()
     payload["score"] = _score_iteration(iteration, weights=score_weights)
@@ -196,51 +184,7 @@ def _serialize_agent_iteration_detail(
     payload["analysis"] = analysis
     payload["actionPlan"] = action_plan
     payload["memory"] = memory
-    preview_summary = _build_iteration_equity_preview(iteration, bars or [], score_weights=score_weights)
-    payload["equityPreview"] = preview_summary.get("equityPreview") if preview_summary else None
-    payload["benchmarkScore"] = preview_summary.get("benchmarkScore") if preview_summary else None
+    persisted_preview = iteration.equity_preview or {}
+    payload["equityPreview"] = persisted_preview.get("equityPreview")
+    payload["benchmarkScore"] = persisted_preview.get("benchmarkScore")
     return payload
-
-
-def _build_iteration_equity_preview(
-    iteration: AgentIteration,
-    bars: list[dict],
-    *,
-    score_weights: dict[str, float] | None = None,
-) -> dict | None:
-    if not bars or not iteration.strategy_config:
-        return None
-    try:
-        preview = _run_strategy_backtest(bars, iteration.strategy_config or {})
-    except Exception:  # noqa: BLE001
-        return None
-    return {
-        "equityPreview": {
-            "equityCurve": _downsample_curve(preview.get("equityCurve") or []),
-            "benchmarkCurve": _downsample_curve(preview.get("benchmarkCurve") or []),
-        },
-        "benchmarkScore": round(
-            calculate_performance_score(
-                preview.get("benchmarkAnnualReturn"),
-                preview.get("benchmarkSharpe"),
-                preview.get("benchmarkMaxDrawdown"),
-                weights=score_weights,
-            ),
-            2,
-        ),
-    }
-
-
-def _downsample_curve(curve: list[dict], max_points: int = 80) -> list[dict]:
-    if len(curve) <= max_points:
-        return curve
-    step = (len(curve) - 1) / (max_points - 1)
-    sampled: list[dict] = []
-    seen: set[int] = set()
-    for index in range(max_points):
-        source_index = round(index * step)
-        if source_index in seen:
-            continue
-        seen.add(source_index)
-        sampled.append(curve[source_index])
-    return sampled

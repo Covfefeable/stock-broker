@@ -27,6 +27,11 @@ class AgentIteration(db.Model):
         nullable=True,
         default=dict,
     )
+    equity_preview = db.Column(
+        JSONB().with_variant(db.JSON(), "sqlite"),
+        nullable=True,
+        default=dict,
+    )
     analysis = db.Column(db.Text, nullable=True)
     action_plan = db.Column(db.Text, nullable=True)
     summary = db.Column(db.Text, nullable=False)
@@ -50,6 +55,7 @@ class AgentIteration(db.Model):
             "intent": self.intent,
             "memory": self.memory,
             "timeRobustness": self.time_robustness or {},
+            "equityPreview": self.equity_preview or {},
             "analysis": self.analysis,
             "actionPlan": self.action_plan,
             "summary": self.summary,

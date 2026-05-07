@@ -27,6 +27,26 @@ from app.services.settings import get_performance_score_weights
 from app.services.strategies import _load_asset_bars, _run_strategy_backtest
 
 
+def _build_persisted_equity_preview(preview: dict, *, score_weights: dict[str, float] | None = None) -> dict:
+    return {
+        "equityPreview": {
+            "equityCurve": _downsample_curve(preview.get("equityCurve") or []),
+            "benchmarkCurve": _downsample_curve(preview.get("benchmarkCurve") or []),
+        },
+        "benchmarkScore": round(
+            _score_result(
+                {
+                    "annualReturn": preview.get("benchmarkAnnualReturn"),
+                    "sharpe": preview.get("benchmarkSharpe"),
+                    "maxDrawdown": preview.get("benchmarkMaxDrawdown"),
+                },
+                weights=score_weights,
+            ),
+            2,
+        ),
+    }
+
+
 def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict:
     db.session.refresh(task)
     if task.stop_requested:
@@ -156,6 +176,7 @@ def run_agent_iterations(task: AgentTask, *, task_id: str | None = None) -> dict
             intent=generation_result.get("intent"),
             memory=memory_text,
             time_robustness=time_robustness,
+            equity_preview=_build_persisted_equity_preview(preview, score_weights=score_weights),
             analysis=analysis_text,
             action_plan=action_plan_text,
             summary=summary,
@@ -292,3 +313,18 @@ def mark_agent_task_failed(task: AgentTask, message: str, *, celery_task_id: str
         level="error",
         message=message,
     )
+
+
+def _downsample_curve(curve: list[dict], max_points: int = 80) -> list[dict]:
+    if len(curve) <= max_points:
+        return curve
+    step = (len(curve) - 1) / (max_points - 1)
+    sampled: list[dict] = []
+    seen: set[int] = set()
+    for index in range(max_points):
+        source_index = round(index * step)
+        if source_index in seen:
+            continue
+        seen.add(source_index)
+        sampled.append(curve[source_index])
+    return sampled
