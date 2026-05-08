@@ -49,12 +49,12 @@ EXPRESSION_FUNCTION_ARITY = {
     "change": 2,
     "pct_change": 2,
     "ema": 2,
-    "slope": 2,
+    "pct_slope": 2,
     "zscore": 2,
     "percentile_rank": 2,
     "drawdown_from_high": 2,
 }
-WINDOW_FUNCTIONS = {"sum", "avg", "std", "highest", "lowest", "ema", "slope", "zscore", "percentile_rank", "drawdown_from_high"}
+WINDOW_FUNCTIONS = {"sum", "avg", "std", "highest", "lowest", "ema", "pct_slope", "zscore", "percentile_rank", "drawdown_from_high"}
 CHANGE_FUNCTIONS = {"change", "pct_change"}
 INDICATOR_WARMUP_BARS = 180
 MIN_ANNUALIZATION_PERIODS = 60

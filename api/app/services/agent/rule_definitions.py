@@ -56,7 +56,7 @@ RULE_FUNCTIONS = [
     {"name": "change", "args": "x, n", "description": "当前表达式值减去 n 根 K 线前的表达式值。"},
     {"name": "pct_change", "args": "x, n", "description": "当前表达式相对 n 根 K 线前的变化率。"},
     {"name": "ema", "args": "x, n", "description": "最近 n 根 K 线表达式的指数移动平均，首值使用窗口第一项。"},
-    {"name": "slope", "args": "x, n", "description": "最近 n 根 K 线表达式对时间序号的线性回归斜率。"},
+    {"name": "pct_slope", "args": "x, n", "description": "最近 n 根 K 线表达式线性回归斜率除以当前表达式值，用比例口径衡量趋势方向和强度。"},
     {"name": "zscore", "args": "x, n", "description": "当前表达式相对最近 n 根 K 线均值的标准分。"},
     {"name": "percentile_rank", "args": "x, n", "description": "当前表达式在最近 n 根 K 线中的分位排名，范围 0 到 1。"},
     {"name": "drawdown_from_high", "args": "x, n", "description": "当前表达式相对最近 n 根 K 线最高值的回撤，口径为 x / highest(x, n) - 1。"},

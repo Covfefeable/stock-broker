@@ -198,8 +198,8 @@ def _evaluate_function_token(token: dict, contexts: list[dict[str, Any]], contex
             return standard_deviation
         if name == "ema":
             return _ema_window_value(numeric_values)
-        if name == "slope":
-            return _linear_slope(numeric_values)
+        if name == "pct_slope":
+            return _linear_pct_slope(numeric_values)
         if name == "zscore":
             return 0.0 if standard_deviation == 0 else (numeric_values[-1] - average) / standard_deviation
         if name == "percentile_rank":
@@ -241,9 +241,12 @@ def _ema_window_value(values: list[float]) -> float | None:
     return ema_value
 
 
-def _linear_slope(values: list[float]) -> float | None:
+def _linear_pct_slope(values: list[float]) -> float | None:
     count = len(values)
     if count < 2:
+        return None
+    current_value = values[-1]
+    if current_value == 0:
         return None
     x_mean = (count - 1) / 2
     y_mean = sum(values) / count
@@ -251,4 +254,4 @@ def _linear_slope(values: list[float]) -> float | None:
     if denominator == 0:
         return 0.0
     numerator = sum((index - x_mean) * (value - y_mean) for index, value in enumerate(values))
-    return numerator / denominator
+    return (numerator / denominator) / current_value

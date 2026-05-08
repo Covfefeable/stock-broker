@@ -116,7 +116,7 @@ const FUNCTION_OPTIONS: Array<{ label: string; value: ExpressionFunctionName; he
   { label: "change(x, n)", value: "change", help: "当前表达式值减去 n 根 K 线前的表达式值。" },
   { label: "pct_change(x, n)", value: "pct_change", help: "当前表达式值相对 n 根 K 线前表达式值的变化率。" },
   { label: "ema(x, n)", value: "ema", help: "最近 n 根 K 线表达式的指数移动平均，首值使用窗口第一项。" },
-  { label: "slope(x, n)", value: "slope", help: "最近 n 根 K 线表达式对时间序号的线性回归斜率。" },
+  { label: "pct_slope(x, n)", value: "pct_slope", help: "最近 n 根 K 线表达式线性回归斜率除以当前表达式值，用比例口径衡量趋势方向和强度。" },
   { label: "zscore(x, n)", value: "zscore", help: "当前表达式相对最近 n 根 K 线均值的标准分。" },
   { label: "percentile_rank(x, n)", value: "percentile_rank", help: "当前表达式在最近 n 根 K 线中的分位排名，范围 0 到 1。" },
   { label: "drawdown_from_high(x, n)", value: "drawdown_from_high", help: "当前表达式相对最近 n 根 K 线最高值的回撤，口径为 x / highest(x, n) - 1。" },

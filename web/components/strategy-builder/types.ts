@@ -14,7 +14,7 @@ export type ExpressionFunctionName =
   | "change"
   | "pct_change"
   | "ema"
-  | "slope"
+  | "pct_slope"
   | "zscore"
   | "percentile_rank"
   | "drawdown_from_high";
