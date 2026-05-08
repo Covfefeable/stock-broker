@@ -22,17 +22,26 @@ def _parse_optional_metric(value: Any) -> Decimal | None:
         raise StrategyError("策略指标格式无效。") from exc
 
 
-def archive_strategy(user: User, strategy_id: int) -> Strategy:
+def favorite_strategy(user: User, strategy_id: int) -> Strategy:
     strategy = get_strategy(user, strategy_id)
-    strategy.status = "已归档"
-    strategy.archived_at = datetime.now(timezone.utc)
+    if strategy.status == "已收藏":
+        strategy.status = "草稿"
+    else:
+        strategy.status = "已收藏"
+    strategy.archived_at = None
     strategy.updated_at = datetime.now(timezone.utc)
     db.session.commit()
     return strategy
 
 
+def archive_strategy(user: User, strategy_id: int) -> Strategy:
+    return favorite_strategy(user, strategy_id)
+
+
 def delete_strategy(user: User, strategy_id: int) -> None:
     strategy = get_strategy(user, strategy_id)
+    if strategy.status == "已收藏":
+        raise StrategyError("已收藏的策略禁止删除，请先取消收藏。")
     StrategyEvaluation.query.filter_by(user_id=user.id, strategy_id=strategy.id).delete(synchronize_session=False)
     db.session.delete(strategy)
     db.session.commit()

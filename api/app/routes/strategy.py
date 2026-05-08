@@ -3,10 +3,10 @@ from flask import Blueprint, g, request
 from app.routes.auth import auth_required
 from app.services.strategies import (
     StrategyError,
-    archive_strategy,
     create_strategy,
     get_strategy,
     delete_strategy,
+    favorite_strategy,
     list_strategies,
     list_strategy_asset_options,
     preview_strategy,
@@ -114,16 +114,16 @@ def get_strategy_asset_options():
     return payload
 
 
-@strategy_bp.post("/strategies/<int:strategy_id>/archive")
+@strategy_bp.post("/strategies/<int:strategy_id>/favorite")
 @auth_required
-def post_archive_strategy(strategy_id: int):
+def post_favorite_strategy(strategy_id: int):
     try:
-        strategy = archive_strategy(g.current_user, strategy_id)
+        strategy = favorite_strategy(g.current_user, strategy_id)
     except StrategyError as exc:
         return {"message": str(exc)}, 404
 
     return {
-        "message": "策略已归档。",
+        "message": "策略收藏状态已更新。",
         "strategy": strategy.to_dict(),
     }
 
@@ -134,6 +134,7 @@ def delete_strategy_route(strategy_id: int):
     try:
         delete_strategy(g.current_user, strategy_id)
     except StrategyError as exc:
-        return {"message": str(exc)}, 404
+        status_code = 400 if "禁止删除" in str(exc) else 404
+        return {"message": str(exc)}, status_code
 
     return {}, 204

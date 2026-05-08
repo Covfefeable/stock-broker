@@ -63,6 +63,7 @@ const defaultFilters: StrategyFilters = {
 const statusColorMap: Record<string, string> = {
   已发布: "green",
   草稿: "gold",
+  已收藏: "purple",
   已归档: "default",
   测试中: "processing",
 };
@@ -83,7 +84,7 @@ export default function StrategyBuilderPage() {
   const [messageApi, contextHolder] = message.useMessage();
   const [modal, modalHolder] = Modal.useModal();
   const [loading, setLoading] = useState(true);
-  const [archivingId, setArchivingId] = useState<number | null>(null);
+  const [favoriteId, setFavoriteId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [items, setItems] = useState<StrategyRow[]>([]);
   const [filters, setFilters] = useState<StrategyFilters>(defaultFilters);
@@ -165,17 +166,17 @@ export default function StrategyBuilderPage() {
     setQueryState(defaultQueryState);
   };
 
-  const handleArchive = async (strategyId: number) => {
-    setArchivingId(strategyId);
+  const handleFavorite = async (strategyId: number, currentStatus: string) => {
+    setFavoriteId(strategyId);
     try {
       const token = getAccessToken();
-      await apiPost<{ message: string }>(`/strategies/${strategyId}/archive`, {}, token);
-      messageApi.success("策略已归档。");
+      await apiPost<{ message: string }>(`/strategies/${strategyId}/favorite`, {}, token);
+      messageApi.success(currentStatus === "已收藏" ? "已取消收藏。" : "策略已收藏。");
       await loadStrategies(queryState);
     } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "归档策略失败");
+      messageApi.error(error instanceof Error ? error.message : "更新收藏状态失败");
     } finally {
-      setArchivingId(null);
+      setFavoriteId(null);
     }
   };
 
@@ -315,16 +316,16 @@ export default function StrategyBuilderPage() {
             <Button
               size="small"
               type="link"
-              disabled={record.status === "已归档"}
-              loading={archivingId === record.id}
-              onClick={() => void handleArchive(record.id)}
+              loading={favoriteId === record.id}
+              onClick={() => void handleFavorite(record.id, record.status)}
             >
-              归档
+              {record.status === "已收藏" ? "取消收藏" : "收藏"}
             </Button>
             <Button
               size="small"
               type="link"
               danger
+              disabled={record.status === "已收藏"}
               loading={deletingId === record.id}
               onClick={() => handleDelete(record.id)}
             >
@@ -334,7 +335,7 @@ export default function StrategyBuilderPage() {
         ),
       },
     ],
-    [archivingId, deletingId, handleArchive, handleDelete, queryState.sortField, queryState.sortOrder],
+    [deletingId, favoriteId, handleDelete, handleFavorite, queryState.sortField, queryState.sortOrder],
   );
 
   return (
@@ -401,10 +402,6 @@ export default function StrategyBuilderPage() {
           <Button icon={<ReloadOutlined />} onClick={resetFilters}>
             重置
           </Button>
-        </div>
-
-        <div className="strategy-list-summary">
-          <Text className="page-description">共 {pagination.total} 条策略记录</Text>
         </div>
 
         <Table

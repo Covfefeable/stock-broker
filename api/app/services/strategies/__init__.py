@@ -3,6 +3,7 @@ from app.services.strategies.commands import (
     archive_strategy,
     create_strategy,
     delete_strategy,
+    favorite_strategy,
     update_strategy,
 )
 from app.services.strategies.dsl import (
@@ -32,6 +33,7 @@ __all__ = [
     "archive_strategy",
     "create_strategy",
     "delete_strategy",
+    "favorite_strategy",
     "get_strategy",
     "list_strategies",
     "list_strategy_asset_options",
