@@ -144,3 +144,45 @@ def test_strategy_validation_rejects_future_variable_reference() -> None:
     }
     with pytest.raises(StrategyError, match="不允许引用未来数据"):
         _validate_strategy_config(config)
+
+
+def test_strategy_validation_rejects_invalid_conflict_policy() -> None:
+    config = {
+        "entryRules": [
+            {
+                "action": {"type": "buy", "size": 1},
+                "conditions": {
+                    "type": "group",
+                    "logic": "and",
+                    "children": [
+                        {
+                            "type": "condition",
+                            "leftExpression": [variable("close")],
+                            "operator": ">",
+                            "rightExpression": [number(10)],
+                        }
+                    ],
+                },
+            }
+        ],
+        "exitRules": [
+            {
+                "action": {"type": "sell", "size": 1},
+                "conditions": {
+                    "type": "group",
+                    "logic": "and",
+                    "children": [
+                        {
+                            "type": "condition",
+                            "leftExpression": [variable("close")],
+                            "operator": "<",
+                            "rightExpression": [number(10)],
+                        }
+                    ],
+                },
+            }
+        ],
+        "risk": {"conflictPolicy": "unknown"},
+    }
+    with pytest.raises(StrategyError, match="信号冲突处理方式无效"):
+        _validate_strategy_config(config)

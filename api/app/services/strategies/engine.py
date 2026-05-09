@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.strategies.dsl import _normalize_strategy_rules
+from app.services.strategies.dsl import _normalize_conflict_policy, _normalize_strategy_rules
 from app.services.strategies.errors import StrategyError
 from app.services.strategies.expression import _evaluate_group
 from app.services.strategies.indicators import _calculate_indicators
@@ -57,6 +57,7 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
 
     entry_rules = _normalize_strategy_rules(strategy_config, "entry")
     exit_rules = _normalize_strategy_rules(strategy_config, "exit")
+    conflict_policy = _normalize_conflict_policy(strategy_config)
 
     cash = initial_capital
     shares = 0.0
@@ -205,24 +206,41 @@ def _run_strategy_backtest(bars: list[dict], strategy_config: dict) -> dict:
         evaluation_contexts = [*context_history, context]
         current_context_index = len(evaluation_contexts) - 1
 
-        if shares > 0:
-            triggered_exit_rule = _find_triggered_strategy_rule(exit_rules, evaluation_contexts, current_context_index)
-            if triggered_exit_rule:
-                pending_sell_signal = True
-                pending_sell_size = _rule_action_size(triggered_exit_rule, 1.0)
-                pending_exit_reason = _format_rule_reason(triggered_exit_rule, "卖出规则触发")
-
         total_equity_for_signal = cash + shares * close_price
         current_position_ratio_for_signal = (
             (shares * close_price) / total_equity_for_signal
             if shares > 0 and total_equity_for_signal > 0
             else 0.0
         )
+        triggered_exit_rule = (
+            _find_triggered_strategy_rule(exit_rules, evaluation_contexts, current_context_index)
+            if shares > 0
+            else None
+        )
         triggered_entry_rule = _find_triggered_strategy_rule(entry_rules, evaluation_contexts, current_context_index)
+        has_signal_conflict = triggered_exit_rule is not None and triggered_entry_rule is not None
         normalized_position_size_for_signal = _rule_action_size(triggered_entry_rule, 0.0)
         available_position_ratio_for_signal = max(0.0, 1.0 - current_position_ratio_for_signal)
         can_add_position = normalized_position_size_for_signal > 0 and available_position_ratio_for_signal > 1e-6
-        if not pending_sell_signal and triggered_entry_rule and can_add_position:
+
+        should_queue_sell = triggered_exit_rule is not None
+        should_queue_buy = triggered_entry_rule is not None and can_add_position
+        if has_signal_conflict:
+            if conflict_policy == "entry_first":
+                should_queue_sell = False
+            elif conflict_policy == "allow_reentry":
+                should_queue_buy = normalized_position_size_for_signal > 0
+            elif conflict_policy == "skip":
+                should_queue_sell = False
+                should_queue_buy = False
+            else:
+                should_queue_buy = False
+
+        if should_queue_sell and triggered_exit_rule:
+            pending_sell_signal = True
+            pending_sell_size = _rule_action_size(triggered_exit_rule, 1.0)
+            pending_exit_reason = _format_rule_reason(triggered_exit_rule, "卖出规则触发")
+        if should_queue_buy and triggered_entry_rule:
             pending_buy_signal = True
             pending_buy_size = normalized_position_size_for_signal
             pending_entry_reason = _format_rule_reason(triggered_entry_rule, "买入规则触发")

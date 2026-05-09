@@ -60,7 +60,7 @@ type DecisionItem = {
   signalDate: string | null;
   updatedAt: string | null;
   recommendation: {
-    action: "buy" | "add" | "sell" | "reduce" | "hold" | "watch";
+    action: "buy" | "add" | "sell" | "reduce" | "rebalance" | "hold" | "watch";
     label: string;
     size: number;
     ruleName: string | null;
@@ -85,6 +85,7 @@ type DecisionResponse = {
     counts: {
       buy: number;
       sell: number;
+      rebalance: number;
       hold: number;
       watch: number;
     };
@@ -97,6 +98,7 @@ const actionColorMap: Record<DecisionItem["recommendation"]["action"], string> =
   add: "cyan",
   sell: "red",
   reduce: "orange",
+  rebalance: "purple",
   hold: "blue",
   watch: "default",
 };

@@ -652,9 +652,12 @@
 }
 
 .strategy-risk-form label > span {
+  align-items: center;
   color: var(--text-muted);
+  display: inline-flex;
   font-size: 13px;
   font-weight: 600;
+  gap: 6px;
 }
 
 .strategy-risk-switch-row {
@@ -664,8 +667,6 @@
 
 .strategy-risk-switch-row > span {
   align-items: center;
-  display: inline-flex;
-  gap: 6px;
 }
 
 .strategy-field-option-label {

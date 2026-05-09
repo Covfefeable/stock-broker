@@ -37,11 +37,19 @@ def rule(name: str, side: str, size: float, conditions: dict) -> dict:
     return {"name": name, "action": {"type": side, "size": size}, "conditions": conditions}
 
 
-def config(entry_rules: list[dict], exit_rules: list[dict], force_close: bool = False) -> dict:
+def config(
+    entry_rules: list[dict],
+    exit_rules: list[dict],
+    force_close: bool = False,
+    conflict_policy: str | None = None,
+) -> dict:
+    risk = {"initialCapital": 1000, "forceCloseOnEnd": force_close}
+    if conflict_policy:
+        risk["conflictPolicy"] = conflict_policy
     return {
         "entryRules": entry_rules,
         "exitRules": exit_rules,
-        "risk": {"initialCapital": 1000, "forceCloseOnEnd": force_close},
+        "risk": risk,
     }
 
 
@@ -101,6 +109,69 @@ def test_rule_order_uses_first_matching_rule() -> None:
     first_buy = next(trade for trade in result["trades"] if trade["side"] == "buy")
     assert first_buy["positionRatio"] == 25.0
     assert first_buy["reason"] == "first触发"
+
+
+def test_conflict_policy_defaults_to_exit_first() -> None:
+    result = _run_strategy_backtest(
+        make_bars(),
+        config(
+            [rule("buyHalf", "buy", 0.5, group(condition("close", ">=", 10)))],
+            [rule("sellHalf", "sell", 0.5, group(condition("close", ">=", 11)))],
+        ),
+    )
+
+    assert [(trade["date"], trade["side"], trade["reason"]) for trade in result["trades"][:2]] == [
+        ("2026-01-02", "buy", "buyHalf触发"),
+        ("2026-01-03", "sell", "sellHalf触发"),
+    ]
+
+
+def test_conflict_policy_entry_first_skips_sell_and_keeps_buy() -> None:
+    result = _run_strategy_backtest(
+        make_bars(),
+        config(
+            [rule("buyHalf", "buy", 0.5, group(condition("close", ">=", 10)))],
+            [rule("sellHalf", "sell", 0.5, group(condition("close", ">=", 11)))],
+            conflict_policy="entry_first",
+        ),
+    )
+
+    assert [(trade["date"], trade["side"], trade["reason"]) for trade in result["trades"][:2]] == [
+        ("2026-01-02", "buy", "buyHalf触发"),
+        ("2026-01-03", "buy", "buyHalf触发"),
+    ]
+
+
+def test_conflict_policy_allow_reentry_sells_then_buys_on_next_open() -> None:
+    result = _run_strategy_backtest(
+        make_bars(),
+        config(
+            [rule("buyHalf", "buy", 0.5, group(condition("close", ">=", 10)))],
+            [rule("sellHalf", "sell", 0.5, group(condition("close", ">=", 11)))],
+            conflict_policy="allow_reentry",
+        ),
+    )
+
+    assert [(trade["date"], trade["side"], trade["reason"]) for trade in result["trades"][:3]] == [
+        ("2026-01-02", "buy", "buyHalf触发"),
+        ("2026-01-03", "sell", "sellHalf触发"),
+        ("2026-01-03", "buy", "buyHalf触发"),
+    ]
+
+
+def test_conflict_policy_skip_does_not_trade_conflicting_signals() -> None:
+    result = _run_strategy_backtest(
+        make_bars(),
+        config(
+            [rule("buyHalf", "buy", 0.5, group(condition("close", ">=", 10)))],
+            [rule("sellHalf", "sell", 0.5, group(condition("close", ">=", 11)))],
+            conflict_policy="skip",
+        ),
+    )
+
+    assert [(trade["date"], trade["side"], trade["reason"]) for trade in result["trades"]] == [
+        ("2026-01-02", "buy", "buyHalf触发"),
+    ]
 
 
 def test_force_close_uses_last_close_and_marks_trade() -> None:

@@ -15,7 +15,7 @@ from app.models.strategy_evaluation import StrategyEvaluation
 from app.models.user import User
 from app.services.market_data import apply_stock_split_adjustments
 from app.services.agent.strategy_description import _describe_group
-from app.services.strategies.dsl import _normalize_strategy_rules
+from app.services.strategies.dsl import _normalize_conflict_policy, _normalize_strategy_rules
 from app.services.strategies.expression import _evaluate_group
 from app.services.strategies.indicators import _calculate_indicators
 
@@ -275,12 +275,16 @@ def _evaluate_strategy_row(
     strategy_config = strategy.strategy_config or {}
     entry_rules = _normalize_strategy_rules(strategy_config, "entry")
     exit_rules = _normalize_strategy_rules(strategy_config, "exit")
+    conflict_policy = _normalize_conflict_policy(strategy_config)
     position_ratio = float(position["ratio"] or 0.0)
 
     triggered_exit_rule = _find_triggered_rule(exit_rules, contexts, current_index) if position_ratio > 0 else None
-    triggered_entry_rule = None
-    if not triggered_exit_rule and position_ratio < 1:
-        triggered_entry_rule = _find_triggered_rule(entry_rules, contexts, current_index)
+    triggered_entry_rule = _find_triggered_rule(entry_rules, contexts, current_index) if position_ratio < 1 else None
+    triggered_entry_rule, triggered_exit_rule = _resolve_signal_conflict(
+        triggered_entry_rule,
+        triggered_exit_rule,
+        conflict_policy,
+    )
 
     recommendation = _build_recommendation(
         triggered_entry_rule=triggered_entry_rule,
@@ -336,12 +340,41 @@ def _find_triggered_rule(rules: list[dict], contexts: list[dict], current_index:
     return None
 
 
+def _resolve_signal_conflict(
+    triggered_entry_rule: dict | None,
+    triggered_exit_rule: dict | None,
+    conflict_policy: str,
+) -> tuple[dict | None, dict | None]:
+    if not triggered_entry_rule or not triggered_exit_rule:
+        return triggered_entry_rule, triggered_exit_rule
+    if conflict_policy == "entry_first":
+        return triggered_entry_rule, None
+    if conflict_policy == "allow_reentry":
+        return triggered_entry_rule, triggered_exit_rule
+    if conflict_policy == "skip":
+        return None, None
+    return None, triggered_exit_rule
+
+
 def _build_recommendation(
     *,
     triggered_entry_rule: dict | None,
     triggered_exit_rule: dict | None,
     position_ratio: float,
 ) -> dict:
+    if triggered_entry_rule and triggered_exit_rule:
+        sell_size = _rule_size(triggered_exit_rule, 1.0)
+        buy_size = _rule_size(triggered_entry_rule, 0.0)
+        sell_ratio = min(position_ratio, sell_size)
+        buy_ratio = min(max(1.0 - max(position_ratio - sell_ratio, 0.0), 0.0), buy_size)
+        return {
+            "action": "rebalance",
+            "label": f"先卖 {sell_ratio * 100:.0f}% 再买 {buy_ratio * 100:.0f}%",
+            "size": round(buy_ratio - sell_ratio, 4),
+            "ruleName": f"{_rule_name(triggered_exit_rule)} / {_rule_name(triggered_entry_rule)}",
+            "reason": "买卖信号同时触发，按策略设置先卖出再买入。",
+            "ruleDetail": f"卖出：{_rule_detail(triggered_exit_rule)}；买入：{_rule_detail(triggered_entry_rule)}",
+        }
     if triggered_exit_rule:
         size = _rule_size(triggered_exit_rule, 1.0)
         sell_ratio = min(position_ratio, size)
@@ -392,9 +425,9 @@ def _build_summary(items: list[dict]) -> dict:
         return {
             "label": "暂无可用策略",
             "description": "没有找到该标的下非归档且已在回测实验室成功评估的策略。",
-            "counts": {"buy": 0, "sell": 0, "hold": 0, "watch": 0},
+            "counts": {"buy": 0, "sell": 0, "hold": 0, "watch": 0, "rebalance": 0},
         }
-    counts = {"buy": 0, "sell": 0, "hold": 0, "watch": 0}
+    counts = {"buy": 0, "sell": 0, "hold": 0, "watch": 0, "rebalance": 0}
     weighted_score = 0.0
     total_weight = 0.0
     for item in items:
@@ -407,6 +440,9 @@ def _build_summary(items: list[dict]) -> dict:
             direction = -1
         elif action == "hold":
             counts["hold"] += 1
+            direction = 0
+        elif action == "rebalance":
+            counts["rebalance"] += 1
             direction = 0
         else:
             counts["watch"] += 1
@@ -428,7 +464,8 @@ def _build_summary(items: list[dict]) -> dict:
         "label": label,
         "description": (
             f"本次共纳入 {len(items)} 个已评估策略，其中 {counts['buy']} 个建议买入/加仓，"
-            f"{counts['sell']} 个建议卖出/减仓，{counts['hold']} 个建议持有，{counts['watch']} 个建议观望。"
+            f"{counts['sell']} 个建议卖出/减仓，{counts['rebalance']} 个建议先卖再买，"
+            f"{counts['hold']} 个建议持有，{counts['watch']} 个建议观望。"
         ),
         "counts": counts,
     }

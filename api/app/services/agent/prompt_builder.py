@@ -82,6 +82,7 @@ def _build_generation_prompt(
     "forceCloseOnEnd": True,
     "backtestStartDate": task.backtest_start_date.isoformat(),
     "backtestEndDate": task.backtest_end_date.isoformat(),
+    "conflictPolicy": "exit_first 或 allow_reentry，由 intent 决定",
 }, ensure_ascii=False)}
 
 开始以来最佳的三次表现：
@@ -127,7 +128,10 @@ def _build_generation_prompt(
 规则列表说明：
 - entryRules 和 exitRules 都是按顺序判断的优先级列表，不要在规则之间设置 and/or。
 - entryRules 可以包含多条买入规则，exitRules 也可以包含多条卖出规则；不要默认只生成一条买入规则。
-- 每天先判断 exitRules，再判断 entryRules；同一侧从上到下命中第一条就执行，后续规则不再执行。
+- 每天收盘后同时判断 exitRules 和 entryRules；同一侧从上到下命中第一条就执行，后续规则不再执行。
+- risk.conflictPolicy 表示同一天同时触发卖出和买入时的处理方式，只能是 exit_first、entry_first、allow_reentry、skip 之一。
+- exit_first 表示冲突时只挂卖出单；entry_first 表示冲突时只挂买入单；allow_reentry 表示下一根 K 线开盘先卖出再买入；skip 表示冲突时不挂任何单。
+- trend_following、breakout、momentum_acceleration、defensive_timing 默认适合 exit_first；dip_buying、mean_reversion、range_trading 默认适合 allow_reentry，避免抄底/均值回归信号被普通卖出信号完全压掉。
 - 如果存在不同买入场景，例如趋势突破、趋势回踩、低吸反转、动能加速、波动收敛后突破，应优先拆成 2 到 4 条 entryRules，并按优先级排序，而不是全部塞进一条巨大的 or 条件。
 - 多条买入规则可以使用不同 action.size；例如强确认买入 0.6，回踩试仓买入 0.3，突破加仓买入 0.4。
 - 只有当本轮确实只存在一个清晰买入场景时，才返回单条 entryRules；否则应主动使用多条买入规则探索更多入场路径。
@@ -146,6 +150,7 @@ def _build_generation_prompt(
 DSL 结构硬性要求，违反任何一条都会被系统拒绝：
 - strategy 里只能使用 entryRules / exitRules / risk，不要返回旧字段 entry 或 exit。
 - entryRules 和 exitRules 都必须是数组，数组内每项必须包含 name、action、conditions。
+- risk.conflictPolicy 如果输出，只能是 exit_first、entry_first、allow_reentry、skip 之一。
 - mode 只能是 continue_best、refine_recent、explore_new、mutate 之一；intent 只能从上方 intent 枚举中选择英文值，不能写中文。
 - conditions 的 type 必须是 group；group.logic 只能是 and 或 or；group.children 里才能放 condition 或子 group，且 children 不能为空。
 - condition 必须同时包含 type、leftExpression、operator、rightExpression。

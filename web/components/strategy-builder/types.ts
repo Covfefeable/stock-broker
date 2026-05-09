@@ -1,6 +1,7 @@
 export type RuleLogic = "and" | "or";
 export type RuleOperator = ">" | ">=" | "<" | "<=" | "==" | "!=" | "cross_over" | "cross_under";
 export type RuleScope = "entry" | "exit";
+export type ConflictPolicy = "exit_first" | "entry_first" | "allow_reentry" | "skip";
 export type ExpressionOperator = "+" | "-" | "*" | "/";
 export type ExpressionFunctionName =
   | "abs"
@@ -90,6 +91,7 @@ export type RiskBacktestConfig = {
   forceCloseOnEnd: boolean;
   backtestStartDate: string;
   backtestEndDate: string;
+  conflictPolicy: ConflictPolicy;
 };
 
 export type StrategyDslConfig = {

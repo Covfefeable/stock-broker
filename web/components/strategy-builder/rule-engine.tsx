@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { EmptyState } from "@/components/empty-state";
 import { StrategyPreviewChart } from "@/components/strategy-builder/strategy-preview-chart";
 import type {
+  ConflictPolicy,
   ExpressionFunctionName,
   ExpressionOperator,
   ExpressionToken,
@@ -49,6 +50,21 @@ type PreviewMetricConfig = {
   strategyValue: (preview: StrategyPreviewResult) => string;
   benchmarkValue: (preview: StrategyPreviewResult) => string;
 };
+
+const CONFLICT_POLICY_OPTIONS: Array<{ label: string; value: ConflictPolicy; help: string }> = [
+  { label: "卖出优先", value: "exit_first", help: "同日买卖信号冲突时只执行卖出。" },
+  { label: "买入优先", value: "entry_first", help: "同日买卖信号冲突时只执行买入。" },
+  { label: "先卖再买", value: "allow_reentry", help: "下一根 K 线开盘先卖出，再按买入规则重新建仓。" },
+  { label: "冲突跳过", value: "skip", help: "同日买卖信号冲突时不执行任何交易。" },
+];
+
+function normalizeConflictPolicy(value: unknown): ConflictPolicy {
+  return CONFLICT_POLICY_OPTIONS.some((option) => option.value === value) ? (value as ConflictPolicy) : "exit_first";
+}
+
+function conflictPolicyLabel(value: ConflictPolicy): string {
+  return CONFLICT_POLICY_OPTIONS.find((option) => option.value === value)?.label ?? "卖出优先";
+}
 
 const FIELD_OPTIONS: RuleFieldOption[] = [
   { label: "开盘价", value: "open", scopes: ["entry", "exit"], category: "原始行情", help: "当日开盘成交价。" },
@@ -217,6 +233,7 @@ export function createDefaultStrategyDslConfig(): StrategyDslConfig {
       forceCloseOnEnd: true,
       backtestStartDate: "2020-01-01",
       backtestEndDate: new Date().toISOString().slice(0, 10),
+      conflictPolicy: "exit_first",
     },
   };
 }
@@ -232,6 +249,7 @@ export function normalizeStrategyDslConfig(input?: Partial<StrategyDslConfig> | 
     forceCloseOnEnd: inputRisk.forceCloseOnEnd ?? defaults.risk.forceCloseOnEnd,
     backtestStartDate: inputRisk.backtestStartDate ?? defaults.risk.backtestStartDate,
     backtestEndDate: inputRisk.backtestEndDate ?? defaults.risk.backtestEndDate,
+    conflictPolicy: normalizeConflictPolicy(inputRisk.conflictPolicy),
   };
   const entryRules: StrategyRule[] = Array.isArray(input.entryRules) && input.entryRules.length
     ? input.entryRules.map((rule, index) => normalizeStrategyRule(rule, "entry", index + 1))
@@ -325,6 +343,19 @@ export function RuleEngine({
                         </Tooltip>
                       </span>
                       <Switch checked={normalizedValue.risk.forceCloseOnEnd !== false} onChange={(checked) => updateRisk("forceCloseOnEnd", checked)} />
+                    </label>
+                    <label>
+                      <span>
+                        信号冲突处理
+                        <Tooltip title="同一根 K 线收盘后同时命中卖出和买入规则时的处理方式。">
+                          <QuestionCircleOutlined className="strategy-preview-metric-help" />
+                        </Tooltip>
+                      </span>
+                      <Select
+                        value={normalizedValue.risk.conflictPolicy}
+                        options={CONFLICT_POLICY_OPTIONS.map((option) => ({ label: option.label, value: option.value }))}
+                        onChange={(value) => updateRisk("conflictPolicy", value)}
+                      />
                     </label>
                   </div>
                 </Card>
@@ -463,6 +494,12 @@ export function RuleReadonlyPreview({ value, compact = false }: { value?: Strate
     <div className={compact ? "strategy-rule-readonly strategy-rule-readonly-compact" : "strategy-rule-readonly"}>
       <RuleReadonlySection title="买入规则" rules={normalizedValue.entryRules} />
       <RuleReadonlySection title="卖出规则" rules={normalizedValue.exitRules} />
+      <div className="strategy-rule-readonly-section">
+        <div className="strategy-rule-readonly-title">
+          <span>风控参数</span>
+          <Tag color="purple">{conflictPolicyLabel(normalizedValue.risk.conflictPolicy)}</Tag>
+        </div>
+      </div>
     </div>
   );
 }

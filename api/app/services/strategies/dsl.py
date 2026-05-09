@@ -58,6 +58,8 @@ WINDOW_FUNCTIONS = {"sum", "avg", "std", "highest", "lowest", "ema", "pct_slope"
 CHANGE_FUNCTIONS = {"change", "pct_change"}
 INDICATOR_WARMUP_BARS = 180
 MIN_ANNUALIZATION_PERIODS = 60
+DEFAULT_CONFLICT_POLICY = "exit_first"
+CONFLICT_POLICY_VALUES = {"exit_first", "entry_first", "allow_reentry", "skip"}
 
 
 def _validate_strategy_config(strategy_config: dict) -> None:
@@ -66,8 +68,19 @@ def _validate_strategy_config(strategy_config: dict) -> None:
     exit_rules = _normalize_strategy_rules(strategy_config, "exit")
     if not isinstance(risk, dict):
         raise StrategyError("规则配置缺少买入规则、卖出规则或风控参数。")
+    _normalize_conflict_policy(strategy_config, strict=True)
     _validate_ordered_rules(entry_rules, "买入规则", "buy")
     _validate_ordered_rules(exit_rules, "卖出规则", "sell")
+
+
+def _normalize_conflict_policy(strategy_config: dict, *, strict: bool = False) -> str:
+    risk = strategy_config.get("risk") or {}
+    policy = str(risk.get("conflictPolicy") or DEFAULT_CONFLICT_POLICY).strip()
+    if policy in CONFLICT_POLICY_VALUES:
+        return policy
+    if strict:
+        raise StrategyError("信号冲突处理方式无效。")
+    return DEFAULT_CONFLICT_POLICY
 
 
 def _normalize_strategy_rules(strategy_config: dict, scope: str) -> list[dict]:

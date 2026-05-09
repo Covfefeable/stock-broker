@@ -67,7 +67,7 @@ def _generate_strategy_with_ai(
             )
             generation_payload = _parse_strategy_generation_payload(content)
             strategy_config = generation_payload["strategyConfig"]
-            strategy_config["risk"] = _build_fixed_risk_config(task)
+            strategy_config["risk"] = _build_fixed_risk_config(task, generation_payload.get("intent"))
             _validate_strategy_config(strategy_config)
             generation_payload["strategyConfig"] = strategy_config
             return generation_payload
@@ -156,11 +156,18 @@ def _normalize_agent_intent(value: Any) -> str:
     return intent if intent in AGENT_STRATEGY_INTENTS else "trend_following"
 
 
-def _build_fixed_risk_config(task: AgentTask) -> dict:
+def _default_conflict_policy_for_intent(intent: str | None) -> str:
+    if intent in {"dip_buying", "mean_reversion", "range_trading"}:
+        return "allow_reentry"
+    return "exit_first"
+
+
+def _build_fixed_risk_config(task: AgentTask, intent: str | None = None) -> dict:
     return {
         "forceCloseOnEnd": True,
         "backtestStartDate": task.backtest_start_date.isoformat(),
         "backtestEndDate": task.backtest_end_date.isoformat(),
+        "conflictPolicy": _default_conflict_policy_for_intent(intent),
     }
 
 
