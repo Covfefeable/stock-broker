@@ -739,7 +739,7 @@ export default function AgentTaskDetailPage() {
           </div>
 
           <div className="agent-task-detail-grid">
-            <Card className="dashboard-card agent-task-detail-card-equal" bordered title="任务说明与迭代思路">
+            <Card className="dashboard-card agent-task-detail-card-equal" bordered title="迭代详情">
               <Paragraph className="agent-task-detail-paragraph">
                 {renderOptionalText(task.note, "暂无任务说明。")}
               </Paragraph>
@@ -769,7 +769,6 @@ export default function AgentTaskDetailPage() {
                         </Paragraph>
                       </div>
                       <div className="agent-iteration-thought-block">
-                        <Text type="secondary">规则预览</Text>
                         <RuleReadonlyPreview value={asStrategyDslConfig(iteration.strategyConfig)} compact />
                       </div>
                     </div>

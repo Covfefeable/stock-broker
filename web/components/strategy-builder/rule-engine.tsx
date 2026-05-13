@@ -492,24 +492,25 @@ export function RuleReadonlyPreview({ value, compact = false }: { value?: Strate
 
   return (
     <div className={compact ? "strategy-rule-readonly strategy-rule-readonly-compact" : "strategy-rule-readonly"}>
-      <RuleReadonlySection title="买入规则" rules={normalizedValue.entryRules} />
+      <RuleReadonlySection
+        title="买入规则"
+        rules={normalizedValue.entryRules}
+        extra={<Tag color="purple">{conflictPolicyLabel(normalizedValue.risk.conflictPolicy)}</Tag>}
+      />
       <RuleReadonlySection title="卖出规则" rules={normalizedValue.exitRules} />
-      <div className="strategy-rule-readonly-section">
-        <div className="strategy-rule-readonly-title">
-          <span>风控参数</span>
-          <Tag color="purple">{conflictPolicyLabel(normalizedValue.risk.conflictPolicy)}</Tag>
-        </div>
-      </div>
     </div>
   );
 }
 
-function RuleReadonlySection({ title, rules }: { title: string; rules: StrategyRule[] }) {
+function RuleReadonlySection({ title, rules, extra }: { title: string; rules: StrategyRule[]; extra?: ReactNode }) {
   return (
     <div className="strategy-rule-readonly-section">
       <div className="strategy-rule-readonly-title">
         <span>{title}</span>
-        <Tag color="blue">按顺序命中第一条</Tag>
+        <div className="strategy-rule-readonly-title-tags">
+          {extra}
+          <Tag color="blue">按顺序命中第一条</Tag>
+        </div>
       </div>
       <div className="strategy-rule-readonly-expression">
         {rules.map((rule, index) => (

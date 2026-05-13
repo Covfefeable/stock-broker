@@ -723,6 +723,18 @@
   font-weight: 700;
 }
 
+.strategy-rule-readonly-title-tags {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.strategy-rule-readonly-title-tags .ant-tag {
+  margin-inline-end: 0;
+}
+
 .strategy-rule-readonly-expression {
   color: rgba(226, 232, 240, 0.9);
   font-size: 13px;
@@ -889,4 +901,3 @@
 .strategy-number-input {
   width: 100%;
 }
-
