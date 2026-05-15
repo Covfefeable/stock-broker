@@ -254,12 +254,12 @@ export function normalizeStrategyDslConfig(input?: Partial<StrategyDslConfig> | 
   const entryRules: StrategyRule[] = Array.isArray(input.entryRules) && input.entryRules.length
     ? input.entryRules.map((rule, index) => normalizeStrategyRule(rule, "entry", index + 1))
     : input.entry
-      ? [{ ...createStrategyRule("entry"), name: "买入规则", action: { type: "buy", size: 1 }, conditions: input.entry }]
+      ? normalizeLegacyStrategyRule(input.entry, "entry")
       : defaults.entryRules;
   const exitRules: StrategyRule[] = Array.isArray(input.exitRules) && input.exitRules.length
     ? input.exitRules.map((rule, index) => normalizeStrategyRule(rule, "exit", index + 1))
     : input.exit
-      ? [{ ...createStrategyRule("exit"), name: "卖出规则", action: { type: "sell", size: 1 }, conditions: input.exit }]
+      ? normalizeLegacyStrategyRule(input.exit, "exit")
       : defaults.exitRules;
 
   return {
@@ -279,8 +279,52 @@ function normalizeStrategyRule(rule: Partial<StrategyRule>, scope: RuleScope, in
       type: actionType,
       size: Number(rule.action?.size ?? fallback.action.size),
     },
-    conditions: rule.conditions ?? fallback.conditions,
+    conditions: normalizeRuleGroup(rule.conditions, fallback.conditions),
   };
+}
+
+function normalizeLegacyStrategyRule(group: RuleGroup, scope: RuleScope): StrategyRule[] {
+  const fallback = createStrategyRule(scope);
+  return [
+    {
+      ...fallback,
+      name: scope === "entry" ? "买入规则" : "卖出规则",
+      action: { type: scope === "entry" ? "buy" : "sell", size: 1 },
+      conditions: normalizeRuleGroup(group, fallback.conditions),
+    },
+  ];
+}
+
+function normalizeRuleGroup(group: RuleGroup | undefined, fallback: RuleGroup): RuleGroup {
+  const source = group && group.type === "group" ? group : fallback;
+  return {
+    id: createId("group"),
+    type: "group",
+    logic: source.logic === "or" ? "or" : "and",
+    children: Array.isArray(source.children) && source.children.length
+      ? source.children.map((child) => normalizeRuleNode(child))
+      : [createCondition()],
+  };
+}
+
+function normalizeRuleNode(node: RuleNode): RuleNode {
+  if (node.type === "group") {
+    return normalizeRuleGroup(node, createGroup());
+  }
+  return {
+    id: createId("condition"),
+    type: "condition",
+    leftExpression: cloneExpressionTokens(node.leftExpression),
+    operator: OPERATOR_OPTIONS.some((option) => option.value === node.operator) ? node.operator : ">",
+    rightExpression: cloneExpressionTokens(node.rightExpression),
+  };
+}
+
+function cloneExpressionTokens(tokens: ExpressionToken[] | undefined): ExpressionToken[] {
+  if (!Array.isArray(tokens) || !tokens.length) {
+    return [{ type: "variable", name: "close" }];
+  }
+  return tokens.map((token) => cloneExpressionToken(token));
 }
 
 export function RuleEngine({
@@ -527,19 +571,18 @@ function RuleReadonlySection({ title, rules, extra }: { title: string; rules: St
 function RuleListEditor({ rules, scope, onChange }: { rules: StrategyRule[]; scope: RuleScope; onChange: (nextRules: StrategyRule[]) => void }) {
   const safeRules = rules.length ? rules : [createStrategyRule(scope)];
 
-  const updateRule = (ruleId: string, nextRule: StrategyRule) => {
-    onChange(safeRules.map((rule) => (rule.id === ruleId ? nextRule : rule)));
+  const updateRule = (ruleIndex: number, nextRule: StrategyRule) => {
+    onChange(safeRules.map((rule, index) => (index === ruleIndex ? nextRule : rule)));
   };
 
-  const removeRule = (ruleId: string) => {
-    const nextRules = safeRules.filter((rule) => rule.id !== ruleId);
+  const removeRule = (ruleIndex: number) => {
+    const nextRules = safeRules.filter((_, index) => index !== ruleIndex);
     onChange(nextRules.length ? nextRules : [createStrategyRule(scope)]);
   };
 
-  const moveRule = (ruleId: string, direction: -1 | 1) => {
-    const index = safeRules.findIndex((rule) => rule.id === ruleId);
+  const moveRule = (index: number, direction: -1 | 1) => {
     const targetIndex = index + direction;
-    if (index < 0 || targetIndex < 0 || targetIndex >= safeRules.length) {
+    if (targetIndex < 0 || targetIndex >= safeRules.length) {
       return;
     }
     const nextRules = [...safeRules];
@@ -559,20 +602,20 @@ function RuleListEditor({ rules, scope, onChange }: { rules: StrategyRule[]; sco
           title={`${scope === "entry" ? "买入" : "卖出"}规则 ${index + 1}`}
           extra={
             <div className="strategy-rule-group-toolbar">
-              <Button size="small" disabled={index === 0} onClick={() => moveRule(rule.id, -1)}>
+              <Button size="small" disabled={index === 0} onClick={() => moveRule(index, -1)}>
                 上移
               </Button>
-              <Button size="small" disabled={index === safeRules.length - 1} onClick={() => moveRule(rule.id, 1)}>
+              <Button size="small" disabled={index === safeRules.length - 1} onClick={() => moveRule(index, 1)}>
                 下移
               </Button>
-              <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => removeRule(rule.id)} />
+              <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => removeRule(index)} />
             </div>
           }
         >
           <div className="strategy-rule-action-row">
             <label>
               <span>规则名称</span>
-              <Input value={rule.name} onChange={(event) => updateRule(rule.id, { ...rule, name: event.target.value })} />
+              <Input value={rule.name} onChange={(event) => updateRule(index, { ...rule, name: event.target.value })} />
             </label>
             <label>
               <span>动作</span>
@@ -588,7 +631,7 @@ function RuleListEditor({ rules, scope, onChange }: { rules: StrategyRule[]; sco
                 formatter={(value) => `${Number(value ?? 0) * 100}%`}
                 parser={(value) => Number(String(value || "").replace("%", "")) / 100}
                 onChange={(next) =>
-                  updateRule(rule.id, {
+                  updateRule(index, {
                     ...rule,
                     action: { type: scope === "entry" ? "buy" : "sell", size: Number(next ?? 0) },
                   })
@@ -600,7 +643,7 @@ function RuleListEditor({ rules, scope, onChange }: { rules: StrategyRule[]; sco
             value={rule.conditions}
             scope={scope}
             depth={0}
-            onChange={(nextGroup) => updateRule(rule.id, { ...rule, conditions: nextGroup })}
+            onChange={(nextGroup) => updateRule(index, { ...rule, conditions: nextGroup })}
           />
         </Card>
       ))}
@@ -627,15 +670,15 @@ type GroupEditorProps = {
 function RuleGroupEditor({ value, scope, depth, onChange, onDelete }: GroupEditorProps) {
   const availableFields = FIELD_OPTIONS.filter((item) => item.scopes.includes(scope));
 
-  const updateChild = (childId: string, nextNode: RuleNode) => {
+  const updateChild = (childIndex: number, nextNode: RuleNode) => {
     onChange({
       ...value,
-      children: value.children.map((child) => (child.id === childId ? nextNode : child)),
+      children: value.children.map((child, index) => (index === childIndex ? nextNode : child)),
     });
   };
 
-  const removeChild = (childId: string) => {
-    const nextChildren = value.children.filter((child) => child.id !== childId);
+  const removeChild = (childIndex: number) => {
+    const nextChildren = value.children.filter((_, index) => index !== childIndex);
     onChange({
       ...value,
       children: nextChildren.length ? nextChildren : [createCondition()],
@@ -669,14 +712,14 @@ function RuleGroupEditor({ value, scope, depth, onChange, onDelete }: GroupEdito
       }
     >
       <div className="strategy-rule-group-body">
-        {value.children.map((child) =>
+        {value.children.map((child, index) =>
           child.type === "condition" ? (
             <RuleConditionRow
               key={child.id}
               value={child}
               availableFields={availableFields}
-              onChange={(nextCondition) => updateChild(child.id, nextCondition)}
-              onDelete={() => removeChild(child.id)}
+              onChange={(nextCondition) => updateChild(index, nextCondition)}
+              onDelete={() => removeChild(index)}
             />
           ) : (
             <RuleGroupEditor
@@ -684,8 +727,8 @@ function RuleGroupEditor({ value, scope, depth, onChange, onDelete }: GroupEdito
               value={child}
               scope={scope}
               depth={depth + 1}
-              onChange={(nextGroup) => updateChild(child.id, nextGroup)}
-              onDelete={() => removeChild(child.id)}
+              onChange={(nextGroup) => updateChild(index, nextGroup)}
+              onDelete={() => removeChild(index)}
             />
           ),
         )}
