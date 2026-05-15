@@ -13,6 +13,8 @@ import { TradingCalendarCard } from "@/components/data-center/TradingCalendarCar
 import type {
   CountryOption,
   DataSourceStatusItem,
+  EtfDailyCoverage,
+  EtfOption,
   EventLogItem,
   ExchangeOption,
   IndexDailyCoverage,
@@ -29,6 +31,7 @@ import { getAccessToken } from "@/lib/auth";
 import { apiGet, apiPost } from "@/lib/api";
 
 const emptyStockCoverage: StockDailyCoverage = { existingDates: [], latestDate: null, count: 0 };
+const emptyEtfCoverage: EtfDailyCoverage = { existingDates: [], latestDate: null, count: 0 };
 const emptyIndexCoverage: IndexDailyCoverage = { existingDates: [], latestDate: null, count: 0 };
 
 export default function DataCenterPage() {
@@ -54,8 +57,10 @@ export default function DataCenterPage() {
   const [exchangeOptions, setExchangeOptions] = useState<ExchangeOption[]>([]);
   const [countryOptions, setCountryOptions] = useState<CountryOption[]>([]);
   const [stockOptions, setStockOptions] = useState<StockOption[]>([]);
+  const [etfOptions, setEtfOptions] = useState<EtfOption[]>([]);
   const [indexOptions, setIndexOptions] = useState<IndexOption[]>([]);
   const [stockDailyCoverage, setStockDailyCoverage] = useState<StockDailyCoverage>(emptyStockCoverage);
+  const [etfDailyCoverage, setEtfDailyCoverage] = useState<EtfDailyCoverage>(emptyEtfCoverage);
   const [indexDailyCoverage, setIndexDailyCoverage] = useState<IndexDailyCoverage>(emptyIndexCoverage);
   const [eventLogs, setEventLogs] = useState<TimelineLogRow[]>([]);
 
@@ -168,6 +173,30 @@ export default function DataCenterPage() {
     [messageApi],
   );
 
+  const loadEtfOptions = useCallback(
+    async (exchangeCode: string) => {
+      if (!exchangeCode) {
+        setEtfOptions([]);
+        return;
+      }
+
+      setStockLoading(true);
+      try {
+        const token = getAccessToken();
+        const response = await apiGet<{ items: EtfOption[] }>(
+          `/data-center/etf-options?exchangeCode=${encodeURIComponent(exchangeCode)}`,
+          token,
+        );
+        setEtfOptions(response.items);
+      } catch (error) {
+        messageApi.error(error instanceof Error ? error.message : "加载 ETF 选项失败");
+      } finally {
+        setStockLoading(false);
+      }
+    },
+    [messageApi],
+  );
+
   const loadIndexOptions = useCallback(
     async (countryCode: string) => {
       if (!countryCode) {
@@ -216,6 +245,30 @@ export default function DataCenterPage() {
     [messageApi],
   );
 
+  const loadEtfDailyCoverage = useCallback(
+    async (exchangeCode: string, ticker: string) => {
+      if (!exchangeCode || !ticker) {
+        setEtfDailyCoverage(emptyEtfCoverage);
+        return;
+      }
+
+      setCoverageLoading(true);
+      try {
+        const token = getAccessToken();
+        const response = await apiGet<{ coverage: EtfDailyCoverage }>(
+          `/data-center/etf-daily-coverage?exchangeCode=${encodeURIComponent(exchangeCode)}&ticker=${encodeURIComponent(ticker)}`,
+          token,
+        );
+        setEtfDailyCoverage(response.coverage);
+      } catch (error) {
+        messageApi.error(error instanceof Error ? error.message : "加载 ETF 历史日线覆盖情况失败");
+      } finally {
+        setCoverageLoading(false);
+      }
+    },
+    [messageApi],
+  );
+
   const loadIndexDailyCoverage = useCallback(
     async (countryCode: string, ticker: string) => {
       if (!countryCode || !ticker) {
@@ -255,12 +308,14 @@ export default function DataCenterPage() {
     form.setFieldValue("dateMode", "auto_fill");
     form.setFieldValue("dateRange", undefined);
     setStockDailyCoverage(emptyStockCoverage);
+    setEtfDailyCoverage(emptyEtfCoverage);
     setIndexDailyCoverage(emptyIndexCoverage);
   }, [form]);
 
   const resetStockDailyFields = useCallback(() => {
     form.setFieldValue("exchangeCode", undefined);
     setStockOptions([]);
+    setEtfOptions([]);
     resetDailyFields();
   }, [form, resetDailyFields]);
 
@@ -292,8 +347,10 @@ export default function DataCenterPage() {
       setModalOpen(false);
       form.resetFields();
       setStockOptions([]);
+      setEtfOptions([]);
       setIndexOptions([]);
       setStockDailyCoverage(emptyStockCoverage);
+      setEtfDailyCoverage(emptyEtfCoverage);
       setIndexDailyCoverage(emptyIndexCoverage);
       messageApi.success(`${response.message}，任务 ID：${response.taskId}`);
     } catch (error) {
@@ -318,7 +375,7 @@ export default function DataCenterPage() {
 
   const handleSyncItemChange = useCallback(
     (value: SyncFormValues["syncItem"]) => {
-      if (value !== "stock_list" && value !== "stock_daily_history" && value !== "trading_calendar") {
+      if (value !== "stock_list" && value !== "etf_list" && value !== "stock_daily_history" && value !== "etf_daily_history" && value !== "trading_calendar") {
         form.setFieldValue("exchangeCode", undefined);
       }
       if (value !== "index_list" && value !== "index_daily_history") {
@@ -328,11 +385,15 @@ export default function DataCenterPage() {
         setStockOptions([]);
         setStockDailyCoverage(emptyStockCoverage);
       }
+      if (value !== "etf_daily_history") {
+        setEtfOptions([]);
+        setEtfDailyCoverage(emptyEtfCoverage);
+      }
       if (value !== "index_daily_history") {
         setIndexOptions([]);
         setIndexDailyCoverage(emptyIndexCoverage);
       }
-      if (value !== "stock_daily_history" && value !== "index_daily_history") {
+      if (value !== "stock_daily_history" && value !== "etf_daily_history" && value !== "index_daily_history") {
         form.setFieldValue("ticker", undefined);
         form.setFieldValue("dateMode", "auto_fill");
         form.setFieldValue("dateRange", undefined);
@@ -346,9 +407,14 @@ export default function DataCenterPage() {
       form.setFieldValue("ticker", undefined);
       form.setFieldValue("dateRange", undefined);
       setStockDailyCoverage(emptyStockCoverage);
-      void loadStockOptions(value);
+      setEtfDailyCoverage(emptyEtfCoverage);
+      if (form.getFieldValue("syncItem") === "etf_daily_history") {
+        void loadEtfOptions(value);
+      } else {
+        void loadStockOptions(value);
+      }
     },
-    [form, loadStockOptions],
+    [form, loadEtfOptions, loadStockOptions],
   );
 
   const handleDailyCountryChange = useCallback(
@@ -366,6 +432,13 @@ export default function DataCenterPage() {
       void loadStockDailyCoverage(exchangeCode, value);
     },
     [loadStockDailyCoverage],
+  );
+
+  const handleEtfTickerChange = useCallback(
+    (value: string, exchangeCode: string) => {
+      void loadEtfDailyCoverage(exchangeCode, value);
+    },
+    [loadEtfDailyCoverage],
   );
 
   const handleIndexTickerChange = useCallback(
@@ -422,8 +495,10 @@ export default function DataCenterPage() {
         exchangeOptions={exchangeOptions}
         countryOptions={countryOptions}
         stockOptions={stockOptions}
+        etfOptions={etfOptions}
         indexOptions={indexOptions}
         stockDailyCoverage={stockDailyCoverage}
+        etfDailyCoverage={etfDailyCoverage}
         indexDailyCoverage={indexDailyCoverage}
         onSubmit={() => void handleSyncSubmit()}
         onCancel={() => {
@@ -435,6 +510,7 @@ export default function DataCenterPage() {
         onExchangeChange={handleDailyExchangeChange}
         onCountryChange={handleDailyCountryChange}
         onStockTickerChange={handleStockTickerChange}
+        onEtfTickerChange={handleEtfTickerChange}
         onIndexTickerChange={handleIndexTickerChange}
       />
     </AppShell>

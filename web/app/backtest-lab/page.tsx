@@ -38,7 +38,7 @@ type LabStrategyRow = {
   countryRegion: string;
   assetName: string | null;
   assetIdentifier: string | null;
-  assetType: "stock" | "index" | null;
+  assetType: "stock" | "etf" | "index" | null;
   updatedAt: string | null;
   evaluationStatus: EvaluationStatus;
   evaluationStatusLabel: string;
@@ -68,7 +68,7 @@ type EvaluationCandidate = {
 
 type EvaluationCandidateResponse = {
   countryCode: string;
-  assetType: "stock" | "index";
+  assetType: "stock" | "etf" | "index";
   items: EvaluationCandidate[];
 };
 

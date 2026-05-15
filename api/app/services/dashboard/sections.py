@@ -1,6 +1,8 @@
 from sqlalchemy import desc
 
 from app.models.agent_task import AgentTask
+from app.models.etf import Etf
+from app.models.etf_daily_bar import EtfDailyBar
 from app.models.event_log import EventLog
 from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
@@ -71,8 +73,10 @@ def list_running_agent_tasks(user: User) -> list[dict]:
 def list_sync_status() -> list[dict]:
     targets = [
         "stock_list",
+        "etf_list",
         "index_list",
         "stock_daily_history",
+        "etf_daily_history",
         "index_daily_history",
     ]
     return [
@@ -109,10 +113,14 @@ def latest_sync_event(target: str) -> dict | None:
 def sync_target_status(target: str) -> str:
     if target == "stock_list":
         return "success" if Stock.query.count() > 0 else "empty"
+    if target == "etf_list":
+        return "success" if Etf.query.count() > 0 else "empty"
     if target == "index_list":
         return "success" if IndexAsset.query.count() > 0 else "empty"
     if target == "stock_daily_history":
         return "success" if StockDailyBar.query.count() > 0 else "empty"
+    if target == "etf_daily_history":
+        return "success" if EtfDailyBar.query.count() > 0 else "empty"
     if target == "index_daily_history":
         return "success" if IndexDailyBar.query.count() > 0 else "empty"
     return "empty"

@@ -31,8 +31,8 @@ def preview_strategy(user: User, payload: dict) -> dict:
     strategy_config = payload.get("strategyConfig") or {}
     strategy_id = payload.get("strategyId")
 
-    if asset_type not in {"stock", "index"}:
-        raise StrategyError("请选择股票或指数。")
+    if asset_type not in {"stock", "etf", "index"}:
+        raise StrategyError("请选择股票、ETF或指数。")
     if not asset_identifier:
         raise StrategyError("请选择具体标的。")
     if asset_type == "index" and not country_code:

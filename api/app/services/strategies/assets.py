@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
+from app.models.etf_daily_bar import EtfDailyBar
 from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock_daily_bar import StockDailyBar
 from app.services.market_data import apply_stock_split_adjustments
@@ -15,11 +16,11 @@ def _load_asset_bars(asset_type: str, asset_identifier: str, country_code: str, 
     start_date = _parse_date(risk.get("backtestStartDate"))
     end_date = _parse_date(risk.get("backtestEndDate"))
 
-    if asset_type == "stock":
+    if asset_type in {"stock", "etf"}:
         if ":" not in asset_identifier:
-            raise StrategyError("股票标的格式无效。")
+            raise StrategyError("股票或 ETF 标的格式无效。")
         exchange_code, ticker = asset_identifier.split(":", 1)
-        model = StockDailyBar
+        model = StockDailyBar if asset_type == "stock" else EtfDailyBar
         query = model.query.filter(model.exchange_code == exchange_code, model.ticker == ticker)
     else:
         model = IndexDailyBar

@@ -7,6 +7,8 @@ import random
 from sqlalchemy import and_, func
 
 from app.extensions import db
+from app.models.etf import Etf
+from app.models.etf_daily_bar import EtfDailyBar
 from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock import Stock
@@ -27,33 +29,35 @@ def select_cross_asset_targets(strategy: Strategy, rng: random.Random) -> list[d
 
 def list_cross_asset_candidates(strategy: Strategy) -> list[dict]:
     country_code = strategy_country_code(strategy)
-    if strategy.asset_type == "stock":
+    if strategy.asset_type in {"stock", "etf"}:
+        asset_model = Stock if strategy.asset_type == "stock" else Etf
+        daily_model = StockDailyBar if strategy.asset_type == "stock" else EtfDailyBar
         latest_dates = (
             db.session.query(
-                StockDailyBar.exchange_code.label("exchange_code"),
-                StockDailyBar.ticker.label("ticker"),
-                func.max(StockDailyBar.trade_date).label("latest_date"),
+                daily_model.exchange_code.label("exchange_code"),
+                daily_model.ticker.label("ticker"),
+                func.max(daily_model.trade_date).label("latest_date"),
             )
-            .group_by(StockDailyBar.exchange_code, StockDailyBar.ticker)
+            .group_by(daily_model.exchange_code, daily_model.ticker)
             .subquery()
         )
         rows = (
-            db.session.query(Stock, latest_dates.c.latest_date)
-            .join(latest_dates, and_(Stock.exchange_code == latest_dates.c.exchange_code, Stock.ticker == latest_dates.c.ticker))
-            .filter(Stock.country_code == country_code)
-            .order_by(Stock.exchange_code.asc(), Stock.ticker.asc())
+            db.session.query(asset_model, latest_dates.c.latest_date)
+            .join(latest_dates, and_(asset_model.exchange_code == latest_dates.c.exchange_code, asset_model.ticker == latest_dates.c.ticker))
+            .filter(asset_model.country_code == country_code)
+            .order_by(asset_model.exchange_code.asc(), asset_model.ticker.asc())
             .all()
         )
         targets = [
             {
-                "assetType": "stock",
-                "assetIdentifier": f"{stock.exchange_code}:{stock.ticker}",
-                "assetName": stock.name,
-                "countryCode": stock.country_code,
+                "assetType": strategy.asset_type,
+                "assetIdentifier": f"{item.exchange_code}:{item.ticker}",
+                "assetName": item.name,
+                "countryCode": item.country_code,
                 "latestDate": latest_date.isoformat() if latest_date else None,
             }
-            for stock, latest_date in rows
-            if f"{stock.exchange_code}:{stock.ticker}" != strategy.asset_identifier
+            for item, latest_date in rows
+            if f"{item.exchange_code}:{item.ticker}" != strategy.asset_identifier
         ]
     else:
         latest_dates = (
@@ -153,7 +157,7 @@ def select_cross_asset_targets_for_auto(user: User, strategy: Strategy) -> tuple
 def resolve_selected_cross_asset_targets(strategy: Strategy, selected_asset_identifiers: list[str]) -> list[dict]:
     normalized = [str(item).strip() for item in selected_asset_identifiers if str(item).strip()]
     if not normalized:
-        raise BacktestLabError("请选择至少一个用于重新评估的股票或指数。")
+        raise BacktestLabError("请选择至少一个用于重新评估的股票、ETF或指数。")
     candidates = {item["assetIdentifier"]: item for item in list_cross_asset_candidates(strategy)}
     missing = [item for item in normalized if item not in candidates]
     if missing:

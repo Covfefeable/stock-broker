@@ -154,7 +154,7 @@ export default function Home() {
   const metrics = useMemo(
     () => [
       {
-        title: "已同步股票/指数",
+        title: "已同步股票/ETF/指数",
         value: formatInteger(overview.metrics.syncedAssetCount),
         icon: <DatabaseOutlined />,
       },

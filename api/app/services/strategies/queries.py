@@ -6,6 +6,8 @@ from sqlalchemy import asc, desc, func, or_
 
 from app.extensions import db
 from app.models.country import Country
+from app.models.etf import Etf
+from app.models.etf_daily_bar import EtfDailyBar
 from app.models.exchange import Exchange
 from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
@@ -21,10 +23,10 @@ def list_strategy_asset_options(country_code: str, asset_type: str) -> dict:
     normalized_country_code = country_code.strip().upper()
     if not normalized_country_code:
         raise StrategyError("请先选择国家/地区。")
-    if asset_type not in {"stock", "index"}:
-        raise StrategyError("请选择股票或指数。")
+    if asset_type not in {"stock", "etf", "index"}:
+        raise StrategyError("请选择股票、ETF或指数。")
 
-    if asset_type == "stock":
+    if asset_type in {"stock", "etf"}:
         exchanges = (
             Exchange.query.filter(Exchange.country_code == normalized_country_code)
             .order_by(Exchange.exchange_name.asc())
@@ -37,36 +39,49 @@ def list_strategy_asset_options(country_code: str, asset_type: str) -> dict:
                 "message": "当前国家/地区还没有交易所清单，请先同步交易所数据。",
             }
 
+        if asset_type == "stock":
+            asset_model = Stock
+            daily_model = StockDailyBar
+            sync_hint = "stock_list"
+            empty_message = "当前国家/地区还没有股票清单，请先在数据中心同步对应交易所的股票数据。"
+            formatter = strategy_stock_option
+        else:
+            asset_model = Etf
+            daily_model = EtfDailyBar
+            sync_hint = "etf_list"
+            empty_message = "当前国家/地区还没有 ETF 清单，请先在数据中心同步对应交易所的 ETF 数据。"
+            formatter = strategy_etf_option
+
         latest_date_subquery = (
             db.session.query(
-                StockDailyBar.exchange_code.label("exchange_code"),
-                StockDailyBar.ticker.label("ticker"),
-                func.max(StockDailyBar.trade_date).label("latest_date"),
+                daily_model.exchange_code.label("exchange_code"),
+                daily_model.ticker.label("ticker"),
+                func.max(daily_model.trade_date).label("latest_date"),
             )
-            .group_by(StockDailyBar.exchange_code, StockDailyBar.ticker)
+            .group_by(daily_model.exchange_code, daily_model.ticker)
             .subquery()
         )
 
         rows = (
-            db.session.query(Stock, latest_date_subquery.c.latest_date)
+            db.session.query(asset_model, latest_date_subquery.c.latest_date)
             .outerjoin(
                 latest_date_subquery,
-                (Stock.exchange_code == latest_date_subquery.c.exchange_code)
-                & (Stock.ticker == latest_date_subquery.c.ticker),
+                (asset_model.exchange_code == latest_date_subquery.c.exchange_code)
+                & (asset_model.ticker == latest_date_subquery.c.ticker),
             )
-            .filter(Stock.country_code == normalized_country_code)
-            .order_by(Stock.exchange_code.asc(), Stock.ticker.asc())
+            .filter(asset_model.country_code == normalized_country_code)
+            .order_by(asset_model.exchange_code.asc(), asset_model.ticker.asc())
             .all()
         )
         if not rows:
             return {
                 "items": [],
-                "syncHint": "stock_list",
-                "message": "当前国家/地区还没有股票清单，请先在数据中心同步对应交易所的股票数据。",
+                "syncHint": sync_hint,
+                "message": empty_message,
             }
 
         return {
-            "items": [strategy_stock_option(row, latest_date) for row, latest_date in rows],
+            "items": [formatter(row, latest_date) for row, latest_date in rows],
             "syncHint": None,
             "message": None,
         }
@@ -117,6 +132,21 @@ def strategy_stock_option(stock: Stock, latest_date: date | None) -> dict:
         "ticker": stock.ticker,
         "exchangeCode": stock.exchange_code,
         "name": stock.name,
+        "latestDate": latest_date_text,
+    }
+
+
+def strategy_etf_option(etf: Etf, latest_date: date | None) -> dict:
+    latest_date_text = latest_date.isoformat() if latest_date else None
+    label = f"{etf.ticker} - {etf.name}"
+    if latest_date_text:
+        label = f"{label}（同步至 {latest_date_text}）"
+    return {
+        "label": label,
+        "value": f"{etf.exchange_code}:{etf.ticker}",
+        "ticker": etf.ticker,
+        "exchangeCode": etf.exchange_code,
+        "name": etf.name,
         "latestDate": latest_date_text,
     }
 

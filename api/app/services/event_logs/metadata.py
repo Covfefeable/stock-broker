@@ -5,9 +5,11 @@ SYNC_ITEM_META = {
     "country_list": {"label": "国家/地区清单", "eventName": "sync_country_list"},
     "exchange_list": {"label": "交易所清单", "eventName": "sync_exchange_list"},
     "stock_list": {"label": "股票清单", "eventName": "sync_stock_list"},
+    "etf_list": {"label": "ETF清单", "eventName": "sync_etf_list"},
     "index_list": {"label": "指数清单", "eventName": "sync_index_list"},
     "trading_calendar": {"label": "交易日历", "eventName": "sync_trading_calendar"},
     "stock_daily_history": {"label": "股票历史日线", "eventName": "sync_stock_daily_history"},
+    "etf_daily_history": {"label": "ETF历史日线", "eventName": "sync_etf_daily_history"},
     "index_daily_history": {"label": "指数历史日线", "eventName": "sync_index_daily_history"},
 }
 
@@ -22,12 +24,13 @@ EVENT_NAME_META = {
     "enqueue_sync_task": {"label": "同步任务已提交", "category": EVENT_CATEGORY_SYNC},
     "enqueue_batch_sync_stock_daily_history": {"label": "批量同步股票日线已提交", "category": EVENT_CATEGORY_SYNC},
     "enqueue_batch_sync_stock_and_index_daily_history": {
-        "label": "批量同步股票/指数日线已提交",
+        "label": "批量同步股票/ETF/指数日线已提交",
         "category": EVENT_CATEGORY_SYNC,
     },
+    "batch_sync_etf_daily_history": {"label": "批量同步 ETF 日线", "category": EVENT_CATEGORY_SYNC},
     "batch_sync_stock_daily_history": {"label": "批量同步股票日线", "category": EVENT_CATEGORY_SYNC},
     "batch_sync_stock_and_index_daily_history": {
-        "label": "批量同步股票/指数日线",
+        "label": "批量同步股票/ETF/指数日线",
         "category": EVENT_CATEGORY_SYNC,
     },
     "agent_task_enqueued": {"label": "Agent 任务已入队", "category": EVENT_CATEGORY_AGENT},

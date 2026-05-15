@@ -2,6 +2,7 @@ from sqlalchemy import desc
 
 from app.extensions import db
 from app.models.agent_task import AgentTask
+from app.models.etf_daily_bar import EtfDailyBar
 from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock_daily_bar import StockDailyBar
 from app.models.strategy import Strategy
@@ -58,4 +59,12 @@ def synced_asset_count() -> int:
         .distinct()
         .count()
     )
-    return int(stock_count or 0) + int(index_count or 0)
+    etf_count = (
+        db.session.query(
+            EtfDailyBar.exchange_code,
+            EtfDailyBar.ticker,
+        )
+        .distinct()
+        .count()
+    )
+    return int(stock_count or 0) + int(etf_count or 0) + int(index_count or 0)

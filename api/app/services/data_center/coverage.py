@@ -2,6 +2,8 @@ from datetime import date
 
 from sqlalchemy import func
 
+from app.models.etf import Etf
+from app.models.etf_daily_bar import EtfDailyBar
 from app.models.exchange import Exchange
 from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
@@ -30,6 +32,34 @@ def get_stock_daily_coverage(exchange_code: str, ticker: str) -> dict:
                 func.lower(StockDailyBar.ticker) == normalized_ticker.lower(),
             )
             .order_by(StockDailyBar.trade_date.asc(), StockDailyBar.id.asc())
+            .all()
+        )
+    dates = [row.trade_date.isoformat() for row in rows if row.trade_date]
+    return {
+        "existingDates": dates,
+        "latestDate": dates[-1] if dates else None,
+        "count": len(dates),
+    }
+
+
+def get_etf_daily_coverage(exchange_code: str, ticker: str) -> dict:
+    normalized_exchange_code = exchange_code.strip().upper()
+    normalized_ticker = ticker.strip()
+    if not normalized_exchange_code or not normalized_ticker:
+        return {"existingDates": [], "latestDate": None, "count": 0}
+
+    query = EtfDailyBar.query.filter_by(
+        exchange_code=normalized_exchange_code,
+        ticker=normalized_ticker,
+    )
+    rows = query.order_by(EtfDailyBar.trade_date.asc(), EtfDailyBar.id.asc()).all()
+    if not rows:
+        rows = (
+            EtfDailyBar.query.filter(
+                EtfDailyBar.exchange_code == normalized_exchange_code,
+                func.lower(EtfDailyBar.ticker) == normalized_ticker.lower(),
+            )
+            .order_by(EtfDailyBar.trade_date.asc(), EtfDailyBar.id.asc())
             .all()
         )
     dates = [row.trade_date.isoformat() for row in rows if row.trade_date]
@@ -72,6 +102,15 @@ def get_latest_stock_daily_date(stock: Stock) -> date | None:
     latest = (
         StockDailyBar.query.filter_by(exchange_code=stock.exchange_code, ticker=stock.ticker)
         .order_by(StockDailyBar.trade_date.desc(), StockDailyBar.id.desc())
+        .first()
+    )
+    return latest.trade_date if latest and latest.trade_date else None
+
+
+def get_latest_etf_daily_date(etf: Etf) -> date | None:
+    latest = (
+        EtfDailyBar.query.filter_by(exchange_code=etf.exchange_code, ticker=etf.ticker)
+        .order_by(EtfDailyBar.trade_date.desc(), EtfDailyBar.id.desc())
         .first()
     )
     return latest.trade_date if latest and latest.trade_date else None

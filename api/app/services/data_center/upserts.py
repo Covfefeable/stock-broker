@@ -4,6 +4,8 @@ from sqlalchemy import select
 
 from app.extensions import db
 from app.models.country import Country
+from app.models.etf import Etf
+from app.models.etf_daily_bar import EtfDailyBar
 from app.models.exchange import Exchange
 from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
@@ -109,6 +111,38 @@ def upsert_stocks(rows: list[dict], exchange_code: str) -> int:
     return affected
 
 
+def upsert_etfs(rows: list[dict], exchange_code: str) -> int:
+    affected = 0
+    exchange = Exchange.query.filter_by(exchange_code=exchange_code).first()
+    country_rows = db.session.execute(select(Country)).scalars().all()
+    country_by_code = {row.country_code: row for row in country_rows}
+
+    for item in rows:
+        ticker = str(item.get("ticker") or "").strip()
+        name = str(item.get("name") or "").strip()
+        if not ticker or not name:
+            continue
+
+        record = Etf.query.filter_by(exchange_code=exchange_code, ticker=ticker).first()
+        if not record:
+            record = Etf(exchange_code=exchange_code, ticker=ticker)
+            db.session.add(record)
+
+        country_code = normalize_optional_text(item.get("country_code"))
+        country = country_by_code.get(country_code) if country_code else None
+
+        record.name = name
+        record.is_active = str(item.get("is_active") or "0").strip() == "1"
+        record.exchange_id = exchange.id if exchange else None
+        record.country_id = country.id if country else None
+        record.country_code = country_code
+        record.currency_code = normalize_optional_text(item.get("currency_code"))
+        affected += 1
+
+    db.session.commit()
+    return affected
+
+
 def upsert_index_assets(rows: list[dict], country_code: str) -> int:
     affected = 0
     country = Country.query.filter_by(country_code=country_code).first()
@@ -160,6 +194,40 @@ def upsert_stock_daily_bars(rows: list[dict], stock: Stock) -> int:
         record.low = item.get("low")
         record.close = item.get("close")
         record.volume = int(item["volume"]) if item.get("volume") is not None else None
+        affected += 1
+
+    db.session.commit()
+    return affected
+
+
+def upsert_etf_daily_bars(rows: list[dict], etf: Etf) -> int:
+    affected = 0
+    for item in rows:
+        ticker = str(item.get("ticker") or "").strip()
+        trade_date_raw = str(item.get("date") or "").strip()
+        if not ticker or ticker.casefold() != etf.ticker.casefold() or not trade_date_raw:
+            continue
+
+        trade_date = date.fromisoformat(trade_date_raw)
+        record = EtfDailyBar.query.filter_by(
+            exchange_code=etf.exchange_code,
+            ticker=etf.ticker,
+            trade_date=trade_date,
+        ).first()
+        if not record:
+            record = EtfDailyBar(
+                exchange_code=etf.exchange_code,
+                ticker=etf.ticker,
+                trade_date=trade_date,
+            )
+            db.session.add(record)
+
+        record.etf_id = etf.id
+        record.open = item.get("open")
+        record.high = item.get("high")
+        record.low = item.get("low")
+        record.close = item.get("close")
+        record.volume = item.get("volume")
         affected += 1
 
     db.session.commit()

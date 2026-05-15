@@ -9,6 +9,8 @@ from app.services.data_center import (
     DataSyncError,
     SYNC_ITEM_COUNTRY_LIST,
     SYNC_ITEM_EXCHANGE_LIST,
+    SYNC_ITEM_ETF_DAILY_HISTORY,
+    SYNC_ITEM_ETF_LIST,
     SYNC_ITEM_INDEX_DAILY_HISTORY,
     SYNC_ITEM_INDEX_LIST,
     SYNC_ITEM_STOCK_DAILY_HISTORY,
@@ -17,6 +19,8 @@ from app.services.data_center import (
     batch_sync_stock_and_index_daily_history,
     batch_sync_stock_daily_history,
     log_event,
+    sync_etf_daily_history,
+    sync_etf_list,
     sync_country_list,
     sync_exchange_list,
     sync_index_daily_history,
@@ -57,12 +61,24 @@ def sync_data_center_item(
             return sync_exchange_list(user, task_id=task_id)
         if sync_item == SYNC_ITEM_STOCK_LIST:
             return sync_stock_list(user, exchange_code or "", task_id=task_id)
+        if sync_item == SYNC_ITEM_ETF_LIST:
+            return sync_etf_list(user, exchange_code or "", task_id=task_id)
         if sync_item == SYNC_ITEM_INDEX_LIST:
             return sync_index_list(user, country_code or "", task_id=task_id)
         if sync_item == SYNC_ITEM_TRADING_CALENDAR:
             return sync_trading_calendar(user, exchange_code or "", task_id=task_id)
         if sync_item == SYNC_ITEM_STOCK_DAILY_HISTORY:
             return sync_stock_daily_history(
+                user=user,
+                exchange_code=exchange_code or "",
+                ticker=ticker or "",
+                date_mode=date_mode or "auto_fill",
+                start_date=start_date,
+                end_date=end_date,
+                task_id=task_id,
+            )
+        if sync_item == SYNC_ITEM_ETF_DAILY_HISTORY:
+            return sync_etf_daily_history(
                 user=user,
                 exchange_code=exchange_code or "",
                 ticker=ticker or "",
@@ -143,7 +159,7 @@ def batch_sync_stock_and_index_daily_history_task(*, user_id: int) -> dict:
         target=SYNC_ITEM_STOCK_DAILY_HISTORY,
         status="running",
         level="info",
-        message="批量同步股票/指数日线任务开始执行。",
+        message="批量同步股票/ETF/指数日线任务开始执行。",
     )
 
     try:
@@ -168,15 +184,15 @@ def batch_sync_stock_and_index_daily_history_task(*, user_id: int) -> dict:
             target=SYNC_ITEM_STOCK_DAILY_HISTORY,
             status="failed",
             level="error",
-            message="批量同步股票/指数日线任务执行超时。",
+            message="批量同步股票/ETF/指数日线任务执行超时。",
         )
-        raise DataSyncError("批量同步股票/指数日线任务超时") from exc
+        raise DataSyncError("批量同步股票/ETF/指数日线任务超时") from exc
     except Exception as exc:
         _log_task_failed(
             user,
             task_id,
             SYNC_ITEM_STOCK_DAILY_HISTORY,
-            f"批量同步股票/指数日线任务执行失败：{exc}",
+            f"批量同步股票/ETF/指数日线任务执行失败：{exc}",
             batch=True,
         )
         raise

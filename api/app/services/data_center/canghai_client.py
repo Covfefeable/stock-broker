@@ -10,12 +10,20 @@ def canghai_stock_url(exchange_code: str) -> str:
     return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/list"
 
 
+def canghai_etf_url(exchange_code: str) -> str:
+    return f"https://www.tsanghi.com/api/fin/etf/{exchange_code}/list"
+
+
 def canghai_index_url(country_code: str) -> str:
     return f"https://www.tsanghi.com/api/fin/index/{country_code}/list"
 
 
 def canghai_stock_daily_url(exchange_code: str) -> str:
     return f"https://www.tsanghi.com/api/fin/stock/{exchange_code}/daily"
+
+
+def canghai_etf_daily_url(exchange_code: str) -> str:
+    return f"https://www.tsanghi.com/api/fin/etf/{exchange_code}/daily"
 
 
 def canghai_stock_split_url(exchange_code: str) -> str:

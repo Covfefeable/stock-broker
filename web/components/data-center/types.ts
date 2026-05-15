@@ -1,6 +1,7 @@
 export type ExchangeOption = { label: string; value: string; countryCode?: string | null };
 export type CountryOption = { label: string; value: string };
 export type StockOption = { label: string; value: string; latestDate?: string | null };
+export type EtfOption = { label: string; value: string; latestDate?: string | null };
 export type IndexOption = { label: string; value: string; latestDate?: string | null };
 export type TradingCalendarDay = {
   exchangeCode: string;
@@ -19,6 +20,8 @@ export type IndexDailyCoverage = {
   latestDate: string | null;
   count: number;
 };
+
+export type EtfDailyCoverage = StockDailyCoverage;
 
 export type PickerDateValue = {
   format: (pattern: string) => string;
@@ -49,7 +52,9 @@ export type ExchangeCoverageRow = {
 
 export type OverviewMetrics = {
   stocksCount: number;
+  etfsCount: number;
   stockDailyBarsCount: number;
+  etfDailyBarsCount: number;
   exchangeCount: number;
   syncedAssetsCount: number;
   latestTradeDate: string | null;
@@ -95,9 +100,11 @@ export type SyncFormValues = {
     | "country_list"
     | "exchange_list"
     | "stock_list"
+    | "etf_list"
     | "index_list"
     | "trading_calendar"
     | "stock_daily_history"
+    | "etf_daily_history"
     | "index_daily_history";
   exchangeCode?: string;
   countryCode?: string;
@@ -115,6 +122,7 @@ export type TaskStatusResponse = {
   result?: {
     recordsAffected?: number;
     totalStocks?: number;
+    totalEtfs?: number;
     totalIndexes?: number;
     skippedCount?: number;
     successCount?: number;
@@ -134,7 +142,7 @@ export type BrowserBar = {
 };
 
 export type BrowserMeta = {
-  type: "stock" | "index";
+  type: "stock" | "etf" | "index";
   name: string;
   ticker: string;
   exchangeCode?: string | null;

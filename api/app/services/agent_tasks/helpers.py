@@ -6,6 +6,7 @@ from typing import Any
 
 from app.models.agent_iteration import AgentIteration
 from app.models.agent_task import AgentTask
+from app.models.etf import Etf
 from app.models.index_asset import IndexAsset
 from app.models.stock import Stock
 from app.models.user import User
@@ -52,13 +53,14 @@ def _resolve_ai_model(user: User, value: Any) -> dict[str, str]:
 
 
 def _resolve_asset_name(country_code: str, asset_type: str, asset_identifier: str) -> str:
-    if asset_type == "stock":
+    if asset_type in {"stock", "etf"}:
         if ":" not in asset_identifier:
-            raise AgentTaskError("股票标的格式无效。")
+            raise AgentTaskError("股票或 ETF 标的格式无效。")
         exchange_code, ticker = asset_identifier.split(":", 1)
-        row = Stock.query.filter_by(exchange_code=exchange_code, ticker=ticker).first()
+        model = Stock if asset_type == "stock" else Etf
+        row = model.query.filter_by(exchange_code=exchange_code, ticker=ticker).first()
         if not row:
-            raise AgentTaskError("未找到对应股票，请先同步股票清单。")
+            raise AgentTaskError(f"未找到对应{'股票' if asset_type == 'stock' else 'ETF'}，请先同步清单。")
         return row.name
 
     row = IndexAsset.query.filter_by(country_code=country_code, ticker=asset_identifier).first()

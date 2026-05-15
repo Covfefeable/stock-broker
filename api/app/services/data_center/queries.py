@@ -5,6 +5,8 @@ from sqlalchemy import func
 
 from app.extensions import db
 from app.models.country import Country
+from app.models.etf import Etf
+from app.models.etf_daily_bar import EtfDailyBar
 from app.models.event_log import EventLog
 from app.models.exchange import Exchange
 from app.models.index_asset import IndexAsset
@@ -88,6 +90,50 @@ def list_stock_options(exchange_code: str) -> list[dict]:
             {
                 "label": label,
                 "value": stock.ticker,
+                "latestDate": latest_date_text,
+            }
+        )
+    return items
+
+
+def list_etf_options(exchange_code: str) -> list[dict]:
+    normalized_exchange_code = exchange_code.strip().upper()
+    if not normalized_exchange_code:
+        return []
+
+    latest_date_subquery = (
+        db.session.query(
+            EtfDailyBar.exchange_code.label("exchange_code"),
+            EtfDailyBar.ticker.label("ticker"),
+            func.max(EtfDailyBar.trade_date).label("latest_date"),
+        )
+        .filter(EtfDailyBar.exchange_code == normalized_exchange_code)
+        .group_by(EtfDailyBar.exchange_code, EtfDailyBar.ticker)
+        .subquery()
+    )
+
+    rows = (
+        db.session.query(Etf, latest_date_subquery.c.latest_date)
+        .outerjoin(
+            latest_date_subquery,
+            (Etf.exchange_code == latest_date_subquery.c.exchange_code)
+            & (Etf.ticker == latest_date_subquery.c.ticker),
+        )
+        .filter(Etf.exchange_code == normalized_exchange_code)
+        .order_by(Etf.ticker.asc(), Etf.id.asc())
+        .all()
+    )
+
+    items: list[dict] = []
+    for etf, latest_date in rows:
+        latest_date_text = latest_date.isoformat() if latest_date else None
+        label = f"{etf.ticker} - {etf.name}"
+        if latest_date_text:
+            label = f"{label}（同步至 {latest_date_text}）"
+        items.append(
+            {
+                "label": label,
+                "value": etf.ticker,
                 "latestDate": latest_date_text,
             }
         )

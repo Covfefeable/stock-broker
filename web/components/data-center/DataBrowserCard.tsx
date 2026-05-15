@@ -9,6 +9,8 @@ import type {
   BrowserBar,
   BrowserMeta,
   CountryOption,
+  EtfDailyCoverage,
+  EtfOption,
   ExchangeOption,
   IndexDailyCoverage,
   IndexOption,
@@ -21,7 +23,7 @@ import { apiGet, apiPost } from "@/lib/api";
 
 const { Text, Title } = Typography;
 
-type BrowserMode = "stock" | "index";
+type BrowserMode = "stock" | "etf" | "index";
 
 type Props = {
   countryOptions: CountryOption[];
@@ -38,8 +40,10 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
   const [exchangeCode, setExchangeCode] = useState<string>();
   const [ticker, setTicker] = useState<string>();
   const [stockOptions, setStockOptions] = useState<StockOption[]>([]);
+  const [etfOptions, setEtfOptions] = useState<EtfOption[]>([]);
   const [indexOptions, setIndexOptions] = useState<IndexOption[]>([]);
   const [stockCoverage, setStockCoverage] = useState<StockDailyCoverage>({ existingDates: [], latestDate: null, count: 0 });
+  const [etfCoverage, setEtfCoverage] = useState<EtfDailyCoverage>({ existingDates: [], latestDate: null, count: 0 });
   const [indexCoverage, setIndexCoverage] = useState<IndexDailyCoverage>({ existingDates: [], latestDate: null, count: 0 });
   const [bars, setBars] = useState<BrowserBar[]>([]);
   const [meta, setMeta] = useState<BrowserMeta | null>(null);
@@ -60,8 +64,10 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
       payload:
         | { syncItem: "exchange_list" }
         | { syncItem: "stock_list"; exchangeCode: string }
+        | { syncItem: "etf_list"; exchangeCode: string }
         | { syncItem: "index_list"; countryCode: string }
         | { syncItem: "stock_daily_history"; exchangeCode: string; ticker: string; dateMode: "auto_fill" }
+        | { syncItem: "etf_daily_history"; exchangeCode: string; ticker: string; dateMode: "auto_fill" }
         | { syncItem: "index_daily_history"; countryCode: string; ticker: string; dateMode: "auto_fill" },
     ) => {
       const token = getAccessToken();
@@ -72,7 +78,7 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
   );
 
   const promptSyncForMissingLevel = useCallback(
-    (kind: "exchange" | "stock" | "index", nextCountryCode?: string, nextExchangeCode?: string) => {
+    (kind: "exchange" | "stock" | "etf" | "index", nextCountryCode?: string, nextExchangeCode?: string) => {
       const config =
         kind === "exchange"
           ? {
@@ -86,7 +92,13 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
                 content: "是否现在同步该交易所的股票清单？同步完成后再回来继续筛选即可。",
                 run: () => enqueueSync({ syncItem: "stock_list", exchangeCode: nextExchangeCode || "" }),
               }
-            : {
+            : kind === "etf"
+              ? {
+                  title: "当前交易所下暂无 ETF 清单数据",
+                  content: "是否现在同步该交易所的 ETF 清单？同步完成后再回来继续筛选即可。",
+                  run: () => enqueueSync({ syncItem: "etf_list", exchangeCode: nextExchangeCode || "" }),
+                }
+              : {
                 title: "当前国家下暂无指数清单数据",
                 content: "是否现在同步该国家/地区的指数清单？同步完成后再回来继续筛选即可。",
                 run: () => enqueueSync({ syncItem: "index_list", countryCode: nextCountryCode || "" }),
@@ -158,6 +170,29 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
     }
   }, [messageApi]);
 
+  const loadEtfOptions = useCallback(async (nextExchangeCode: string) => {
+    if (!nextExchangeCode) {
+      setEtfOptions([]);
+      return [];
+    }
+
+    setOptionsLoading(true);
+    try {
+      const token = getAccessToken();
+      const response = await apiGet<{ items: EtfOption[] }>(
+        `/data-center/etf-options?exchangeCode=${encodeURIComponent(nextExchangeCode)}`,
+        token,
+      );
+      setEtfOptions(response.items);
+      return response.items;
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "加载 ETF 选项失败");
+      return [];
+    } finally {
+      setOptionsLoading(false);
+    }
+  }, [messageApi]);
+
   const promptSyncIfNeeded = useCallback(async (kind: BrowserMode, nextCountryCode?: string, nextExchangeCode?: string, nextTicker?: string) => {
     if (!nextTicker) {
       return;
@@ -172,7 +207,12 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
               `/data-center/stock-daily-coverage?exchangeCode=${encodeURIComponent(nextExchangeCode || "")}&ticker=${encodeURIComponent(nextTicker)}`,
               token,
             )
-          : await apiGet<{ coverage: IndexDailyCoverage }>(
+          : kind === "etf"
+            ? await apiGet<{ coverage: EtfDailyCoverage }>(
+                `/data-center/etf-daily-coverage?exchangeCode=${encodeURIComponent(nextExchangeCode || "")}&ticker=${encodeURIComponent(nextTicker)}`,
+                token,
+              )
+            : await apiGet<{ coverage: IndexDailyCoverage }>(
               `/data-center/index-daily-coverage?countryCode=${encodeURIComponent(nextCountryCode || "")}&ticker=${encodeURIComponent(nextTicker)}`,
               token,
             );
@@ -180,6 +220,8 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
       const coverage = response.coverage;
       if (kind === "stock") {
         setStockCoverage(coverage as StockDailyCoverage);
+      } else if (kind === "etf") {
+        setEtfCoverage(coverage as EtfDailyCoverage);
       } else {
         setIndexCoverage(coverage as IndexDailyCoverage);
       }
@@ -189,7 +231,7 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
       }
 
       modal.confirm({
-        title: kind === "stock" ? "该股票尚未同步日线数据" : "该指数尚未同步日线数据",
+        title: kind === "stock" ? "该股票尚未同步日线数据" : kind === "etf" ? "该 ETF 尚未同步日线数据" : "该指数尚未同步日线数据",
         content: "是否现在发起同步？同步任务会进入后台执行，完成后再回来查询即可。",
         okText: "同步",
         cancelText: "取消",
@@ -204,6 +246,13 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
                     ticker: nextTicker,
                     dateMode: "auto_fill",
                   }
+                : kind === "etf"
+                  ? {
+                      syncItem: "etf_daily_history",
+                      exchangeCode: nextExchangeCode || "",
+                      ticker: nextTicker,
+                      dateMode: "auto_fill",
+                    }
                 : {
                     syncItem: "index_daily_history",
                     countryCode: nextCountryCode || "",
@@ -231,8 +280,10 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
     setExchangeCode(undefined);
     setTicker(undefined);
     setStockOptions([]);
+    setEtfOptions([]);
     setIndexOptions([]);
     setStockCoverage({ existingDates: [], latestDate: null, count: 0 });
+    setEtfCoverage({ existingDates: [], latestDate: null, count: 0 });
     setIndexCoverage({ existingDates: [], latestDate: null, count: 0 });
     setBars([]);
     setMeta(null);
@@ -246,8 +297,9 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
     setMeta(null);
     setStockCoverage({ existingDates: [], latestDate: null, count: 0 });
     setIndexCoverage({ existingDates: [], latestDate: null, count: 0 });
-    if (browserMode === "stock") {
+    if (browserMode === "stock" || browserMode === "etf") {
       setStockOptions([]);
+      setEtfOptions([]);
       const nextExchangeOptions = exchangeOptions.filter((item) => item.countryCode === value);
       if (!nextExchangeOptions.length) {
         promptSyncForMissingLevel("exchange", value);
@@ -266,11 +318,12 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
     setBars([]);
     setMeta(null);
     setStockCoverage({ existingDates: [], latestDate: null, count: 0 });
-    const items = await loadStockOptions(value);
+    setEtfCoverage({ existingDates: [], latestDate: null, count: 0 });
+    const items = browserMode === "etf" ? await loadEtfOptions(value) : await loadStockOptions(value);
     if (!items.length) {
-      promptSyncForMissingLevel("stock", undefined, value);
+      promptSyncForMissingLevel(browserMode === "etf" ? "etf" : "stock", undefined, value);
     }
-  }, [loadStockOptions, promptSyncForMissingLevel]);
+  }, [browserMode, loadEtfOptions, loadStockOptions, promptSyncForMissingLevel]);
 
   const handleTickerChange = useCallback(async (value: string) => {
     setTicker(value);
@@ -280,13 +333,14 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
   }, [browserMode, countryCode, exchangeCode, promptSyncIfNeeded]);
 
   const handleQuery = useCallback(async () => {
-    if (browserMode === "stock") {
+    if (browserMode === "stock" || browserMode === "etf") {
       if (!countryCode || !exchangeCode || !ticker) {
-        messageApi.warning("请先完整选择国家、交易所和股票。");
+        messageApi.warning(`请先完整选择国家、交易所和${browserMode === "etf" ? "ETF" : "股票"}。`);
         return;
       }
-      if (!stockCoverage.latestDate) {
-        await promptSyncIfNeeded("stock", countryCode, exchangeCode, ticker);
+      const coverage = browserMode === "etf" ? etfCoverage : stockCoverage;
+      if (!coverage.latestDate) {
+        await promptSyncIfNeeded(browserMode, countryCode, exchangeCode, ticker);
         return;
       }
     } else {
@@ -309,7 +363,12 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
               `/data-center/browser/stock-bars?exchangeCode=${encodeURIComponent(exchangeCode || "")}&ticker=${encodeURIComponent(ticker || "")}`,
               token,
             )
-          : await apiGet<{ meta: BrowserMeta | null; bars: BrowserBar[] }>(
+          : browserMode === "etf"
+            ? await apiGet<{ meta: BrowserMeta | null; bars: BrowserBar[] }>(
+                `/data-center/browser/etf-bars?exchangeCode=${encodeURIComponent(exchangeCode || "")}&ticker=${encodeURIComponent(ticker || "")}`,
+                token,
+              )
+            : await apiGet<{ meta: BrowserMeta | null; bars: BrowserBar[] }>(
               `/data-center/browser/index-bars?countryCode=${encodeURIComponent(countryCode || "")}&ticker=${encodeURIComponent(ticker || "")}`,
               token,
             );
@@ -320,7 +379,7 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
     } finally {
       setChartLoading(false);
     }
-  }, [browserMode, countryCode, exchangeCode, indexCoverage.latestDate, messageApi, promptSyncIfNeeded, stockCoverage.latestDate, ticker]);
+  }, [browserMode, countryCode, etfCoverage, exchangeCode, indexCoverage.latestDate, messageApi, promptSyncIfNeeded, stockCoverage, ticker]);
 
   const latestBar = bars[bars.length - 1];
 
@@ -334,6 +393,7 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
           onChange={(value) => handleModeChange(value as BrowserMode)}
           options={[
             { label: "股票", value: "stock" },
+            { label: "ETF", value: "etf" },
             { label: "指数", value: "index" },
           ]}
         />
@@ -353,7 +413,7 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
           onChange={(value) => void handleCountryChange(value)}
         />
 
-        {browserMode === "stock" ? (
+        {browserMode === "stock" || browserMode === "etf" ? (
           <>
             <Select
               value={exchangeCode}
@@ -366,8 +426,8 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
             />
             <Select
               value={ticker}
-              placeholder={exchangeCode ? "请选择股票" : "请先选择交易所"}
-              options={stockOptions}
+              placeholder={exchangeCode ? (browserMode === "etf" ? "请选择 ETF" : "请选择股票") : "请先选择交易所"}
+              options={browserMode === "etf" ? etfOptions : stockOptions}
               className="data-browser-select data-browser-select-wide"
               loading={optionsLoading}
               showSearch
@@ -400,7 +460,7 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
               {meta.name} ({meta.ticker})
             </Title>
             <Text type="secondary">
-              {browserMode === "stock" ? `${meta.countryCode} · ${meta.exchangeCode}` : `${meta.countryCode} · 指数`}
+              {browserMode === "stock" ? `${meta.countryCode} · ${meta.exchangeCode}` : browserMode === "etf" ? `${meta.countryCode} · ${meta.exchangeCode} · ETF` : `${meta.countryCode} · 指数`}
             </Text>
           </div>
           <Space size={24} wrap>

@@ -24,7 +24,7 @@ import { getAccessToken } from "@/lib/auth";
 
 const { Text, Title } = Typography;
 
-type AssetType = "stock" | "index";
+type AssetType = "stock" | "etf" | "index";
 type PositionStatus = "empty" | "holding";
 
 type OptionItem = {
@@ -133,7 +133,7 @@ export default function TradeDecisionsPage() {
     if (!ticker) {
       return "";
     }
-    return assetType === "stock" && exchangeCode ? `${exchangeCode}:${ticker}` : ticker;
+    return assetType !== "index" && exchangeCode ? `${exchangeCode}:${ticker}` : ticker;
   }, [assetType, exchangeCode, ticker]);
 
   const loadBaseOptions = useCallback(async () => {
@@ -154,7 +154,7 @@ export default function TradeDecisionsPage() {
   }, [messageApi]);
 
   const loadAssetOptions = useCallback(async () => {
-    if (assetType === "stock" && !exchangeCode) {
+    if (assetType !== "index" && !exchangeCode) {
       setAssetOptions([]);
       return;
     }
@@ -169,6 +169,8 @@ export default function TradeDecisionsPage() {
       const path =
         assetType === "stock"
           ? `/data-center/stock-options?exchangeCode=${encodeURIComponent(exchangeCode ?? "")}`
+          : assetType === "etf"
+            ? `/data-center/etf-options?exchangeCode=${encodeURIComponent(exchangeCode ?? "")}`
           : `/data-center/index-options?countryCode=${encodeURIComponent(countryCode ?? "")}`;
       const response = await apiGet<{ items: OptionItem[] }>(path, token);
       setAssetOptions(response.items);
@@ -201,7 +203,7 @@ export default function TradeDecisionsPage() {
     (nextExtraIds = extraStrategyIds) => ({
       assetType,
       countryCode,
-      exchangeCode: assetType === "stock" ? exchangeCode : undefined,
+      exchangeCode: assetType !== "index" ? exchangeCode : undefined,
       ticker,
       position: {
         status: positionStatus,
@@ -227,7 +229,7 @@ export default function TradeDecisionsPage() {
 
   const handleQuery = useCallback(
     async (nextExtraIds = extraStrategyIds) => {
-      if (!countryCode || !ticker || (assetType === "stock" && !exchangeCode)) {
+      if (!countryCode || !ticker || (assetType !== "index" && !exchangeCode)) {
         messageApi.warning("请选择完整的标的信息。");
         return;
       }
@@ -398,6 +400,7 @@ export default function TradeDecisionsPage() {
                 onChange={(event) => setAssetType(event.target.value)}
                 options={[
                   { label: "股票", value: "stock" },
+                  { label: "ETF", value: "etf" },
                   { label: "指数", value: "index" },
                 ]}
               />
@@ -421,7 +424,7 @@ export default function TradeDecisionsPage() {
                   }
                 />
               </label>
-              {assetType === "stock" ? (
+              {assetType !== "index" ? (
                 <label>
                   <span>交易所</span>
                   <Select
@@ -439,13 +442,13 @@ export default function TradeDecisionsPage() {
                 </label>
               ) : null}
               <label className={assetType === "index" ? "trade-decision-field-wide" : ""}>
-                <span>{assetType === "stock" ? "股票" : "指数"}</span>
+                <span>{assetType === "stock" ? "股票" : assetType === "etf" ? "ETF" : "指数"}</span>
                 <Select
                   allowClear
                   showSearch
                   loading={loadingOptions}
                   options={assetOptions}
-                  placeholder={assetType === "stock" ? "请选择股票" : "请选择指数"}
+                  placeholder={assetType === "stock" ? "请选择股票" : assetType === "etf" ? "请选择 ETF" : "请选择指数"}
                   value={ticker}
                   onChange={(value) => {
                     setTicker(value);

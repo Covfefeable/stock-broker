@@ -18,15 +18,15 @@ type Props = {
 export function MetricCardsRow({ metrics, loading }: Props) {
   const metricCards = [
     {
-      title: "股票标的",
-      value: formatInteger(metrics.stocksCount),
+      title: "股票/ETF标的",
+      value: formatInteger(metrics.stocksCount + metrics.etfsCount),
       suffix: "只",
       icon: <DatabaseOutlined />,
       className: "",
     },
     {
       title: "历史日线",
-      value: formatInteger(metrics.stockDailyBarsCount),
+      value: formatInteger(metrics.stockDailyBarsCount + metrics.etfDailyBarsCount),
       suffix: "条",
       icon: <ClockCircleOutlined />,
       className: "",
@@ -39,7 +39,7 @@ export function MetricCardsRow({ metrics, loading }: Props) {
       className: "",
     },
     {
-      title: "已同步股票/指数",
+      title: "已同步股票/ETF/指数",
       value: formatInteger(metrics.syncedAssetsCount),
       suffix: "个",
       icon: <CheckCircleOutlined />,

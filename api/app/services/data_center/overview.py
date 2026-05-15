@@ -1,6 +1,8 @@
 from sqlalchemy import func
 
 from app.extensions import db
+from app.models.etf import Etf
+from app.models.etf_daily_bar import EtfDailyBar
 from app.models.exchange import Exchange
 from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock import Stock
@@ -11,7 +13,9 @@ from app.services.data_center.constants import *  # noqa: F403
 
 def get_data_center_overview_metrics() -> dict:
     stocks_count = Stock.query.count()
+    etfs_count = Etf.query.count()
     stock_daily_count = StockDailyBar.query.count()
+    etf_daily_count = EtfDailyBar.query.count()
     exchange_count = Exchange.query.count()
     synced_stocks_count = (
         db.session.query(func.count())
@@ -39,15 +43,38 @@ def get_data_center_overview_metrics() -> dict:
         .scalar()
         or 0
     )
+    synced_etfs_count = (
+        db.session.query(func.count())
+        .select_from(
+            db.session.query(
+                EtfDailyBar.exchange_code,
+                EtfDailyBar.ticker,
+            )
+            .distinct()
+            .subquery()
+        )
+        .scalar()
+        or 0
+    )
 
-    latest_trade_date = db.session.query(func.max(StockDailyBar.trade_date)).scalar()
+    latest_stock_trade_date = db.session.query(func.max(StockDailyBar.trade_date)).scalar()
+    latest_etf_trade_date = db.session.query(func.max(EtfDailyBar.trade_date)).scalar()
+    latest_index_trade_date = db.session.query(func.max(IndexDailyBar.trade_date)).scalar()
+    latest_trade_dates = [
+        item
+        for item in [latest_stock_trade_date, latest_etf_trade_date, latest_index_trade_date]
+        if item
+    ]
+    latest_trade_date = max(latest_trade_dates) if latest_trade_dates else None
     exchange_coverage = list_exchange_stock_coverage()
 
     return {
         "stocksCount": stocks_count,
+        "etfsCount": etfs_count,
         "stockDailyBarsCount": stock_daily_count,
+        "etfDailyBarsCount": etf_daily_count,
         "exchangeCount": exchange_count,
-        "syncedAssetsCount": synced_stocks_count + synced_indexes_count,
+        "syncedAssetsCount": synced_stocks_count + synced_etfs_count + synced_indexes_count,
         "latestTradeDate": latest_trade_date.isoformat() if latest_trade_date else None,
         "exchangeCoverage": exchange_coverage,
     }

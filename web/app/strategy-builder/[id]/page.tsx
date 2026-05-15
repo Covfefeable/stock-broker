@@ -14,7 +14,7 @@ import { apiGet, apiPost, apiPut } from "@/lib/api";
 
 const { Text, Title } = Typography;
 
-type AssetType = "stock" | "index";
+type AssetType = "stock" | "etf" | "index";
 
 type AssetOption = {
   label: string;
@@ -136,8 +136,10 @@ export default function StrategyDetailPage() {
     async (
       payload:
         | { syncItem: "exchange_list" }
+        | { syncItem: "etf_list"; exchangeCode: string }
         | { syncItem: "index_list"; countryCode: string }
         | { syncItem: "stock_daily_history"; exchangeCode: string; ticker: string; dateMode: "auto_fill" }
+        | { syncItem: "etf_daily_history"; exchangeCode: string; ticker: string; dateMode: "auto_fill" }
         | { syncItem: "index_daily_history"; countryCode: string; ticker: string; dateMode: "auto_fill" },
     ) => {
       const token = getAccessToken();
@@ -149,7 +151,7 @@ export default function StrategyDetailPage() {
 
   const promptSync = useCallback(
     (
-      syncHint: "exchange_list" | "stock_list" | "index_list" | "stock_daily_history" | "index_daily_history",
+      syncHint: "exchange_list" | "stock_list" | "etf_list" | "index_list" | "stock_daily_history" | "etf_daily_history" | "index_daily_history",
       content: string,
       nextCountryCode?: string,
       asset?: AssetOption,
@@ -157,6 +159,14 @@ export default function StrategyDetailPage() {
       if (syncHint === "stock_list") {
         modal.info({
           title: "需要先同步股票清单",
+          content,
+          okText: "知道了",
+        });
+        return;
+      }
+      if (syncHint === "etf_list") {
+        modal.info({
+          title: "需要先同步 ETF 清单",
           content,
           okText: "知道了",
         });
@@ -182,6 +192,15 @@ export default function StrategyDetailPage() {
             if (syncHint === "stock_daily_history" && asset?.exchangeCode) {
               await enqueueSync({
                 syncItem: "stock_daily_history",
+                exchangeCode: asset.exchangeCode,
+                ticker: asset.ticker,
+                dateMode: "auto_fill",
+              });
+              return;
+            }
+            if (syncHint === "etf_daily_history" && asset?.exchangeCode) {
+              await enqueueSync({
+                syncItem: "etf_daily_history",
                 exchangeCode: asset.exchangeCode,
                 ticker: asset.ticker,
                 dateMode: "auto_fill",
@@ -217,7 +236,7 @@ export default function StrategyDetailPage() {
         const token = getAccessToken();
         const response = await apiGet<{
           items: AssetOption[];
-          syncHint: "exchange_list" | "stock_list" | "index_list" | null;
+          syncHint: "exchange_list" | "stock_list" | "etf_list" | "index_list" | null;
           message: string | null;
         }>(
           `/strategies/asset-options?countryCode=${encodeURIComponent(nextCountryCode)}&assetType=${encodeURIComponent(nextAssetType)}`,
@@ -228,7 +247,7 @@ export default function StrategyDetailPage() {
           promptSync(response.syncHint, response.message, nextCountryCode);
         }
       } catch (error) {
-        messageApi.error(error instanceof Error ? error.message : "加载股票/指数选项失败");
+        messageApi.error(error instanceof Error ? error.message : "加载股票/ETF/指数选项失败");
       } finally {
         setLoadingAssets(false);
       }
@@ -245,13 +264,18 @@ export default function StrategyDetailPage() {
 
       try {
         const token = getAccessToken();
-        if (nextAssetType === "stock") {
+        if (nextAssetType === "stock" || nextAssetType === "etf") {
           const response = await apiGet<{ coverage: StockDailyCoverage }>(
-            `/data-center/stock-daily-coverage?exchangeCode=${encodeURIComponent(selected.exchangeCode || "")}&ticker=${encodeURIComponent(selected.ticker)}`,
+            `/data-center/${nextAssetType === "etf" ? "etf" : "stock"}-daily-coverage?exchangeCode=${encodeURIComponent(selected.exchangeCode || "")}&ticker=${encodeURIComponent(selected.ticker)}`,
             token,
           );
           if (!response.coverage.latestDate) {
-            promptSync("stock_daily_history", `当前股票 ${selected.name} 尚未同步历史日线，是否立即同步？`, nextCountryCode, selected);
+            promptSync(
+              nextAssetType === "etf" ? "etf_daily_history" : "stock_daily_history",
+              `当前${nextAssetType === "etf" ? "ETF" : "股票"} ${selected.name} 尚未同步历史日线，是否立即同步？`,
+              nextCountryCode,
+              selected,
+            );
           }
           return;
         }
@@ -434,7 +458,7 @@ export default function StrategyDetailPage() {
       <section className="dashboard-heading">
         <div>
           <Title level={1}>{pageTitle}</Title>
-          <Text className="page-description">查看并编辑单一股票/指数策略，保存后可继续回测与迭代。</Text>
+          <Text className="page-description">查看并编辑单一股票/ETF/指数策略，保存后可继续回测与迭代。</Text>
         </div>
         <Space>
           <Button icon={<ArrowLeftOutlined />} href="/strategy-builder">
@@ -478,10 +502,11 @@ export default function StrategyDetailPage() {
               />
             </Form.Item>
 
-            <Form.Item label="股票/指数" name="assetType" rules={[{ required: true, message: "请选择股票或指数" }]}>
+            <Form.Item label="股票/ETF/指数" name="assetType" rules={[{ required: true, message: "请选择股票、ETF或指数" }]}>
               <Radio.Group
                 options={[
                   { label: "股票", value: "stock" },
+                  { label: "ETF", value: "etf" },
                   { label: "指数", value: "index" },
                 ]}
                 optionType="button"
@@ -490,9 +515,9 @@ export default function StrategyDetailPage() {
             </Form.Item>
 
             <Form.Item
-              label={assetType === "index" ? "指数" : "股票"}
+              label={assetType === "index" ? "指数" : assetType === "etf" ? "ETF" : "股票"}
               name="assetIdentifier"
-              rules={[{ required: true, message: assetType === "index" ? "请选择指数" : "请选择股票" }]}
+              rules={[{ required: true, message: assetType === "index" ? "请选择指数" : assetType === "etf" ? "请选择 ETF" : "请选择股票" }]}
             >
               <Select
                 showSearch
@@ -500,7 +525,7 @@ export default function StrategyDetailPage() {
                 options={assetOptions}
                 optionFilterProp="label"
                 placeholder={
-                  !countryCode ? "请先选择国家/地区" : assetType === "index" ? "请选择指数" : "请选择股票"
+                  !countryCode ? "请先选择国家/地区" : assetType === "index" ? "请选择指数" : assetType === "etf" ? "请选择 ETF" : "请选择股票"
                 }
                 onChange={(value: string) => {
                   if (countryCode && assetType) {

@@ -2,7 +2,9 @@ import type { EventLogItem, OverviewMetrics, TimelineLogRow } from "@/components
 
 export const defaultMetrics: OverviewMetrics = {
   stocksCount: 0,
+  etfsCount: 0,
   stockDailyBarsCount: 0,
+  etfDailyBarsCount: 0,
   exchangeCount: 0,
   syncedAssetsCount: 0,
   latestTradeDate: null,
@@ -57,10 +59,12 @@ export function formatPercent(value: number): string {
 export function normalizeDisplayText(value: string): string {
   return value
     .replaceAll("index_daily_history", "指数历史日线")
+    .replaceAll("etf_daily_history", "ETF历史日线")
     .replaceAll("stock_daily_history", "股票历史日线")
     .replaceAll("trading_calendar", "交易日历")
     .replaceAll("country_list", "国家/地区清单")
     .replaceAll("exchange_list", "交易所清单")
+    .replaceAll("etf_list", "ETF清单")
     .replaceAll("stock_list", "股票清单")
     .replaceAll("index_list", "指数清单");
 }

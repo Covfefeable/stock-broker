@@ -32,8 +32,8 @@ def create_agent_task(user: User, payload: dict) -> AgentTask:
         raise AgentTaskError("请输入任务名称。")
     if not country_code:
         raise AgentTaskError("请选择国家/地区。")
-    if asset_type not in {"stock", "index"}:
-        raise AgentTaskError("请选择股票或指数。")
+    if asset_type not in {"stock", "etf", "index"}:
+        raise AgentTaskError("请选择股票、ETF或指数。")
     if not asset_identifier:
         raise AgentTaskError("请选择具体标的。")
 

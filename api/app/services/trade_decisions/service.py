@@ -6,6 +6,8 @@ from typing import Any
 from sqlalchemy import desc, or_
 
 from app.extensions import db
+from app.models.etf import Etf
+from app.models.etf_daily_bar import EtfDailyBar
 from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock import Stock
@@ -122,30 +124,31 @@ def _parse_asset(payload: dict) -> DecisionAsset:
     country_code = str(payload.get("countryCode") or "").strip().upper()
     ticker = str(payload.get("ticker") or "").strip()
     exchange_code = str(payload.get("exchangeCode") or "").strip().upper()
-    if asset_type not in {"stock", "index"}:
-        raise TradeDecisionError("请选择股票或指数。")
+    if asset_type not in {"stock", "etf", "index"}:
+        raise TradeDecisionError("请选择股票、ETF或指数。")
     if not country_code:
         raise TradeDecisionError("请选择国家/地区。")
     if not ticker:
         raise TradeDecisionError("请选择标的。")
 
-    if asset_type == "stock":
+    if asset_type in {"stock", "etf"}:
         if not exchange_code:
             raise TradeDecisionError("请选择交易所。")
-        stock = Stock.query.filter(
-            Stock.exchange_code == exchange_code,
-            Stock.ticker == ticker,
-            Stock.country_code == country_code,
+        model = Stock if asset_type == "stock" else Etf
+        asset = model.query.filter(
+            model.exchange_code == exchange_code,
+            model.ticker == ticker,
+            model.country_code == country_code,
         ).first()
-        if not stock:
-            raise TradeDecisionError("未找到对应股票。")
+        if not asset:
+            raise TradeDecisionError(f"未找到对应{'股票' if asset_type == 'stock' else 'ETF'}。")
         return DecisionAsset(
-            asset_type="stock",
-            country_code=stock.country_code,
-            exchange_code=stock.exchange_code,
-            ticker=stock.ticker,
-            name=stock.name,
-            asset_identifier=f"{stock.exchange_code}:{stock.ticker}",
+            asset_type=asset_type,
+            country_code=asset.country_code,
+            exchange_code=asset.exchange_code,
+            ticker=asset.ticker,
+            name=asset.name,
+            asset_identifier=f"{asset.exchange_code}:{asset.ticker}",
         )
 
     index_asset = IndexAsset.query.filter(
@@ -228,17 +231,20 @@ def _load_strategy_rows(user: User, asset: DecisionAsset, extra_strategy_ids: li
 
 
 def _load_decision_bars(asset: DecisionAsset) -> list[dict]:
-    if asset.asset_type == "stock":
+    if asset.asset_type in {"stock", "etf"}:
+        daily_model = StockDailyBar if asset.asset_type == "stock" else EtfDailyBar
         rows = (
-            StockDailyBar.query.filter(
-                StockDailyBar.exchange_code == asset.exchange_code,
-                StockDailyBar.ticker == asset.ticker,
+            daily_model.query.filter(
+                daily_model.exchange_code == asset.exchange_code,
+                daily_model.ticker == asset.ticker,
             )
-            .order_by(StockDailyBar.trade_date.asc(), StockDailyBar.id.asc())
+            .order_by(daily_model.trade_date.asc(), daily_model.id.asc())
             .all()
         )
         bars = [_bar_to_dict(row) for row in rows]
-        return apply_stock_split_adjustments(bars, asset.exchange_code or "", asset.ticker)
+        if asset.asset_type == "stock":
+            return apply_stock_split_adjustments(bars, asset.exchange_code or "", asset.ticker)
+        return bars
 
     rows = (
         IndexDailyBar.query.filter(

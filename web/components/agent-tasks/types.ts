@@ -4,7 +4,7 @@ export type AgentTaskItem = {
   id: number;
   name: string;
   countryCode: string;
-  assetType: "stock" | "index";
+  assetType: "stock" | "etf" | "index";
   assetIdentifier: string;
   assetName: string;
   aiModelName: string;

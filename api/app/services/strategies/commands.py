@@ -84,8 +84,8 @@ def _apply_strategy_payload(strategy: Strategy, payload: dict, *, is_create: boo
         raise StrategyError("请选择有效的来源。")
     if not country_region:
         raise StrategyError("请选择国家/地区。")
-    if asset_type not in {"stock", "index"}:
-        raise StrategyError("请选择股票或指数。")
+    if asset_type not in {"stock", "etf", "index"}:
+        raise StrategyError("请选择股票、ETF或指数。")
     if not asset_identifier:
         raise StrategyError("请选择具体标的。")
 

@@ -18,7 +18,7 @@ type QueryState = {
   page: number;
   pageSize: number;
   keyword: string;
-  assetType?: "stock" | "index";
+  assetType?: "stock" | "etf" | "index";
   countryCode?: string;
   status?: AgentTaskStatus;
   sortBy?: "bestAnnualReturn";
@@ -47,7 +47,7 @@ export default function AgentTasksPage() {
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
   const [queryState, setQueryState] = useState<QueryState>(defaultQueryState);
   const [keyword, setKeyword] = useState("");
-  const [assetType, setAssetType] = useState<"stock" | "index" | undefined>();
+  const [assetType, setAssetType] = useState<"stock" | "etf" | "index" | undefined>();
   const [countryCode, setCountryCode] = useState<string | undefined>();
   const [status, setStatus] = useState<AgentTaskStatus | undefined>();
   const [rerunningId, setRerunningId] = useState<number | null>(null);
@@ -183,7 +183,7 @@ export default function AgentTasksPage() {
         dataIndex: "assetType",
         key: "assetType",
         width: 96,
-        render: (value) => <Tag>{value === "stock" ? "股票" : "指数"}</Tag>,
+        render: (value) => <Tag>{value === "stock" ? "股票" : value === "etf" ? "ETF" : "指数"}</Tag>,
       },
       {
         title: "状态",
@@ -297,7 +297,7 @@ export default function AgentTasksPage() {
       <section className="dashboard-heading">
         <div>
           <Title level={1}>AI Agent 任务</Title>
-          <Text className="page-description">创建自动迭代任务，让系统围绕单一股票或指数持续尝试策略并记录每一轮总结。</Text>
+          <Text className="page-description">创建自动迭代任务，让系统围绕单一股票、ETF或指数持续尝试策略并记录每一轮总结。</Text>
         </div>
         <Link href="/agent-tasks/new">
           <Button type="primary" icon={<PlusOutlined />}>
@@ -319,11 +319,12 @@ export default function AgentTasksPage() {
           <Select
             allowClear
             className="strategy-filter-select"
-            placeholder="股票/指数"
+            placeholder="股票/ETF/指数"
             value={assetType}
             onChange={setAssetType}
             options={[
               { label: "股票", value: "stock" },
+              { label: "ETF", value: "etf" },
               { label: "指数", value: "index" },
             ]}
           />

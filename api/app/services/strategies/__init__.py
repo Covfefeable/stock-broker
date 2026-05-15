@@ -20,6 +20,7 @@ from app.services.strategies.queries import (
     get_strategy,
     list_strategies,
     list_strategy_asset_options,
+    strategy_etf_option,
     strategy_index_option,
     strategy_stock_option,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "list_strategy_asset_options",
     "preview_strategy",
     "strategy_index_option",
+    "strategy_etf_option",
     "strategy_stock_option",
     "update_strategy",
     "_load_asset_bars",

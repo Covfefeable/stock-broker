@@ -1,5 +1,7 @@
 from sqlalchemy import func
 
+from app.models.etf import Etf
+from app.models.etf_daily_bar import EtfDailyBar
 from app.models.index_asset import IndexAsset
 from app.models.index_daily_bar import IndexDailyBar
 from app.models.stock import Stock
@@ -41,6 +43,43 @@ def get_stock_browser_bars(exchange_code: str, ticker: str) -> dict:
             "ticker": stock.ticker,
             "exchangeCode": stock.exchange_code,
             "countryCode": stock.country_code,
+            "latestDate": bars[-1]["date"] if bars else None,
+            "count": len(bars),
+        },
+        "bars": bars,
+    }
+
+
+def get_etf_browser_bars(exchange_code: str, ticker: str) -> dict:
+    normalized_exchange_code = exchange_code.strip().upper()
+    normalized_ticker = ticker.strip()
+    if not normalized_exchange_code or not normalized_ticker:
+        return {"meta": None, "bars": []}
+
+    etf = Etf.query.filter_by(
+        exchange_code=normalized_exchange_code, ticker=normalized_ticker
+    ).first()
+    if not etf:
+        etf = Etf.query.filter(
+            Etf.exchange_code == normalized_exchange_code,
+            func.lower(Etf.ticker) == normalized_ticker.lower(),
+        ).first()
+    if not etf:
+        return {"meta": None, "bars": []}
+
+    rows = (
+        EtfDailyBar.query.filter_by(exchange_code=normalized_exchange_code, ticker=etf.ticker)
+        .order_by(EtfDailyBar.trade_date.desc(), EtfDailyBar.id.desc())
+        .all()
+    )
+    bars = [row.to_dict() for row in reversed(rows)]
+    return {
+        "meta": {
+            "type": "etf",
+            "name": etf.name,
+            "ticker": etf.ticker,
+            "exchangeCode": etf.exchange_code,
+            "countryCode": etf.country_code,
             "latestDate": bars[-1]["date"] if bars else None,
             "count": len(bars),
         },

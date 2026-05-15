@@ -1,6 +1,8 @@
 import { DatePicker, Form, Modal, Radio, Select, Typography } from "antd";
 import type {
   CountryOption,
+  EtfDailyCoverage,
+  EtfOption,
   ExchangeOption,
   IndexDailyCoverage,
   IndexOption,
@@ -23,8 +25,10 @@ type Props = {
   exchangeOptions: ExchangeOption[];
   countryOptions: CountryOption[];
   stockOptions: StockOption[];
+  etfOptions: EtfOption[];
   indexOptions: IndexOption[];
   stockDailyCoverage: StockDailyCoverage;
+  etfDailyCoverage: EtfDailyCoverage;
   indexDailyCoverage: IndexDailyCoverage;
   onSubmit: () => void;
   onCancel: () => void;
@@ -32,6 +36,7 @@ type Props = {
   onExchangeChange: (value: string) => void;
   onCountryChange: (value: string) => void;
   onStockTickerChange: (value: string, exchangeCode: string) => void;
+  onEtfTickerChange: (value: string, exchangeCode: string) => void;
   onIndexTickerChange: (value: string, countryCode: string) => void;
 };
 
@@ -46,8 +51,10 @@ export function SyncDataModal({
   exchangeOptions,
   countryOptions,
   stockOptions,
+  etfOptions,
   indexOptions,
   stockDailyCoverage,
+  etfDailyCoverage,
   indexDailyCoverage,
   onSubmit,
   onCancel,
@@ -55,6 +62,7 @@ export function SyncDataModal({
   onExchangeChange,
   onCountryChange,
   onStockTickerChange,
+  onEtfTickerChange,
   onIndexTickerChange,
 }: Props) {
   return (
@@ -74,7 +82,7 @@ export function SyncDataModal({
 
         <Form.Item noStyle shouldUpdate={(prev, next) => prev.syncItem !== next.syncItem}>
           {({ getFieldValue }) =>
-            getFieldValue("syncItem") === "stock_list" || getFieldValue("syncItem") === "trading_calendar" ? (
+            ["stock_list", "etf_list", "trading_calendar"].includes(getFieldValue("syncItem")) ? (
               <Form.Item label="交易所" name="exchangeCode" rules={[{ required: true, message: "请选择交易所" }]}>
                 <Select
                   showSearch
@@ -107,7 +115,7 @@ export function SyncDataModal({
 
         <Form.Item noStyle shouldUpdate={(prev, next) => prev.syncItem !== next.syncItem || prev.exchangeCode !== next.exchangeCode}>
           {({ getFieldValue }) =>
-            getFieldValue("syncItem") === "stock_daily_history" ? (
+            getFieldValue("syncItem") === "stock_daily_history" || getFieldValue("syncItem") === "etf_daily_history" ? (
               <>
                 <Form.Item label="交易所" name="exchangeCode" rules={[{ required: true, message: "请选择交易所" }]}>
                   <Select
@@ -120,14 +128,28 @@ export function SyncDataModal({
                   />
                 </Form.Item>
 
-                <Form.Item label="股票" name="ticker" rules={[{ required: true, message: "请选择股票" }]}>
+                <Form.Item
+                  label={getFieldValue("syncItem") === "etf_daily_history" ? "ETF" : "股票"}
+                  name="ticker"
+                  rules={[{ required: true, message: getFieldValue("syncItem") === "etf_daily_history" ? "请选择 ETF" : "请选择股票" }]}
+                >
                   <Select
                     showSearch
                     loading={stockLoading}
-                    options={stockOptions}
-                    placeholder={getFieldValue("exchangeCode") ? "请选择股票" : "请先选择交易所"}
+                    options={getFieldValue("syncItem") === "etf_daily_history" ? etfOptions : stockOptions}
+                    placeholder={
+                      getFieldValue("exchangeCode")
+                        ? getFieldValue("syncItem") === "etf_daily_history"
+                          ? "请选择 ETF"
+                          : "请选择股票"
+                        : "请先选择交易所"
+                    }
                     optionFilterProp="label"
-                    onChange={(value) => onStockTickerChange(value, getFieldValue("exchangeCode"))}
+                    onChange={(value) =>
+                      getFieldValue("syncItem") === "etf_daily_history"
+                        ? onEtfTickerChange(value, getFieldValue("exchangeCode"))
+                        : onStockTickerChange(value, getFieldValue("exchangeCode"))
+                    }
                   />
                 </Form.Item>
 
@@ -142,10 +164,10 @@ export function SyncDataModal({
 
                 <Text className="metric-hint">
                   {coverageLoading
-                    ? "正在加载该股票的已同步日期..."
-                    : stockDailyCoverage.latestDate
-                      ? `已同步 ${stockDailyCoverage.count} 个交易日，最新日期为 ${stockDailyCoverage.latestDate}（北京时间）。`
-                      : "该股票尚无历史日线数据，自动补全将执行全量同步。"}
+                    ? `正在加载该${getFieldValue("syncItem") === "etf_daily_history" ? "ETF" : "股票"}的已同步日期...`
+                    : (getFieldValue("syncItem") === "etf_daily_history" ? etfDailyCoverage : stockDailyCoverage).latestDate
+                      ? `已同步 ${(getFieldValue("syncItem") === "etf_daily_history" ? etfDailyCoverage : stockDailyCoverage).count} 个交易日，最新日期为 ${(getFieldValue("syncItem") === "etf_daily_history" ? etfDailyCoverage : stockDailyCoverage).latestDate}（北京时间）。`
+                      : `该${getFieldValue("syncItem") === "etf_daily_history" ? "ETF" : "股票"}尚无历史日线数据，自动补全将执行全量同步。`}
                 </Text>
 
                 <Form.Item
@@ -163,7 +185,8 @@ export function SyncDataModal({
                           className="full-width"
                           disabledDate={(current) => {
                             if (!current) return false;
-                            return stockDailyCoverage.existingDates.includes(current.format("YYYY-MM-DD"));
+                            const coverage = getFieldValue("syncItem") === "etf_daily_history" ? etfDailyCoverage : stockDailyCoverage;
+                            return coverage.existingDates.includes(current.format("YYYY-MM-DD"));
                           }}
                         />
                       </Form.Item>

@@ -153,7 +153,7 @@ export function KlineChart({ bars, dark = true }: Props) {
   if (!validBars.length) {
     return (
       <div className="data-browser-empty-chart">
-        <EmptyState title="请选择股票或指数" />
+        <EmptyState title="请选择股票、ETF或指数" />
       </div>
     );
   }

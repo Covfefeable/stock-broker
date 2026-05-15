@@ -54,7 +54,7 @@ def _generate_strategy_with_ai(
                     {
                         "role": "system",
                         "content": (
-                            "你是一名量化研究员，负责为单一股票或指数生成可执行的 JSON 策略 DSL。"
+                            "你是一名量化研究员，负责为单一股票、ETF或指数生成可执行的 JSON 策略 DSL。"
                             "只能返回 JSON，不要包含 markdown，不要输出解释。"
                             "生成结果必须严格遵守用户消息中的 DSL 字段协议和表达式语法协议。"
                         ),
