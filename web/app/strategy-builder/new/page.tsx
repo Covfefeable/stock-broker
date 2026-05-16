@@ -60,6 +60,8 @@ export default function NewStrategyPage() {
   const [previewResult, setPreviewResult] = useState<StrategyPreviewResult | null>(null);
   const [pendingPrefillAssetIdentifier, setPendingPrefillAssetIdentifier] = useState<string | null>(null);
   const importDslInputRef = useRef<HTMLInputElement | null>(null);
+  const assetOptionsRequestRef = useRef(0);
+  const skipNextAssetResetRef = useRef(false);
 
   const assetType = Form.useWatch("assetType", form);
   const countryCode = Form.useWatch("countryCode", form);
@@ -95,6 +97,7 @@ export default function NewStrategyPage() {
         countryCode?: string;
         strategyConfig?: StrategyDslConfig;
       };
+      skipNextAssetResetRef.current = true;
       form.setFieldsValue({
         name: draft.name,
         type: draft.type,
@@ -215,6 +218,7 @@ export default function NewStrategyPage() {
   const loadAssetOptions = useCallback(
     async (nextCountryCode?: string, nextAssetType?: AssetType) => {
       if (!nextCountryCode || !nextAssetType) {
+        assetOptionsRequestRef.current += 1;
         setAssetOptions([]);
         return;
       }
@@ -222,6 +226,8 @@ export default function NewStrategyPage() {
       setLoadingAssets(true);
       try {
         const token = getAccessToken();
+        const requestId = assetOptionsRequestRef.current + 1;
+        assetOptionsRequestRef.current = requestId;
         const response = await apiGet<{
           items: AssetOption[];
           syncHint: "exchange_list" | "stock_list" | "etf_list" | "index_list" | null;
@@ -230,6 +236,9 @@ export default function NewStrategyPage() {
           `/strategies/asset-options?countryCode=${encodeURIComponent(nextCountryCode)}&assetType=${encodeURIComponent(nextAssetType)}`,
           token,
         );
+        if (requestId !== assetOptionsRequestRef.current) {
+          return;
+        }
         setAssetOptions(response.items);
         if (response.items.length === 0 && response.syncHint && response.message) {
           promptSync(response.syncHint, response.message, nextCountryCode);
@@ -288,7 +297,12 @@ export default function NewStrategyPage() {
   );
 
   useEffect(() => {
-    form.setFieldValue("assetIdentifier", undefined);
+    if (skipNextAssetResetRef.current) {
+      skipNextAssetResetRef.current = false;
+    } else {
+      form.setFieldValue("assetIdentifier", undefined);
+      setPendingPrefillAssetIdentifier(null);
+    }
     setAssetOptions([]);
     if (countryCode && assetType) {
       void loadAssetOptions(countryCode, assetType);

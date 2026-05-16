@@ -5,7 +5,7 @@ import { Button, Card, DatePicker, Form, Input, InputNumber, Modal, Radio, Selec
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import type { AgentTaskDetailResponse } from "@/components/agent-tasks/types";
 import type { CountryOption, IndexDailyCoverage, StockDailyCoverage, SyncEnqueueResponse } from "@/components/data-center/types";
@@ -63,6 +63,9 @@ export default function NewAgentTaskPage() {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [loadingCopy, setLoadingCopy] = useState(false);
+  const [pendingAssetIdentifier, setPendingAssetIdentifier] = useState<string | null>(null);
+  const assetOptionsRequestRef = useRef(0);
+  const skipNextAssetResetRef = useRef(false);
 
   const countryCode = Form.useWatch("countryCode", form);
   const assetType = Form.useWatch("assetType", form);
@@ -118,11 +121,12 @@ export default function NewAgentTaskPage() {
             item.apiKey === sourceTask.aiModelConfig?.apiKey,
         );
 
+        skipNextAssetResetRef.current = true;
         form.setFieldsValue({
           name: `${sourceTask.name}（副本）`,
           countryCode: sourceTask.countryCode,
           assetType: sourceTask.assetType,
-          assetIdentifier: sourceTask.assetIdentifier,
+          assetIdentifier: undefined,
           aiModelKey: matchedModel?.value,
           note: sourceTask.note ?? undefined,
           targetAnnualReturn: sourceTask.targetAnnualReturn ?? 20,
@@ -132,6 +136,7 @@ export default function NewAgentTaskPage() {
           backtestStartDate: sourceTask.backtestStartDate ? dayjs(sourceTask.backtestStartDate) : dayjs().subtract(5, "year"),
           backtestEndDate: sourceTask.backtestEndDate ? dayjs(sourceTask.backtestEndDate) : dayjs(),
         });
+        setPendingAssetIdentifier(sourceTask.assetIdentifier);
       } catch (error) {
         messageApi.error(error instanceof Error ? error.message : "加载复制任务失败。");
       } finally {
@@ -245,12 +250,15 @@ export default function NewAgentTaskPage() {
   const loadAssetOptions = useCallback(
     async (nextCountryCode?: string, nextAssetType?: AssetType) => {
       if (!nextCountryCode || !nextAssetType) {
+        assetOptionsRequestRef.current += 1;
         setAssetOptions([]);
         return;
       }
       setLoadingAssets(true);
       try {
         const token = getAccessToken();
+        const requestId = assetOptionsRequestRef.current + 1;
+        assetOptionsRequestRef.current = requestId;
         const response = await apiGet<{
           items: AssetOption[];
           syncHint: "exchange_list" | "stock_list" | "etf_list" | "index_list" | null;
@@ -259,6 +267,9 @@ export default function NewAgentTaskPage() {
           `/agent-tasks/asset-options?countryCode=${encodeURIComponent(nextCountryCode)}&assetType=${encodeURIComponent(nextAssetType)}`,
           token,
         );
+        if (requestId !== assetOptionsRequestRef.current) {
+          return;
+        }
         setAssetOptions(response.items);
         if (response.items.length === 0 && response.syncHint && response.message) {
           promptSync(response.syncHint, response.message, nextCountryCode);
@@ -273,9 +284,22 @@ export default function NewAgentTaskPage() {
   );
 
   useEffect(() => {
-    form.setFieldValue("assetIdentifier", undefined);
+    if (skipNextAssetResetRef.current) {
+      skipNextAssetResetRef.current = false;
+    } else {
+      form.setFieldValue("assetIdentifier", undefined);
+      setPendingAssetIdentifier(null);
+    }
     void loadAssetOptions(countryCode, assetType);
   }, [assetType, countryCode, form, loadAssetOptions]);
+
+  useEffect(() => {
+    if (!pendingAssetIdentifier || !assetOptions.some((item) => item.value === pendingAssetIdentifier)) {
+      return;
+    }
+    form.setFieldValue("assetIdentifier", pendingAssetIdentifier);
+    setPendingAssetIdentifier(null);
+  }, [assetOptions, form, pendingAssetIdentifier]);
 
   const checkAssetCoverage = useCallback(
     async (nextCountryCode: string, nextAssetType: AssetType, nextAssetValue: string) => {

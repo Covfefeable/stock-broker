@@ -338,6 +338,25 @@
   width: 120px;
 }
 
+.data-browser-recent-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: -6px 0 16px;
+}
+
+.data-browser-recent-button {
+  max-width: 240px;
+}
+
+.data-browser-recent-button span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .data-browser-meta-row {
   align-items: flex-start;
   display: flex;
@@ -509,4 +528,3 @@
   justify-content: center;
   min-height: 72px;
 }
-

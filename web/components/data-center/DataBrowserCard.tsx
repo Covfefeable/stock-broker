@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Card, Modal, Select, Segmented, Space, Statistic, Typography, message } from "antd";
 import { useThemeMode } from "@/app/providers";
 import { KlineChart } from "@/components/data-center/KlineChart";
@@ -24,11 +24,23 @@ import { apiGet, apiPost } from "@/lib/api";
 const { Text, Title } = Typography;
 
 type BrowserMode = "stock" | "etf" | "index";
+type RecentBrowserAsset = {
+  type: BrowserMode;
+  countryCode: string;
+  exchangeCode?: string;
+  ticker: string;
+  name: string;
+  latestDate?: string | null;
+  count?: number;
+};
 
 type Props = {
   countryOptions: CountryOption[];
   exchangeOptions: ExchangeOption[];
 };
+
+const RECENT_BROWSER_ASSETS_KEY = "stock-broker:data-browser:recent-assets";
+const RECENT_BROWSER_ASSETS_LIMIT = 9;
 
 export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
   const { mode } = useThemeMode();
@@ -51,6 +63,39 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
   const [coverageLoading, setCoverageLoading] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [recentAssets, setRecentAssets] = useState<RecentBrowserAsset[]>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(RECENT_BROWSER_ASSETS_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as RecentBrowserAsset[];
+      if (Array.isArray(parsed)) {
+        setRecentAssets(parsed.filter((item) => item?.type && item?.countryCode && item?.ticker).slice(0, RECENT_BROWSER_ASSETS_LIMIT));
+      }
+    } catch {
+      setRecentAssets([]);
+    }
+  }, []);
+
+  const saveRecentAsset = useCallback((asset: RecentBrowserAsset) => {
+    setRecentAssets((current) => {
+      const key = `${asset.type}:${asset.countryCode}:${asset.exchangeCode || ""}:${asset.ticker}`;
+      const next = [
+        asset,
+        ...current.filter((item) => `${item.type}:${item.countryCode}:${item.exchangeCode || ""}:${item.ticker}` !== key),
+      ].slice(0, RECENT_BROWSER_ASSETS_LIMIT);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(RECENT_BROWSER_ASSETS_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  }, []);
 
   const filteredExchangeOptions = useMemo(() => {
     if (!countryCode) {
@@ -296,6 +341,7 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
     setBars([]);
     setMeta(null);
     setStockCoverage({ existingDates: [], latestDate: null, count: 0 });
+    setEtfCoverage({ existingDates: [], latestDate: null, count: 0 });
     setIndexCoverage({ existingDates: [], latestDate: null, count: 0 });
     if (browserMode === "stock" || browserMode === "etf") {
       setStockOptions([]);
@@ -332,6 +378,53 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
     await promptSyncIfNeeded(browserMode, countryCode, exchangeCode, value);
   }, [browserMode, countryCode, exchangeCode, promptSyncIfNeeded]);
 
+  const loadBrowserBars = useCallback(async (kind: BrowserMode, nextCountryCode: string, nextExchangeCode: string | undefined, nextTicker: string) => {
+    setChartLoading(true);
+    try {
+      const token = getAccessToken();
+      const response =
+        kind === "stock"
+          ? await apiGet<{ meta: BrowserMeta | null; bars: BrowserBar[] }>(
+              `/data-center/browser/stock-bars?exchangeCode=${encodeURIComponent(nextExchangeCode || "")}&ticker=${encodeURIComponent(nextTicker)}`,
+              token,
+            )
+          : kind === "etf"
+            ? await apiGet<{ meta: BrowserMeta | null; bars: BrowserBar[] }>(
+                `/data-center/browser/etf-bars?exchangeCode=${encodeURIComponent(nextExchangeCode || "")}&ticker=${encodeURIComponent(nextTicker)}`,
+                token,
+              )
+            : await apiGet<{ meta: BrowserMeta | null; bars: BrowserBar[] }>(
+              `/data-center/browser/index-bars?countryCode=${encodeURIComponent(nextCountryCode)}&ticker=${encodeURIComponent(nextTicker)}`,
+              token,
+            );
+      setMeta(response.meta);
+      setBars(response.bars);
+      if (response.meta) {
+        const coverage = { existingDates: [], latestDate: response.meta.latestDate, count: response.meta.count };
+        if (kind === "stock") {
+          setStockCoverage(coverage);
+        } else if (kind === "etf") {
+          setEtfCoverage(coverage);
+        } else {
+          setIndexCoverage(coverage);
+        }
+        saveRecentAsset({
+          type: kind,
+          countryCode: response.meta.countryCode || nextCountryCode,
+          exchangeCode: kind === "index" ? undefined : response.meta.exchangeCode || nextExchangeCode,
+          ticker: response.meta.ticker,
+          name: response.meta.name,
+          latestDate: response.meta.latestDate,
+          count: response.meta.count,
+        });
+      }
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : "加载 K 线数据失败");
+    } finally {
+      setChartLoading(false);
+    }
+  }, [messageApi, saveRecentAsset]);
+
   const handleQuery = useCallback(async () => {
     if (browserMode === "stock" || browserMode === "etf") {
       if (!countryCode || !exchangeCode || !ticker) {
@@ -343,43 +436,40 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
         await promptSyncIfNeeded(browserMode, countryCode, exchangeCode, ticker);
         return;
       }
-    } else {
-      if (!countryCode || !ticker) {
-        messageApi.warning("请先完整选择国家和指数。");
-        return;
-      }
-      if (!indexCoverage.latestDate) {
-        await promptSyncIfNeeded("index", countryCode, undefined, ticker);
-        return;
-      }
+      await loadBrowserBars(browserMode, countryCode, exchangeCode, ticker);
+      return;
     }
 
-    setChartLoading(true);
-    try {
-      const token = getAccessToken();
-      const response =
-        browserMode === "stock"
-          ? await apiGet<{ meta: BrowserMeta | null; bars: BrowserBar[] }>(
-              `/data-center/browser/stock-bars?exchangeCode=${encodeURIComponent(exchangeCode || "")}&ticker=${encodeURIComponent(ticker || "")}`,
-              token,
-            )
-          : browserMode === "etf"
-            ? await apiGet<{ meta: BrowserMeta | null; bars: BrowserBar[] }>(
-                `/data-center/browser/etf-bars?exchangeCode=${encodeURIComponent(exchangeCode || "")}&ticker=${encodeURIComponent(ticker || "")}`,
-                token,
-              )
-            : await apiGet<{ meta: BrowserMeta | null; bars: BrowserBar[] }>(
-              `/data-center/browser/index-bars?countryCode=${encodeURIComponent(countryCode || "")}&ticker=${encodeURIComponent(ticker || "")}`,
-              token,
-            );
-      setMeta(response.meta);
-      setBars(response.bars);
-    } catch (error) {
-      messageApi.error(error instanceof Error ? error.message : "加载 K 线数据失败");
-    } finally {
-      setChartLoading(false);
+    if (!countryCode || !ticker) {
+      messageApi.warning("请先完整选择国家和指数。");
+      return;
     }
-  }, [browserMode, countryCode, etfCoverage, exchangeCode, indexCoverage.latestDate, messageApi, promptSyncIfNeeded, stockCoverage, ticker]);
+    if (!indexCoverage.latestDate) {
+      await promptSyncIfNeeded("index", countryCode, undefined, ticker);
+      return;
+    }
+    await loadBrowserBars("index", countryCode, undefined, ticker);
+  }, [browserMode, countryCode, etfCoverage, exchangeCode, indexCoverage.latestDate, loadBrowserBars, messageApi, promptSyncIfNeeded, stockCoverage, ticker]);
+
+  const handleRecentAssetClick = useCallback(async (asset: RecentBrowserAsset) => {
+    setBrowserMode(asset.type);
+    setCountryCode(asset.countryCode);
+    setExchangeCode(asset.exchangeCode);
+    setTicker(asset.ticker);
+    setBars([]);
+    setMeta(null);
+    setStockCoverage({ existingDates: [], latestDate: null, count: 0 });
+    setEtfCoverage({ existingDates: [], latestDate: null, count: 0 });
+    setIndexCoverage({ existingDates: [], latestDate: null, count: 0 });
+    if (asset.type === "stock" && asset.exchangeCode) {
+      await loadStockOptions(asset.exchangeCode);
+    } else if (asset.type === "etf" && asset.exchangeCode) {
+      await loadEtfOptions(asset.exchangeCode);
+    } else if (asset.type === "index") {
+      await loadIndexOptions(asset.countryCode);
+    }
+    await loadBrowserBars(asset.type, asset.countryCode, asset.exchangeCode, asset.ticker);
+  }, [loadBrowserBars, loadEtfOptions, loadIndexOptions, loadStockOptions]);
 
   const latestBar = bars[bars.length - 1];
 
@@ -452,6 +542,24 @@ export function DataBrowserCard({ countryOptions, exchangeOptions }: Props) {
           查询
         </Button>
       </div>
+
+      {recentAssets.length ? (
+        <div className="data-browser-recent-row">
+          <Text type="secondary">最近查看</Text>
+          <Space size={[8, 8]} wrap>
+            {recentAssets.map((item) => (
+              <Button
+                key={`${item.type}:${item.countryCode}:${item.exchangeCode || ""}:${item.ticker}`}
+                size="small"
+                className="data-browser-recent-button"
+                onClick={() => void handleRecentAssetClick(item)}
+              >
+                {item.name} ({item.ticker}) · {item.type === "stock" ? "股票" : item.type === "etf" ? "ETF" : "指数"}
+              </Button>
+            ))}
+          </Space>
+        </div>
+      ) : null}
 
       {meta ? (
         <div className="data-browser-meta-row">
